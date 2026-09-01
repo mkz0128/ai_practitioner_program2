@@ -22,7 +22,7 @@
 
 ## OPEN ISSUES
 
-- `EXT-001 — External Provider Issue`: Google Browser/Server Keys are not configured. P0 uses the simulated route provider.
+- `EXT-001 — External Provider Issue`: Google Browser key is not configured; the server key is configured, while P0 Benchmark remains simulated and deterministic.
 - `EXT-002 — External Provider Issue`: TDX credentials are not configured in the local environment. Core planning remains available.
 - `ENV-001 — Environment Issue`: The dependency lock is verified for Windows CPython 3.12; Linux wheel/lock verification is required before any future Linux deployment.
 - `SCOPE-001 — Deferred P1`: Google live geometry/traffic and TDX mapping remain optional; the canonical Benchmark uses simulated data.
