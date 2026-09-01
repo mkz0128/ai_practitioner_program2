@@ -31,7 +31,7 @@
 - pandas 3.0.5 / openpyxl 3.1.5
 - pytest 9.1.1 / ruff 0.16.5 / mypy 2.3.1
 
-Direct pins are in `pyproject.toml`; the Python 3.12 Windows resolution is in `requirements.lock`. No dependency was installed during the specification round.
+Direct pins are in `pyproject.toml`; the Python 3.12 Windows resolution is in `requirements.lock`. The approved local `.venv` is installed from that lock; global Python remains unchanged.
 
 ## Workbook Contract
 
@@ -66,7 +66,14 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m mypy src
+# Explicit live Agent gate; omit for the always-on keyless suite
+$env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
+
+The keyless suite includes the real Agents SDK runner with `ScriptedModel`, strict deterministic
+tools, and prompt-injection guardrails. The live gate uses `gpt-5-mini` only when credentials are
+present; missing Browser/TDX credentials skip or fallback without blocking backend P0. The current
+implementation evidence remains tracked as `IN_PROGRESS` until the final human review.
 
 ## Scope Exclusions
 

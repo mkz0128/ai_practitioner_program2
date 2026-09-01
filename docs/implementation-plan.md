@@ -101,6 +101,18 @@ Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, pla
 8. Verify no API Key value reaches output, logs, traces, assertions, snapshots, fixtures, or Git.
 9. Complete README, frontend handoff, demo script, validation report, and regression run.
 
+The Agents SDK acceptance gate is explicit: run one real `Runner.run` Agent with strict tools and
+an `OpenAIResponsesModel` live smoke, plus provider-neutral `ScriptedModel` E2E cases for daily
+dispatch, highest-load lookup, unassigned explanation, urgent insertion, missing-data questions,
+prompt injection, and evidence-only numeric grounding. The live request remains on `gpt-5-mini`;
+Responses tools use top-level `name`/`parameters`/`strict` fields and never the Chat Completions
+nested function envelope. A prior HTTP 400 `missing_required_parameter` is retained as a regression
+diagnostic, not hidden by a model change.
+
+The API gate counts 13 documented method/path pairs, 13 FastAPI registrations, and 13 exercised
+responses. The 40-order demo gate runs import → validation → initial plan → route-provider
+fallback → Agent explanation → confirm → order-41 preview/diff and deliberately does not dispatch.
+
 ### Verification
 
 - OpenAI-off test proves deterministic REST continuity.
@@ -108,7 +120,9 @@ Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, pla
 - Test collection with zero provider keys passes all keyless tests and marks live tests skipped.
 - A credential-output capture and repository scan prove secret values are never emitted or committed.
 - Agent Evals prove correct tool routing, evidence grounding, approval boundary, and injection defense.
-- Full `pytest`, `ruff`, `mypy`, OpenAPI snapshot, secret scan, and Golden suite pass.
+- Full `pytest`, `ruff`, `mypy`, OpenAPI/endpoint contract, secret scan, Benchmark, and Golden suite
+  pass. P0 and the OpenAI Agent remain `IN_PROGRESS` until the implementation gate is explicitly
+  closed after reviewing the evidence; passing tests alone do not change that status.
 
 ## P1 — Only if all P0 gates are green
 

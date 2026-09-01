@@ -34,8 +34,11 @@ This document decomposes the approved product prompt into traceable requirements
 | FR-URG-004 | Reject automatic insertion after `DISPATCHED`. | GD-007; AC-006 |
 | FR-STATE-001 | Persist and audit `DRAFT→VALIDATED→PROPOSED→CONFIRMED→DISPATCHED`. | State-machine tests |
 | FR-AGENT-001 | One Agent supports five documented natural-language intents through strict tools. | Tool-routing Evals |
+| FR-AGENT-002 | The Agents SDK Agent must call a deterministic planning/evidence tool before answering daily dispatch, load, unassigned, and urgent-preview requests. | `tests/test_agent_sdk_scenarios.py`; live opt-in E2E |
+| FR-AGENT-003 | Missing structured data is met with a clarifying question; prompt injection cannot trigger prohibited actions; final text may only restate tool evidence. | SDK guardrail and evidence tests |
 | FR-API-001 | Expose the minimum REST endpoints and usable OpenAPI/Swagger. | OpenAPI snapshot and endpoint integration tests |
 | FR-API-002 | Return one stable error envelope with request ID. | Representative 4xx/5xx contract tests |
+| FR-API-003 | Every one of the 13 paths documented in `docs/api-contract.md` is registered and exercised by a contract test; the demo flow stops before dispatch. | `tests/test_api_contract.py`; `tests/test_demo_flow.py` |
 
 ## Non-functional and Security Requirements
 
@@ -79,7 +82,7 @@ This document decomposes the approved product prompt into traceable requirements
 | SQLite | Versioned persistence/audit | repository tests | `architecture.md` |
 | REST/OpenAPI/CORS | Contract-first API | snapshot/integration tests | `api-contract.md` |
 | Observability/cost | Structured logs, tracing, limits | schema/limit tests | `observability.config` |
-| Golden/red team | Twelve concrete cases | Eval runner | `golden-dataset.json` |
+| Golden/red team | Concrete algorithm, provider, Agent, injection, and API contract cases | Eval runner | `golden-dataset.json` |
 
 ## P0 vs P1
 

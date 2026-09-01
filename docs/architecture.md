@@ -49,7 +49,9 @@ tests/
 └── evals/
 ```
 
-This layout is the approved implementation target; the deterministic core, FastAPI transport, SQLite repository slice, strict evidence tool, and provider fallback adapters now live under `src/`, while restart hydration remains staged work.
+This layout is the approved implementation target; the deterministic core, FastAPI transport,
+SQLite repository, strict evidence tools, provider fallback adapters, and restart hydration now
+live under `src/`. Observability hardening and the final implementation gate remain tracked work.
 
 ## ADR-001 — Single Agent
 
@@ -58,6 +60,24 @@ This layout is the approved implementation target; the deterministic core, FastA
 **Reason:** only intent routing and explanation need probabilistic behavior; adding delegation/handoffs creates latency, cost, state, and evaluation surface without MVP value.
 
 **Constraints:** no handoffs, A2A, AP2, or sub-agents inside the product. Each tool has strict Pydantic input/output. The model comes from `OPENAI_MODEL`.
+
+The runtime gate is an actual OpenAI Agents SDK `Agent` executed by `Runner.run`, not a prompt-only
+wrapper. Its strict tools are `plan_dispatch`, `highest_load_vehicle`, `explain_unassigned`, and
+`preview_urgent_insert`. Every planning tool invokes the deterministic planner and independent
+Validator before returning compact JSON evidence. The model may summarize only values present in
+that evidence; it may not calculate weights, routes, legality, or metrics.
+
+The keyless SDK E2E suite uses the SDK's `ScriptedModel`, which exercises the real tool dispatch
+and guardrail pipeline without network access. The opt-in live gate uses `OpenAIResponsesModel`
+with `gpt-5-mini`, `parallel_tool_calls=false`, `max_tokens=2048`, `max_turns=4`, tracing disabled
+for sensitive data, and a single planning tool call requirement.
+
+Responses API request shape is locked separately from Chat Completions: `input` and
+`max_output_tokens` are top-level fields, and each strict function tool has top-level `name`,
+`description`, `parameters`, and `strict`. A nested Chat Completions `function` envelope is invalid
+for Responses and is classified as `missing_required_parameter` (HTTP 400), never retried by
+changing to a more expensive model. Direct text and strict-tool requests are smoke-tested before
+the live Agent gate.
 
 ## ADR-002 — Deterministic Core
 
@@ -174,6 +194,16 @@ Reproducibility controls are: pinned OR-Tools/runtime versions; committed fixtur
 | Live integration tests | Explicit live adapter and narrow real request | Run only when that provider's required environment variables exist; otherwise `skip`, never fail |
 
 Tests may check only whether a required variable is present. They may never read a secret into assertions, output it, serialize it, include it in exception text, logs, traces, snapshots, fixtures, or Git. Provider clients must redact authorization headers and query credentials. A missing/rejected key degrades to a stable skip/fallback result according to test layer; it never breaks the keyless suite.
+
+## Runtime Acceptance Gate
+
+The endpoint contract is executable: `tests/test_api_contract.py` extracts all 13 documented
+routes, compares method/path pairs against FastAPI's registered routes, and exercises every route
+with a safe success or stable error response. The 40-order demo gate then runs import, validation,
+initial plan, map/provider fallback, evidence explanation, human confirmation, and order-41
+preview/diff. It intentionally stops before dispatch, and asserts that the base plan/version
+remains unchanged. These checks are evidence gates, not a declaration that P0 or the Agent is
+complete while the implementation phase remains open.
 
 ## ADR-007 — Provider Isolation and Fallback
 

@@ -3,8 +3,8 @@
 ## Snapshot
 
 ```yaml
-validated_on: 2026-09-01
-scope: specification_harness_algorithm_benchmark_contracts_feature_code_and_keyless_tests
+validated_on: 2026-09-02
+scope: specification_harness_algorithm_benchmark_contracts_feature_code_agent_e2e_api_contract_demo_flow
 feature_code_present: true
 implementation_gate: APPROVE_IMPLEMENTATION
 implementation_status: phase_2_feature_implementation
@@ -29,12 +29,16 @@ git_repository: true
 | Demo distribution | deterministic audit | Passed — AM 20, PM 20, Z4 112 kg |
 | Workbook formula errors | artifact match scan | Passed — none detected |
 | Workbook visual quality | render/view all 8 sheets, repair, rerender | Passed |
-| Feature gate false | exact pattern and no-`src/` check | Passed |
+| Feature gate | exact approval recorded; `src/` implementation allowed only after approval | Passed — `APPROVE_IMPLEMENTATION` |
 | Git baseline safety | repository-local identity, empty remote, 26-file secret/action/deployment scan | Passed |
 | Algorithm specification coverage | Baseline, CVRPTW dimensions, strategies, limits, partial/failure policy | Passed |
 | Fair Benchmark contract | identical fixture/matrix identity, 12 metrics, formulas, reproducibility controls | Passed |
 | API Key test layers | always-on keyless, conditional live, missing-key skip/fallback, secret redaction | Passed |
-| Golden Dataset extension | JSON parse and GD-013–GD-018 traceability | Passed — 18 total cases |
+| Golden Dataset extension | JSON parse and GD-013–GD-025 traceability | Passed — 25 total cases |
+| Responses API parameter diagnostic | `gpt-5-mini` direct text and strict function request; malformed Chat envelope regression | Passed — correct requests PASS; historical HTTP 400 `missing_required_parameter` explained without secret output |
+| OpenAI Agents SDK E2E | `Runner.run` + strict deterministic tools + independent Validator + evidence-only final answer | Passed — live opt-in daily dispatch PASS; seven provider-neutral SDK scenarios PASS |
+| API contract coverage | Documented method/path pairs vs FastAPI routes and safe response exercise | Passed — 13 defined / 13 implemented / 13 exercised |
+| 40-order demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff; no dispatch | Passed — base version remained unchanged |
 
 ## Dependency Resolution Evidence
 
@@ -75,11 +79,14 @@ git_repository: true
 
 - FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, dispatch lifecycle, urgent preview, and structured explanation tests passed.
 - Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, Benchmark, SQLite repository, urgent preview, structured evidence, and provider fallback tests passed.
-- Keyless suite: `14 passed, 1 skipped (conditional live provider)`; `ruff check src tests`: passed; `mypy src`: passed across 20 source files.
-- Canonical simulated run: Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations.
-- Live preflight: OpenAI Chat text/strict tool `PASS`; initial Responses request `BadRequestError` (not counted as pass); Google Routes matrix `PASS`; TDX `SKIPPED`.
-- Full Agent natural-language orchestration, frontend contract snapshots, and bounded request tracing remain staged follow-up work; no claim is made that they are complete.
+- Keyless suite: `24 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests`: passed; `mypy src`: passed across 21 source files.
+- Agents SDK scenario suite: `7 passed`; explicit live `Runner.run` with `gpt-5-mini`, strict `plan_dispatch`, and Validator: `1 passed`.
+- Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
+- API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
+- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time `5,037.672ms` (reported only, not exact cross-machine criterion).
+- Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
+- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Bounded request tracing/usage metrics and final human review remain staged follow-up work; no claim is made that P0 or the OpenAI Agent is complete.
 
 ## Final Result
 
-Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`.
+Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. P0 and the OpenAI Agent remain **IN_PROGRESS / not signed off** pending final review of the Responses regression, live/provider evidence, and remaining observability gates.
