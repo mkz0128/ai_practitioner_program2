@@ -54,16 +54,16 @@
 
 ## LAST VALIDATION
 
-- Date: `2026-09-01 Asia/Taipei`
+- Date: `2026-09-02 Asia/Taipei`
 - Credential preflight: OpenAI model/key and Google Routes server key `CONFIGURED`; Browser key and TDX credentials `MISSING`; values not read or logged.
-- Live smoke: OpenAI Chat text and strict tool calls `PASS`; initial Responses smoke returned `BadRequestError` and is not counted as pass. Google Routes matrix `PASS`; TDX `SKIPPED`.
-- Dependencies: locked install `PASS`; `pytest` 14 passed, 1 conditional live test skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 20 source files.
+- Live smoke: OpenAI Chat text/strict tool `PASS`; initial malformed Responses request returned `BadRequestError` and is retained as a regression case; corrected Responses text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED`.
+- Dependencies: locked install `PASS`; latest keyless `pytest` 24 passed, 3 conditional tests skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 21 source files.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
 - Latest canonical Benchmark run (10-second solver cap): both plans valid with zero overload/cross-zone/duplicate/time-window violations; OR-Tools solve time `5,037.672ms` (wall-clock metric only, not a cross-machine Golden value).
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
-- Git finalization: `origin/main` matched local `HEAD` after the implementation push; tracked working tree is clean.
+- Git finalization: `origin/main` matches local `HEAD` after the implementation and status pushes; tracked working tree is clean.
 - Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
 - Plaintext credential source: protected by Git exclusion and ready for user deletion; never added to Git.
 - Latest keyless validation: `24 passed, 3 skipped`; Agents SDK scenarios `7 passed`; explicit live Agent E2E `1 passed`; direct Responses smoke `1 passed`; API contract `13 defined / 13 implemented / 13 exercised`; demo flow `1 passed` and stopped before dispatch.
-- Latest quality gates: `ruff check .` `PASS`; `mypy src` `PASS` (21 files); secret scan `PASS`; no Actions/deploy workflow; commit `c86aec5` pushed to `origin/main`; working tree clean before this status-only update.
+- Latest quality gates: `ruff check .` `PASS`; `mypy src` `PASS` (21 files); secret scan `PASS`; no Actions/deploy workflow; commits `c86aec5` and `3bc0f01` pushed to `origin/main`; working tree clean before this status-only update.
 - Responses diagnostic: historical malformed tool envelope → `BadRequestError` / HTTP 400 / `missing_required_parameter`; corrected top-level `input`, `tools[].name`, `tools[].parameters`, `tools[].strict`, and `max_output_tokens` with `gpt-5-mini` → direct text and strict tool `PASS`. No model upgrade permitted or used.
