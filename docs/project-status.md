@@ -43,6 +43,7 @@
 - Created commit `6b64f54` (`feat: add persistent versions and urgent previews`) and pushed it to `origin/main`.
 - Added Google Routes adapter with strict field mask, timeout, redacted failure categories, and simulated fallback; added TDX P0 status adapter and conditional live-test marker.
 - Added SQLite restart hydration with a separate current-version pointer so urgent previews remain immutable after process restart.
+- Created commit `3c7170d` (`feat: add provider fallback and restart hydration`) and pushed it to `origin/main`.
 
 ## LAST VALIDATION
 
