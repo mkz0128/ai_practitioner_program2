@@ -46,6 +46,6 @@
 - Dependencies: locked install `PASS`; `pytest` 8 passed (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS`.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
-- Git finalization: `origin/main` resolves to `710742fe3da21a8b3863c8aeccf5a2c5d394e343`; tracked working tree is clean.
+- Git finalization: `origin/main` resolves to `0cdcac6171d0faee61feea238f6a5132cc09712d`; tracked working tree is clean.
 - Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
 - Plaintext credential source: protected by Git exclusion and ready for user deletion; never added to Git.
