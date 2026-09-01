@@ -1,0 +1,46 @@
+[project]
+name = "ai-delivery-dispatch-agent"
+version = "0.1.0"
+description = "Explainable delivery dispatch Copilot with deterministic validation and optimization."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "alembic==1.19.1",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "openai-agents==0.22.0",
+  "openpyxl==3.1.5",
+  "ortools==9.15.6755",
+  "pandas==3.0.5",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "python-multipart==0.0.32",
+  "sqlalchemy==2.0.52",
+  "uvicorn[standard]==0.52.4",
+]
+
+[dependency-groups]
+dev = [
+  "mypy==2.3.1",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "ruff==0.16.5",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests", ".agent/evos/unit-tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+show_error_codes = true

@@ -1,0 +1,48 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime data and observability
+data/runtime/
+*.db
+*.sqlite
+*.sqlite3
+.agent/runs/
+logs/
+*.log
+*.trace
+
+# Temporary and generated local output
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+outputs/
+
+# Additional credential containers
+.secrets/
+secrets/
+credentials.json
+*_credentials.json
+*.p12
+*.pfx
+
+# Tooling
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
