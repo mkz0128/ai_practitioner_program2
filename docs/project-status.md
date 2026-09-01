@@ -40,6 +40,7 @@
 - Added SQLite datasets/plans/audit tables with immutable `(plan_id, version)` rows and repository tests.
 - Added urgent-order preview as a non-mutating version 2 flow with validation, diff, and current-version protection.
 - Added an allowlisted deterministic `explain_assignment` tool path that returns structured evidence without chain-of-thought or secret context.
+- Created commit `6b64f54` (`feat: add persistent versions and urgent previews`) and pushed it to `origin/main`.
 
 ## LAST VALIDATION
 
