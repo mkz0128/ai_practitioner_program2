@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
@@ -14,7 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.tools import explain_assignment
 from src.config import get_settings
-from src.domain.models import Dataset, Order, Package, Priority
+from src.domain.models import Dataset, Order, Package, Priority, Vehicle, VehicleStatus, Zone
+from src.providers.tdx import TDXProvider
 from src.repositories.sqlite import SQLiteRepository
 from src.services.errors import ValidationReport
 from src.services.importer import parse_workbook, validate_dataset
@@ -243,6 +245,101 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         ],
         "created_at": record.created_at,
     }
+
+
+def _deserialize_matrix(payload: dict[str, Any]) -> MatrixResult:
+    return MatrixResult(
+        node_ids=tuple(payload["node_ids"]),
+        distance_m=tuple(tuple(row) for row in payload["distance_m"]),
+        duration_s=tuple(tuple(row) for row in payload["duration_s"]),
+        provider_mode=payload.get("provider_mode", "SIMULATED"),
+        matrix_version=payload.get("matrix_version", "sim-v1"),
+        warning=payload.get("warning"),
+    )
+
+
+def _deserialize_dataset(payload: dict[str, Any]) -> Dataset:
+    package_values = [Package.model_validate(package) for package in payload["packages"]]
+    package_by_order: dict[str, list[Package]] = {}
+    for package in package_values:
+        package_by_order.setdefault(package.order_id, []).append(package)
+    orders: list[Order] = []
+    for raw_order in payload["orders"]:
+        order_data = dict(raw_order)
+        order_data.pop("total_weight_kg", None)
+        order_data["priority"] = Priority(order_data.get("priority", Priority.NORMAL.value))
+        order_data["packages"] = tuple(package_by_order.get(order_data["order_id"], ()))
+        orders.append(Order.model_validate(order_data))
+    vehicles = []
+    for raw_vehicle in payload["vehicles"]:
+        vehicle_data = dict(raw_vehicle)
+        vehicle_data["status"] = VehicleStatus(vehicle_data["status"])
+        vehicle_data["service_zone_codes"] = tuple(vehicle_data.get("service_zone_codes", ()))
+        vehicles.append(Vehicle.model_validate(vehicle_data))
+    zones = []
+    for raw_zone in payload["zones"]:
+        zone_data = dict(raw_zone)
+        for field_name in (
+            "covered_cities",
+            "covered_districts",
+            "tdx_city_codes",
+            "adjacent_zone_codes",
+        ):
+            zone_data[field_name] = tuple(zone_data.get(field_name, ()))
+        zones.append(Zone.model_validate(zone_data))
+    return Dataset.model_validate(
+        {
+            "orders": tuple(orders),
+            "packages": tuple(package_values),
+            "vehicles": tuple(vehicles),
+            "zones": tuple(zones),
+            "source_filename": payload.get("source_filename", "workbook.xlsx"),
+        }
+    )
+
+
+def _hydrate_store() -> None:
+    """Restore non-secret metadata and immutable versions after a local restart."""
+    for row in repository.load_datasets():
+        try:
+            dataset = _deserialize_dataset(json.loads(row["payload_json"]))
+            dataset_validation = ValidationReport.model_validate(json.loads(row["validation_json"]))
+            matrix = _deserialize_matrix(json.loads(row["matrix_json"]))
+            store.add_dataset(
+                DatasetRecord(
+                    dataset_id=row["dataset_id"],
+                    dataset=dataset,
+                    validation=dataset_validation,
+                    matrix=matrix,
+                    created_at=row["created_at"],
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    for row in repository.load_plans():
+        try:
+            plan = PlanResult.model_validate(json.loads(row["payload_json"]))
+            plan_validation = PlanValidation.model_validate(json.loads(row["validation_json"]))
+            matrix = _deserialize_matrix(json.loads(row["matrix_json"]))
+            store.add_plan(
+                PlanRecord(
+                    plan_id=row["plan_id"],
+                    dataset_id=row["dataset_id"],
+                    version=int(row["version"]),
+                    state=row["state"],
+                    plan=plan,
+                    validation=plan_validation,
+                    matrix=matrix,
+                    created_at=row["created_at"],
+                ),
+                make_current=False,
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    store.current_versions.update(repository.current_versions())
+
+
+_hydrate_store()
 
 
 @app.middleware("http")
@@ -521,7 +618,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
         preview_matrix,
         preview_record.created_at,
     )
-    repository.save_plan(preview_record)
+    repository.save_plan(preview_record, make_current=False)
     before_vehicle = {
         order_id: route.vehicle_id
         for route in base_record.plan.routes
@@ -609,6 +706,7 @@ def dispatch_plan(plan_id: str, payload: DispatchRequest, request: Request) -> A
 @app.get("/api/v1/providers/status")
 def provider_status(request: Request) -> dict[str, Any]:
     status_map = settings.credential_status()
+    tdx_status = TDXProvider(settings.tdx_client_id, settings.tdx_client_secret).status()
     return {
         "providers": [
             {"name": "simulated_routes", "enabled": True, "status": "healthy", "mode": "SIMULATED"},
@@ -622,7 +720,7 @@ def provider_status(request: Request) -> dict[str, Any]:
                 if status_map["GOOGLE_ROUTES_SERVER_API_KEY"] == "CONFIGURED"
                 else "UNAVAILABLE",
             },
-            {"name": "tdx", "enabled": False, "status": "disabled", "mode": "UNAVAILABLE"},
+            {"name": "tdx", **tdx_status.model_dump()},
             {
                 "name": "openai",
                 "enabled": status_map["OPENAI_API_KEY"] == "CONFIGURED",

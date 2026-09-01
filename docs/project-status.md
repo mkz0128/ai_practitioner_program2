@@ -8,13 +8,13 @@
 
 ## NOW
 
-- Add provider adapters with explicit simulated fallback and conditional live-test boundaries.
+- Add remaining lifecycle/evidence contract tests and frontend handoff snapshots.
 
 ## NEXT
 
-1. Add Google/TDX provider adapters with timeout, redaction, and fallback tests.
-2. Add restart-time repository hydration and audit query endpoints.
-3. Add remaining lifecycle/evidence contract tests without weakening keyless gates.
+1. Add remaining lifecycle/evidence contract tests without weakening keyless gates.
+2. Add frontend handoff fixtures and OpenAPI contract snapshots.
+3. Add bounded agent usage metrics and redacted request tracing.
 
 ## BLOCKED
 
@@ -41,13 +41,15 @@
 - Added urgent-order preview as a non-mutating version 2 flow with validation, diff, and current-version protection.
 - Added an allowlisted deterministic `explain_assignment` tool path that returns structured evidence without chain-of-thought or secret context.
 - Created commit `6b64f54` (`feat: add persistent versions and urgent previews`) and pushed it to `origin/main`.
+- Added Google Routes adapter with strict field mask, timeout, redacted failure categories, and simulated fallback; added TDX P0 status adapter and conditional live-test marker.
+- Added SQLite restart hydration with a separate current-version pointer so urgent previews remain immutable after process restart.
 
 ## LAST VALIDATION
 
 - Date: `2026-09-01 Asia/Taipei`
 - Credential preflight: OpenAI model/key and Google Routes server key `CONFIGURED`; Browser key and TDX credentials `MISSING`; values not read or logged.
 - Live smoke: OpenAI Chat text and strict tool calls `PASS`; initial Responses smoke returned `BadRequestError` and is not counted as pass. Google Routes matrix `PASS`; TDX `SKIPPED`.
-- Dependencies: locked install `PASS`; `pytest` 12 passed (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS`.
+- Dependencies: locked install `PASS`; `pytest` 14 passed, 1 conditional live test skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 20 source files.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
 - Git finalization: `origin/main` matched local `HEAD` after the implementation push; tracked working tree is clean.

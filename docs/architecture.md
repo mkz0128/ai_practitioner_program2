@@ -49,7 +49,7 @@ tests/
 └── evals/
 ```
 
-This layout is the approved implementation target; the deterministic core, FastAPI transport, SQLite repository slice, and strict evidence tool now live under `src/`, while restart hydration and optional provider adapters remain staged work.
+This layout is the approved implementation target; the deterministic core, FastAPI transport, SQLite repository slice, strict evidence tool, and provider fallback adapters now live under `src/`, while restart hydration remains staged work.
 
 ## ADR-001 — Single Agent
 

@@ -11,6 +11,7 @@ class MatrixResult:
     duration_s: tuple[tuple[int, ...], ...]
     provider_mode: str = "SIMULATED"
     matrix_version: str = "sim-v1"
+    warning: str | None = None
 
 
 def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> int:

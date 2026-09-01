@@ -65,6 +65,10 @@ class SQLiteRepository:
                     metadata_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS plan_current (
+                    plan_id TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL
+                );
                 """
             )
 
@@ -97,7 +101,7 @@ class SQLiteRepository:
                 ),
             )
 
-    def save_plan(self, record: Any) -> None:
+    def save_plan(self, record: Any, make_current: bool = True) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
@@ -119,6 +123,14 @@ class SQLiteRepository:
                     record.created_at,
                 ),
             )
+            if make_current:
+                connection.execute(
+                    """
+                    INSERT INTO plan_current (plan_id, version) VALUES (?, ?)
+                    ON CONFLICT(plan_id) DO UPDATE SET version = excluded.version
+                    """,
+                    (record.plan_id, record.version),
+                )
 
     def append_audit(
         self,
@@ -141,3 +153,18 @@ class SQLiteRepository:
         with self._connect() as connection:
             row = connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
             return int(row["count"])
+
+    def load_datasets(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return list(
+                connection.execute("SELECT * FROM datasets ORDER BY created_at, dataset_id")
+            )
+
+    def load_plans(self) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return list(connection.execute("SELECT * FROM plans ORDER BY plan_id, version"))
+
+    def current_versions(self) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT plan_id, version FROM plan_current").fetchall()
+            return {str(row["plan_id"]): int(row["version"]) for row in rows}
