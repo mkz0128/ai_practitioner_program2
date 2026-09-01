@@ -65,5 +65,5 @@
 - Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
 - Plaintext credential source: protected by Git exclusion and ready for user deletion; never added to Git.
 - Latest keyless validation: `24 passed, 3 skipped`; Agents SDK scenarios `7 passed`; explicit live Agent E2E `1 passed`; direct Responses smoke `1 passed`; API contract `13 defined / 13 implemented / 13 exercised`; demo flow `1 passed` and stopped before dispatch.
-- Latest quality gates: `ruff check src tests` `PASS`; `mypy src` `PASS` (21 files); secret scan `PASS`; no Actions/deploy workflow; working tree pending this docs/test commit.
+- Latest quality gates: `ruff check .` `PASS`; `mypy src` `PASS` (21 files); secret scan `PASS`; no Actions/deploy workflow; commit `c86aec5` pushed to `origin/main`; working tree clean before this status-only update.
 - Responses diagnostic: historical malformed tool envelope → `BadRequestError` / HTTP 400 / `missing_required_parameter`; corrected top-level `input`, `tools[].name`, `tools[].parameters`, `tools[].strict`, and `max_output_tokens` with `gpt-5-mini` → direct text and strict tool `PASS`. No model upgrade permitted or used.
