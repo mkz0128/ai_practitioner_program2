@@ -56,7 +56,7 @@
 
 - In-scope path: this project workspace only.
 - Do not delete, overwrite, or move user data; do not use destructive reset or force flags.
-- Preserve pre-existing edits. The workspace currently has no Git repository; do not initialize, commit, or push without a separate request.
+- Preserve pre-existing edits. The workspace has an existing Git repository; do not initialize, commit, or push without a separate scoped request.
 - Runtime databases, traces, `.env`, keys, and secrets are excluded from version control.
 
 ## Safety-Critical Plan Invariants

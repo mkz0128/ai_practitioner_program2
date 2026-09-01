@@ -1,9 +1,9 @@
 ---
 spec_id: AI-DISPATCH-MVP
 spec_version: 1.0.0-spec
-status: READY_FOR_IMPLEMENTATION_APPROVAL
-current_phase: PHASE_1.5_SPECIFICATION_LOCK
-feature_code_allowed: false
+status: IMPLEMENTATION_IN_PROGRESS
+current_phase: PHASE_2_FEATURE_IMPLEMENTATION
+feature_code_allowed: true
 required_approval_command: APPROVE_IMPLEMENTATION
 approved_product_input_date: 2026-09-01
 target_delivery_days: 3
@@ -14,7 +14,7 @@ application_agent_count: 1
 
 ## 0. Phase Gate
 
-本文件已吸收使用者確認的產品決策，不再重新訪談。規格、Harness、架構、API 合約、測試資料與計畫完成後必須停止。只有使用者輸入精確命令 `APPROVE_IMPLEMENTATION`，才可將 `feature_code_allowed` 改為 `true` 並開始 Feature Code。
+本文件已吸收使用者確認的產品決策，不再重新訪談。使用者已輸入精確命令 `APPROVE_IMPLEMENTATION`，現在允許在本地沙盒開始 Feature Code。所有部署、Git push、外部付費、IAM、Production 或其他 L2/L3 動作仍需另行範圍核准。
 
 `APPROVE_IMPLEMENTATION` 不包含部署、Git push、外部付費、IAM、Production 或其他 L2/L3 動作。
 

@@ -49,7 +49,7 @@ tests/
 └── evals/
 ```
 
-This layout is planned only; `src/` is intentionally absent until `APPROVE_IMPLEMENTATION`.
+This layout is the approved implementation target; the first deterministic core and FastAPI transport now live under `src/`, while persistence and optional provider adapters remain staged work.
 
 ## ADR-001 — Single Agent
 

@@ -2,7 +2,7 @@
 
 三天 MVP 的定位是「可解釋的配送調度 Copilot」：以單一 OpenAI Agent 理解自然語言並操作嚴格 schema 的 function tools；所有資料驗證、重量計算、分車、路線、時段和狀態轉移都由確定性程式負責。
 
-目前只完成規格、Harness、合約與測試資料準備，尚未撰寫 Feature Code。實作閘門維持關閉，直到使用者輸入 `APPROVE_IMPLEMENTATION`。
+已收到 `APPROVE_IMPLEMENTATION`；目前已啟用本機 Feature Code 實作，並維持不部署、不啟用 Actions、不接觸正式環境的安全邊界。
 
 ## Sources of Truth
 
@@ -54,11 +54,11 @@ REST responses always expose these values as JSON arrays; delimiter strings neve
 - TDX: optional P0 health/status integration; real road-to-zone congestion mapping is P1.
 - OpenAI unavailable: REST import, validation, planning, confirmation, and queries remain available; only `/agent/chat` degrades.
 
-Copy `.env.example` to `.env` only after implementation is approved. Never commit `.env`.
+本機 `.env` 僅供已核准的開發環境使用，永不提交；`.env.example` 只保留空白變數與 `gpt-5-mini` 預設模型。
 
 ## Planned Local Commands
 
-These commands are documentation only until the implementation gate opens:
+These commands run the local implementation and keyless validation gates:
 
 ```powershell
 python -m venv .venv

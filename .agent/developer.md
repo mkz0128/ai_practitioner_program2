@@ -10,14 +10,12 @@ LLM 負責理解意圖、選擇工具與解釋結果；Harness 與確定性程�
 
 ## Current Phase Gate
 
-- Current phase: `PHASE_1.5_SPECIFICATION_LOCK`
-- Specification status: `READY_FOR_IMPLEMENTATION_APPROVAL`
-- Feature code allowed: `false`
+- Current phase: `PHASE_2_FEATURE_IMPLEMENTATION`
+- Specification status: `IMPLEMENTATION_IN_PROGRESS`
+- Feature code allowed: `true` (explicit `APPROVE_IMPLEMENTATION` received)
 - Project interview allowed: `false`
 - Required approval command: `APPROVE_IMPLEMENTATION`
-- Next gate: 只有收到上述明確命令後，才可開始 Day 1 Feature Code。
-
-不得把本次已確認的完整執行 Prompt 解讀為實作核准。
+- Next gate: 開始 Day 1 Feature Code；本次明確命令只開放本地沙盒實作，不包含部署或其他 L2/L3 動作。
 
 ## Product Role and Boundary
 

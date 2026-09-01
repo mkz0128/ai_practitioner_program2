@@ -2,45 +2,48 @@
 
 ## CURRENT PHASE
 
-- Phase: `READY_FOR_IMPLEMENTATION_APPROVAL`
-- Feature code allowed: `false`
+- Phase: `PHASE_2_FEATURE_IMPLEMENTATION`
+- Feature code allowed: `true`
 - Required implementation command: `APPROVE_IMPLEMENTATION`
 
 ## NOW
 
-- Wait for the exact command `APPROVE_IMPLEMENTATION`; Feature Code remains disabled.
+- Complete final verification, update this status, and create the safe implementation baseline commit.
 
 ## NEXT
 
-1. After approval, implement the shared independent Validator and Benchmark metric contract before either algorithm.
-2. Implement the deterministic Baseline, freeze the simulated matrix/hash, then implement the locked OR-Tools CVRPTW strategy.
-3. Keep live provider tests opt-in and obtain separate approval before future Git push or deployment.
+1. Add SQLite persistence and immutable plan-version repositories.
+2. Add urgent-order preview and strict tool-backed Agent explanation flows.
+3. Add opt-in provider adapters/live integration tests without weakening keyless gates.
 
 ## BLOCKED
 
-- Feature implementation is blocked until the user enters `APPROVE_IMPLEMENTATION`.
+- TDX live smoke test is skipped because `TDX_CLIENT_ID` and `TDX_CLIENT_SECRET` are missing; this does not block P0.
 
 ## OPEN ISSUES
 
 - `EXT-001 — External Provider Issue`: Google Browser/Server Keys are not configured. P0 uses the simulated route provider.
 - `EXT-002 — External Provider Issue`: TDX credentials are not configured in the local environment. Core planning remains available.
 - `ENV-001 — Environment Issue`: The dependency lock is verified for Windows CPython 3.12; Linux wheel/lock verification is required before any future Linux deployment.
+- `SCOPE-001 — Deferred P1`: Google live geometry/traffic and TDX mapping remain optional; the canonical Benchmark uses simulated data.
 
 ## DONE THIS ROUND
 
-- Defined the deterministic First-Fit Eligible Vehicle + Nearest Neighbor Baseline with stable ordering, hard legality checks, and explicit `unassigned_orders`.
-- Locked the OR-Tools CVRPTW proposal to Capacity/Time Dimensions, `PARALLEL_CHEAPEST_INSERTION`, `GUIDED_LOCAL_SEARCH`, a 10-second cap, a 1,000-solution cap, and an independent Validator.
-- Defined fair fixed-matrix Benchmark inputs, all required metrics/formulas, canonical reproducibility qualification, and exclusion of Google live traffic from Golden values.
-- Selected minimum-change replanning for order 41, with a labelled `FULL_REPLAN` fallback preview only after bounded minimal-change failure.
-- Added always-on keyless tests, conditional live integration tests, missing-key skip/fallback behavior, and secret-value non-observability rules.
-- Extended the Golden Dataset from 12 to 18 cases and published the six-file docs/Eval-only commit authorized for this round.
+- Accepted the explicit `APPROVE_IMPLEMENTATION` command and opened local Feature Code work only.
+- Completed credential preflight without reading or logging values; OpenAI and Google Routes are configured, Browser and TDX are missing.
+- Synchronized the phase gate to `PHASE_2_FEATURE_IMPLEMENTATION` / `IMPLEMENTATION_IN_PROGRESS`.
+- Received scoped L2 approval for local `.venv` dependency installation.
+- Created the project `.venv` and installed all packages from `requirements.lock` with the bundled CPython 3.12 runtime.
+- Added deterministic workbook parser, strict domain schemas, package weight aggregation, fixed simulated matrix, Baseline, OR-Tools CVRPTW, independent Validator, Benchmark metrics, and FastAPI health/import/plan/lifecycle/provider endpoints.
+- Added keyless import/planning/benchmark/API tests and reproduced then fixed spreadsheet enum coercion under strict validation.
 
 ## LAST VALIDATION
 
 - Date: `2026-09-01 Asia/Taipei`
-- Golden Dataset JSON: parsed successfully; `18` unique cases (`GD-001`–`GD-018`).
-- Markdown structure: all project Markdown files have balanced fenced blocks.
-- Cross-file algorithm controls: Baseline, CVRPTW dimensions/strategies/limits, Benchmark metrics, urgent scope, and Key layers are present in every required target.
-- Docs-only scope: exactly the six authorized Markdown/JSON files changed; no `.env`, secret, runtime data, Actions, deployment configuration, or `src/` added.
-- Diff safety: whitespace/error check passed; secret-pattern scan returned `0` hits.
-- Phase gate: `feature_code_allowed: false`; no `src/` directory.
+- Credential preflight: OpenAI model/key and Google Routes server key `CONFIGURED`; Browser key and TDX credentials `MISSING`; values not read or logged.
+- Live smoke: OpenAI Chat text and strict tool calls `PASS`; initial Responses smoke returned `BadRequestError` and is not counted as pass. Google Routes matrix `PASS`; TDX `SKIPPED`.
+- Dependencies: locked install `PASS`; `pytest` 8 passed (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS`.
+- Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
+- Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
+- Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
+- Plaintext credential source: protected by Git exclusion and ready for user deletion; never added to Git.

@@ -4,9 +4,10 @@
 
 ```yaml
 validated_on: 2026-09-01
-scope: specification_harness_algorithm_benchmark_contracts_and_test_data
-feature_code_present: false
+scope: specification_harness_algorithm_benchmark_contracts_feature_code_and_keyless_tests
+feature_code_present: true
 implementation_gate: APPROVE_IMPLEMENTATION
+implementation_status: phase_2_feature_implementation
 git_repository: true
 ```
 
@@ -70,10 +71,15 @@ git_repository: true
 | Reproducibility | pins, hashes, integer units, stable ordering, fixed parameters, run protocol | Present |
 | Credentials | keyless always runs; live conditional; secret values never emitted | Present |
 
-## Runtime Verification Deferred Until Implementation
+## Runtime Verification
 
-No claim is made yet about API startup, OpenAPI generation, SQLite migrations, OR-Tools feasibility, actual Baseline/Optimized metric values, Agent execution, provider calls, or runtime test pass rate. Those require Feature Code and remain blocked by the implementation gate. No Benchmark number has been invented in this specification-only round.
+- FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, and dispatch lifecycle tests passed.
+- Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, and Benchmark tests passed.
+- Keyless suite: `8 passed`; `ruff check src tests`: passed; `mypy src`: passed.
+- Canonical simulated run: Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations.
+- Live preflight: OpenAI Chat text/strict tool `PASS`; initial Responses request `BadRequestError` (not counted as pass); Google Routes matrix `PASS`; TDX `SKIPPED`.
+- SQLite persistence, urgent insertion, full Agent tool routing, and live provider adapters remain staged P1/P0 follow-up work; no claim is made that they are complete.
 
 ## Final Result
 
-Specification/Harness readiness: **PASS**. Implementation readiness is conditional on the user entering `APPROVE_IMPLEMENTATION`; Feature Code remains absent and disabled.
+Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`.
