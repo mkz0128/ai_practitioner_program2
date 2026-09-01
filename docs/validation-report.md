@@ -73,12 +73,12 @@ git_repository: true
 
 ## Runtime Verification
 
-- FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, and dispatch lifecycle tests passed.
-- Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, and Benchmark tests passed.
-- Keyless suite: `8 passed`; `ruff check src tests`: passed; `mypy src`: passed.
+- FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, dispatch lifecycle, urgent preview, and structured explanation tests passed.
+- Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, Benchmark, and SQLite repository tests passed.
+- Keyless suite: `12 passed`; `ruff check src tests`: passed; `mypy src`: passed.
 - Canonical simulated run: Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; initial Responses request `BadRequestError` (not counted as pass); Google Routes matrix `PASS`; TDX `SKIPPED`.
-- SQLite persistence, urgent insertion, full Agent tool routing, and live provider adapters remain staged P1/P0 follow-up work; no claim is made that they are complete.
+- Restart hydration, full Agent natural-language orchestration, and live provider adapters remain staged follow-up work; no claim is made that they are complete.
 
 ## Final Result
 

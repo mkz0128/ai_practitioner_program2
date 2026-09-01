@@ -8,13 +8,13 @@
 
 ## NOW
 
-- Implement SQLite persistence and immutable plan-version repositories as the next P0 vertical slice.
+- Add provider adapters with explicit simulated fallback and conditional live-test boundaries.
 
 ## NEXT
 
-1. Add SQLite persistence and immutable plan-version repositories.
-2. Add urgent-order preview and strict tool-backed Agent explanation flows.
-3. Add opt-in provider adapters/live integration tests without weakening keyless gates.
+1. Add Google/TDX provider adapters with timeout, redaction, and fallback tests.
+2. Add restart-time repository hydration and audit query endpoints.
+3. Add remaining lifecycle/evidence contract tests without weakening keyless gates.
 
 ## BLOCKED
 
@@ -37,13 +37,16 @@
 - Added deterministic workbook parser, strict domain schemas, package weight aggregation, fixed simulated matrix, Baseline, OR-Tools CVRPTW, independent Validator, Benchmark metrics, and FastAPI health/import/plan/lifecycle/provider endpoints.
 - Added keyless import/planning/benchmark/API tests and reproduced then fixed spreadsheet enum coercion under strict validation.
 - Created commit `710742fe3da21a8b3863c8aeccf5a2c5d394e343` (`feat: implement deterministic dispatch core`) and pushed it to the sole `origin/main`.
+- Added SQLite datasets/plans/audit tables with immutable `(plan_id, version)` rows and repository tests.
+- Added urgent-order preview as a non-mutating version 2 flow with validation, diff, and current-version protection.
+- Added an allowlisted deterministic `explain_assignment` tool path that returns structured evidence without chain-of-thought or secret context.
 
 ## LAST VALIDATION
 
 - Date: `2026-09-01 Asia/Taipei`
 - Credential preflight: OpenAI model/key and Google Routes server key `CONFIGURED`; Browser key and TDX credentials `MISSING`; values not read or logged.
 - Live smoke: OpenAI Chat text and strict tool calls `PASS`; initial Responses smoke returned `BadRequestError` and is not counted as pass. Google Routes matrix `PASS`; TDX `SKIPPED`.
-- Dependencies: locked install `PASS`; `pytest` 8 passed (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS`.
+- Dependencies: locked install `PASS`; `pytest` 12 passed (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS`.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
 - Git finalization: `origin/main` matched local `HEAD` after the implementation push; tracked working tree is clean.

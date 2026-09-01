@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     )
     tdx_client_id: str | None = Field(default=None, validation_alias="TDX_CLIENT_ID")
     tdx_client_secret: str | None = Field(default=None, validation_alias="TDX_CLIENT_SECRET")
+    database_url: str = Field(
+        default="sqlite:///./data/runtime/dispatch.db", validation_alias="DATABASE_URL"
+    )
     cors_allowed_origins: str = Field(
         default="http://localhost:3000,http://127.0.0.1:3000",
         validation_alias="CORS_ALLOWED_ORIGINS",
