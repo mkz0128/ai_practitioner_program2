@@ -1,6 +1,6 @@
 {
   "dataset_name": "ai-delivery-dispatch-agent-golden-evals",
-  "dataset_version": "1.0.0-spec",
+  "dataset_version": "1.1.0-spec",
   "status": "ready_for_implementation",
   "seed": 20260901,
   "fixture": "data/samples/demo-delivery-40-orders.xlsx",
@@ -11,6 +11,65 @@
     "llm_judge_allowed_for_numeric_correctness": false,
     "simulated_provider_comparison": "exact_and_invariants",
     "live_provider_comparison": "invariants_and_reasonable_ranges_only"
+  },
+  "benchmark_contract": {
+    "input": {
+      "orders": 40,
+      "vehicles": 4,
+      "zones": 5,
+      "depot_id": "DEPOT-001",
+      "fixture": "data/samples/demo-delivery-40-orders.xlsx",
+      "matrix_mode": "SIMULATED_FIXED",
+      "require_same_fixture_and_matrix_hash": true,
+      "google_live_values_allowed_as_golden": false
+    },
+    "baseline": {
+      "assignment": "FIRST_FIT_ELIGIBLE_VEHICLE",
+      "sequencing": "NEAREST_NEIGHBOR",
+      "order_sort": ["priority_desc", "time_window_start", "order_id"],
+      "vehicle_sort": ["vehicle_id"],
+      "nearest_tie_break": ["distance_m", "duration_s", "order_id"]
+    },
+    "optimized": {
+      "solver": "GOOGLE_OR_TOOLS_CVRPTW",
+      "first_solution_strategy": "PARALLEL_CHEAPEST_INSERTION",
+      "local_search_metaheuristic": "GUIDED_LOCAL_SEARCH",
+      "time_limit_seconds": 10,
+      "solution_limit": 1000,
+      "dimensions": ["Capacity", "Time"],
+      "independent_validator_required": true
+    },
+    "metrics": [
+      "total_distance_m",
+      "total_driving_time_s",
+      "vehicle_planned_load_kg",
+      "vehicle_utilization",
+      "utilization_gap",
+      "unassigned_order_count",
+      "overload_violation_count",
+      "cross_zone_violation_count",
+      "duplicate_assignment_count",
+      "time_window_violation_count",
+      "solve_time_ms",
+      "improvement_vs_baseline_percent"
+    ],
+    "reproducibility": {
+      "integer_units": ["meters", "seconds", "grams"],
+      "stable_entity_and_node_order": true,
+      "single_process": true,
+      "warmup_runs": 1,
+      "measured_runs": 5,
+      "require_identical_routes_and_metrics": true,
+      "solve_time_aggregation": "median",
+      "exact_cross_machine_solve_time_assertion": false,
+      "timeout_before_solution_limit_is_canonical": false
+    },
+    "api_key_test_layers": {
+      "keyless": "always_run_with_simulated_or_mock_providers",
+      "live": "run_only_when_provider_environment_variables_exist",
+      "missing_key": "skip_or_fallback_without_failure",
+      "secret_value_in_output_log_trace_fixture_or_git": "forbidden"
+    }
   },
   "cases": [
     {"id":"GD-001","title":"合法 40 單產生可確認方案","category":"happy_path","severity":"critical","given":"固定 seed 的 40 張訂單、4 台車、5 區資料與 simulated matrix","when":"建立 daily dispatch plan","then":["每張可安排訂單只指派一次","不拆單","無超載、跨區或時段違規","狀態為 PROPOSED","requires_human_confirmation 為 true"],"source_spec_ids":["AC-001","FR-PLAN-001"]},
@@ -24,6 +83,12 @@
     {"id":"GD-009","title":"外部 provider 失敗安全降級","category":"resilience","severity":"critical","given":"Google、TDX 或 OpenAI timeout/認證失敗","when":"執行相應流程","then":["核心 REST 排程仍可用","回傳 provider warning","模擬資料明確標示 SIMULATED","不偽裝即時資料"],"source_spec_ids":["NFR-REL-002"]},
     {"id":"GD-010","title":"UNAVAILABLE 車輛不參與排程","category":"boundary","severity":"critical","given":"車輛狀態為 UNAVAILABLE","when":"列出候選與求解","then":["該車不在候選集合","不產生 assignment"],"source_spec_ids":["VAL-012","OPT-004"]},
     {"id":"GD-011","title":"重複 ID 被拒絕","category":"sad_path","severity":"high","given":"任一 sheet 具有重複 primary ID","when":"驗證 workbook","then":["DATASET_VALIDATION_FAILED","回報所有重複位置"],"source_spec_ids":["VAL-001"]},
-    {"id":"GD-012","title":"超過所有合法車容量的訂單不可安排","category":"boundary","severity":"critical","given":"單一不可拆訂單重量大於該區所有合法候選車的可用容量","when":"驗證及規劃","then":["分類 UNASSIGNABLE","列出訂單與候選容量證據","不建立非法 assignment"],"source_spec_ids":["VAL-007","AC-003"]}
+    {"id":"GD-012","title":"超過所有合法車容量的訂單不可安排","category":"boundary","severity":"critical","given":"單一不可拆訂單重量大於該區所有合法候選車的可用容量","when":"驗證及規劃","then":["分類 UNASSIGNABLE","列出訂單與候選容量證據","不建立非法 assignment"],"source_spec_ids":["VAL-007","AC-003"]},
+    {"id":"GD-013","title":"Baseline 可重現且不偷偷遺漏","category":"benchmark","severity":"critical","given":"固定 40 單、4 車、5 區、穩定排序與 simulated matrix","when":"連續執行 First-Fit Eligible Vehicle 與 Nearest Neighbor Baseline","then":["路線與指標完全一致","不拆單且無超載或跨區","每張訂單只出現一次或明列 unassigned","通過共用 Validator"],"source_spec_ids":["FR-BAS-001","FR-BAS-002","FR-BAS-003"]},
+    {"id":"GD-014","title":"Baseline 與 OR-Tools 公平 Benchmark","category":"benchmark","severity":"critical","given":"相同 fixture hash、matrix hash、DEPOT-001 與鍵值排序","when":"分別執行 Baseline 與鎖定參數的 OR-Tools CVRPTW","then":["兩者輸入身分完全一致","回報全部 Benchmark 指標","改善百分比使用統一公式且零分母為 null","Google 即時值不進入 Golden","五次實測路線與非時間指標一致"],"source_spec_ids":["FR-BENCH-001","FR-BENCH-002","FR-BENCH-003","NFR-REP-001"]},
+    {"id":"GD-015","title":"Solver 狀態與 Validator 雙重關卡","category":"safety","severity":"critical","given":"solver timeout、infeasible、partial candidate 或故意注入超載輸出","when":"解析結果並執行獨立 Validator","then":["無 candidate 時不建立可確認方案","partial 明列 complete false 與所有 unassigned","Validator 失敗一律不可確認","保留 termination 與例外證據"],"source_spec_ids":["FR-OPT-004","FR-PLAN-007"]},
+    {"id":"GD-016","title":"Keyless 測試永遠可執行","category":"resilience","severity":"critical","given":"Google、TDX、OpenAI 環境變數全部不存在","when":"執行完整 keyless test suite","then":["使用 simulated/mock provider","核心規劃與 Benchmark 通過","無網路與憑證依賴","缺 Key 不造成失敗"],"source_spec_ids":["NFR-TEST-001"]},
+    {"id":"GD-017","title":"Live integration 缺 Key 安全 skip","category":"security","severity":"critical","given":"live test 所需 provider 環境變數缺少","when":"收集或執行 live integration tests","then":["該測試明確 skip 或進入允許 fallback","不將缺 Key 視為測試失敗","不輸出環境變數真實值","日誌、trace、snapshot、fixture 與 Git 皆無 secret"],"source_spec_ids":["NFR-TEST-002","NFR-SEC-004"]},
+    {"id":"GD-018","title":"第 41 單預設最小變動重排","category":"benchmark","severity":"critical","given":"初版方案可行、未出發且有一張固定緊急訂單","when":"建立 urgent insertion preview","then":["先保留既有分車與相對順序嘗試插入","必要時只解鎖合法受影響路線","全面重排必須標示 FULL_REPLAN 與原因","回傳搬移訂單數與完整 diff","原版本不變"],"source_spec_ids":["FR-URG-005","FR-URG-001"]}
   ]
 }

@@ -87,7 +87,95 @@ Model an unsplittable capacitated vehicle routing problem with vehicle eligibili
 
 After solving, a separate validator recomputes all invariants from domain data. Solver success alone never grants `valid=true`.
 
-## ADR-005 — Provider Isolation and Fallback
+### Deterministic Baseline
+
+The Benchmark reference is intentionally simple and is not an optimization fallback:
+
+1. Sort orders by `priority` (`HIGH` first), time-window start, then `order_id`; sort vehicles by `vehicle_id`.
+2. **First-Fit Eligible Vehicle** assigns each unsplittable order to the first `AVAILABLE` vehicle that serves its zone and has enough residual capacity, including `current_load_kg`.
+3. If the first candidate cannot produce a legal time-feasible route, try the next eligible vehicle in the same stable order.
+4. **Nearest Neighbor** sequences each vehicle from `DEPOT-001` using the fixed matrix's `distance_m`; ties use `duration_s`, then `order_id`. Only a next stop that preserves AM/PM, lunch, three-minute service, and depot-return feasibility may be selected.
+5. Every route returns to `DEPOT-001`. An order with no legal assignment/sequence is emitted in `unassigned_orders` with a stable reason; it is never omitted.
+6. The independent Validator evaluates the Baseline output too. An invalid Baseline is reported as a Benchmark result but can never become a confirmable plan.
+
+### Optimized CVRPTW Model
+
+```yaml
+solver: Google OR-Tools RoutingModel CVRPTW
+first_solution_strategy: PARALLEL_CHEAPEST_INSERTION
+local_search_metaheuristic: GUIDED_LOCAL_SEARCH
+time_limit_seconds: 10
+solution_limit: 1000
+dimensions:
+  Capacity:
+    demand: current_load_kg + whole-order package-weight sum
+    vehicle_capacities: per-vehicle max_load_kg
+    split_order: forbidden
+  Time:
+    transit: simulated duration + 3-minute stop service
+    workday: 08:00-17:00
+    hard_windows: {AM: 08:00-12:00, PM: 13:00-17:00}
+    lunch_break: 12:00-13:00
+vehicle_eligibility: AVAILABLE and zone in service_zone_codes
+start_end: DEPOT-001
+objective_priority:
+  - minimize_unassigned_count
+  - minimize_total_travel_time
+  - minimize_load_utilization_gap
+validator_required: true
+```
+
+`PARALLEL_CHEAPEST_INSERTION` is explicit rather than `AUTOMATIC` and constructs a multi-route initial solution by cheapest feasible insertions. `GUIDED_LOCAL_SEARCH` is selected to escape local minima and therefore always receives a finite time limit. The canonical 40-order solve has a 10-second hard cap and a 1,000-solution cap; reaching either returns the best feasible candidate found plus its termination reason.
+
+The Capacity Dimension enforces per-vehicle capacity using deterministic whole-order demand. The Time Dimension uses integer seconds, allows required waiting, enforces arrival/service completion inside AM or PM, reserves the 12:00–13:00 break, includes 180 seconds at each stop, and bounds every route between the depot start/end. Vehicle/zone eligibility is expressed as allowed vehicles for each order node.
+
+Objectives use integer costs and a documented dominating coefficient: dropping one order costs more than the maximum possible travel-plus-balance improvement, total travel time dominates the bounded utilization-gap term, and distance remains a reported metric. Coefficients are derived from the fixed matrix upper bound and recorded with the run, never chosen from live traffic. The independent Validator recomputes assignment uniqueness, no split, capacity, eligibility, time/lunch, depot endpoints, and all metric totals from source data.
+
+### No-solution and Partial-solution Policy
+
+- Pre-validation classifies orders with no eligible vehicle, invalid data, or impossible single-order capacity before solving.
+- Solver-optional visits use deterministic high disjunction penalties so the minimum number of orders is dropped before travel optimization. Every dropped node becomes an explicit `unassigned_orders` entry with evidence.
+- `ROUTING_FAIL`, `ROUTING_FAIL_TIMEOUT` without a candidate, `ROUTING_INVALID`, and `ROUTING_INFEASIBLE` produce stable errors and no confirmable proposal.
+- A time-limited feasible candidate may be returned only with `optimality_proven: false`, solver status/termination metadata, explicit exceptions, and a passing independent Validator.
+- A valid partial plan stays `PROPOSED`, sets `complete: false`, lists all unassigned orders, and requires explicit human review; it is never represented as a complete solution.
+
+### Urgent Order 41 Replanning
+
+Default policy is **minimum-change replanning**, not an unrestricted full reshuffle:
+
+1. Start from the exact base plan/version and warm-start from its routes.
+2. First try inserting order 41 while preserving existing vehicle assignments and relative stop order.
+3. If infeasible, unlock only eligible affected routes and minimize moved-order count and sequence displacement before travel/load tie-breaks.
+4. Only if that fails, create a separately labelled `FULL_REPLAN` fallback preview. It must expose scope, moved orders, before/after metrics, and the reason escalation was needed.
+5. No preview mutates the base plan; exact plan/version confirmation remains mandatory.
+
+## ADR-005 — Fair Benchmark Contract
+
+Baseline and Optimized runs consume the same canonical input snapshot: the same 40 orders, four vehicles, five zones, stable row/entity ordering, `DEPOT-001`, and the same versioned fixed simulated distance/duration matrix. Google live traffic is excluded from fixed Benchmark values; live runs report only invariants and observed ranges and cannot replace the canonical result.
+
+| Metric | Definition |
+|---|---|
+| Total distance | Sum of fixed-matrix `distance_m` for every depot/stop arc |
+| Total driving time | Sum of fixed-matrix `duration_s`; excludes waiting and service |
+| Vehicle load/utilization | `current_load_kg + assigned_weight_kg`; utilization is load / max load |
+| Utilization gap | Maximum minus minimum utilization across all four vehicles |
+| Unassigned orders | Count plus complete ordered IDs/reason codes |
+| Violations | Separate overload, cross-zone, duplicate, and time-window counts from Validator |
+| Solve time | Monotonic elapsed milliseconds, measured around algorithm execution only |
+| Improvement vs Baseline | `(baseline - optimized) / baseline * 100`; lower-is-better metrics only, `null` when Baseline is zero |
+
+Reproducibility controls are: pinned OR-Tools/runtime versions; committed fixture and matrix version/hash; integer meters/seconds/grams; stable order/vehicle/node ordering and tie-breakers; identical search parameters; single-process canonical run; one unmeasured warm-up plus five measured runs; route/metric equality checks across runs; median solve time reported separately and never asserted as an exact cross-machine value. If the 10-second cap fires before the fixed solution limit or route equality fails, the run is marked non-canonical rather than silently updating Golden values.
+
+## ADR-006 — API Key Test Layers
+
+| Layer | Provider behavior | Gate and expected outcome |
+|---|---|---|
+| Keyless tests | Simulated/mock Google, TDX, and OpenAI adapters | Always runnable; no network or credential dependency; missing keys use fallback and must pass |
+| Live integration tests | Explicit live adapter and narrow real request | Run only when that provider's required environment variables exist; otherwise `skip`, never fail |
+
+Tests may check only whether a required variable is present. They may never read a secret into assertions, output it, serialize it, include it in exception text, logs, traces, snapshots, fixtures, or Git. Provider clients must redact authorization headers and query credentials. A missing/rejected key degrades to a stable skip/fallback result according to test layer; it never breaks the keyless suite.
+
+## ADR-007 — Provider Isolation and Fallback
 
 ```yaml
 RouteMatrixProvider:
@@ -107,7 +195,7 @@ Google Compute Route Matrix requires a field mask. Planned minimum fields: `orig
 
 Google caching is transient and configurable (default 900 seconds). Durable storage of raw Google content is disabled until current service terms are reviewed; derived plan records retain provider identity, timestamp, and only fields legally permitted.
 
-## ADR-006 — Persistence and Versioning
+## ADR-008 — Persistence and Versioning
 
 Planned tables:
 
@@ -177,3 +265,8 @@ No reverse transition or implicit confirmation. Preview is immutable and side-ef
 - Google Compute Route Matrix: https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix
 - Google API key security: https://support.google.com/googleapi/answer/6310037
 - TDX Swagger/basic services: https://tdx.transportdata.tw/api-service/swagger/basic/
+- OR-Tools routing strategies/limits: https://developers.google.com/optimization/routing/routing_options
+- OR-Tools CVRP capacity dimension: https://developers.google.com/optimization/routing/cvrp
+- OR-Tools VRPTW time dimension: https://developers.google.com/optimization/routing/vrptw
+- OR-Tools initial routes/warm start: https://developers.google.com/optimization/routing/routing_tasks
+- OR-Tools dropped-visit penalties: https://developers.google.com/optimization/routing/penalties

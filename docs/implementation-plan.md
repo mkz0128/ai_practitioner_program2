@@ -17,6 +17,30 @@ Before each implementation round:
 
 `docs/project-status.md` is the sole progress ledger; no separate NOW/TODO/DONE files are allowed.
 
+## Algorithm and Benchmark Delivery Contract
+
+Implementation order after approval is deliberate:
+
+1. Implement the independent Validator and metric calculator first.
+2. Implement deterministic Baseline: stable order sort → First-Fit Eligible Vehicle → time-feasible Nearest Neighbor → explicit unassigned reconciliation.
+3. Freeze/version the simulated matrix and record its hash with the 40-order/4-vehicle/5-zone fixture hash.
+4. Implement OR-Tools CVRPTW: Capacity/Time Dimensions, allowed vehicles, hard AM/PM windows, lunch break, 180-second service, depot start/end.
+5. Lock search parameters: `PARALLEL_CHEAPEST_INSERTION`, `GUIDED_LOCAL_SEARCH`, 10-second `time_limit`, 1,000 `solution_limit`.
+6. Run both algorithms on the exact same snapshot and have the same Validator/metric calculator evaluate both.
+
+| Benchmark output | Unit/formula |
+|---|---|
+| Total distance | meters, sum of fixed-matrix route arcs |
+| Total driving time | seconds, sum of fixed-matrix duration arcs |
+| Vehicle load/utilization | kg and `planned_load_kg / max_load_kg` per vehicle |
+| Utilization gap | max utilization minus min utilization across four vehicles |
+| Unassigned | count plus ordered IDs/reasons |
+| Violations | overload, cross-zone, duplicate, and time-window counts separately |
+| Solve time | monotonic milliseconds around algorithm only; median of five measured runs after one warm-up |
+| Improvement | `(baseline - optimized) / baseline * 100`, or `null` when Baseline is zero |
+
+Canonical comparison rejects live Google matrices. Reproducibility requires pinned runtime/OR-Tools, committed fixture and matrix version/hash, integer units, stable entity/node/tie ordering, identical search parameters, a single process, and equal routes/metrics across repeated runs. A wall-clock timeout before the fixed solution limit makes the run non-canonical rather than changing Golden values.
+
 ## Day 1 — Contract-first frontend unblock
 
 ### P0 deliverables
@@ -45,16 +69,21 @@ Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, pla
 ### P0 deliverables
 
 1. Implement `SimulatedRouteProvider` with fixed seed/matrix and simplified polyline.
-2. Implement candidate filtering, OR-Tools model, objective priorities, bounded solve.
-3. Implement independent validator and evidence builder.
-4. Implement plan/version persistence, plan query, map-data.
-5. Implement urgent insertion preview, before/after diff, optimistic confirmation, and dispatch transition.
-6. Add unit/integration/contract tests for every critical invariant.
+2. Implement the shared independent Validator and Benchmark metric calculator.
+3. Implement the deterministic First-Fit Eligible Vehicle + Nearest Neighbor Baseline.
+4. Implement candidate filtering and the OR-Tools CVRPTW with locked strategies, objective priorities, and bounded solve.
+5. Implement explicit no-solution/partial-solution status mapping and unassigned reconciliation.
+6. Implement plan/version persistence, plan query, and map-data.
+7. Implement order-41 minimum-change preview; warm-start the base routes, then broaden affected routes, and only then emit a labelled `FULL_REPLAN` fallback preview.
+8. Add unit/integration/contract tests for every critical invariant and Benchmark formula.
 
 ### Verification
 
 - Demo 40 orders total 350–380 kg and satisfies 5×8 / AM20 / PM20.
 - Concentrated Z4 demand causes legal redistribution, never overload.
+- Baseline and OR-Tools receive byte-identical fixture/matrix identities and use the same Validator.
+- Canonical repeated runs produce identical routes and metrics; solve time is reported as a median, not asserted exactly across machines.
+- Benchmark reports every required metric and uses `null`, not division-by-zero, for undefined percentage improvements.
 - Preview does not mutate base; stale/dispatched operations fail correctly.
 - Fixed simulated matrix produces repeatable exact output.
 
@@ -67,12 +96,17 @@ Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, pla
 3. Add OpenAI tracing configuration, JSON logs, correlation IDs, usage/limit enforcement.
 4. Implement Google Routes adapter and field masks; retain default fallback if no key.
 5. Implement TDX credential settings, provider health/status, timeout and graceful fallback.
-6. Complete README, frontend handoff, demo script, validation report, and regression run.
+6. Split provider verification into always-on keyless simulated/mock tests and opt-in live integration tests.
+7. Make live tests skip when required environment variables are absent; missing/rejected keys may fallback but never fail the keyless suite.
+8. Verify no API Key value reaches output, logs, traces, assertions, snapshots, fixtures, or Git.
+9. Complete README, frontend handoff, demo script, validation report, and regression run.
 
 ### Verification
 
 - OpenAI-off test proves deterministic REST continuity.
 - Google/TDX error tests prove explicit fallback/warnings.
+- Test collection with zero provider keys passes all keyless tests and marks live tests skipped.
+- A credential-output capture and repository scan prove secret values are never emitted or committed.
 - Agent Evals prove correct tool routing, evidence grounding, approval boundary, and injection defense.
 - Full `pytest`, `ruff`, `mypy`, OpenAPI snapshot, secret scan, and Golden suite pass.
 
@@ -106,6 +140,10 @@ Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, pla
 | OR-Tools time/lunch modeling error | illegal plan | fixed time fixtures + independent validator |
 | External keys absent | demo failure | fallback is default and tested |
 | Live traffic nondeterminism | flaky tests | exact simulated tests; live only invariants/ranges |
+| Time-limited local search drifts across machines | unstable Golden metrics | fixed solution limit/order/matrix; canonical-run qualification; time reported separately |
+| Partial solution hides dropped work | unsafe/incomplete dispatch | explicit disjunction reconciliation + shared independent Validator |
+| Urgent full reshuffle surprises dispatcher | operational instability | minimum-change tiers; labelled full-replan fallback and before/after diff |
+| Missing API Keys fail CI/local work | blocked development | always-on keyless suite; conditional live skip/fallback |
 | Agent hallucinated numbers | misleading explanation | evidence schema and Eval; no numeric source in prompt |
 | Plan race/stale preview | wrong confirmation | immutable versions + optimistic concurrency |
 | Provider cost loop | denial of wallet | quotas, cache, timeouts, retries, Agent step/token limits |
