@@ -1,10 +1,10 @@
 # AI 智慧配送路線與載重規劃 Agent
 
-三天 MVP 的定位是「可解釋的配送調度 Copilot」：以單一 OpenAI Agent 理解自然語言並操作嚴格 schema 的 function tools；所有資料驗證、重量計算、分車、路線、時段和狀態轉移都由確定性程式負責。
+本系統是一套可解釋的 AI 配送調度 Copilot。單一 OpenAI Agent 負責理解自然語言並調用具明確 Schema 的工具；資料驗證、重量彙總、車輛分配、路線最佳化、配送時段約束及狀態管理，均由確定性程式執行，確保結果可驗證、可解釋且可追溯。所有最終配送方案仍由調度人員確認。
 
 已收到 `APPROVE_IMPLEMENTATION`；目前已啟用本機 Feature Code 實作，並維持不部署、不啟用 Actions、不接觸正式環境的安全邊界。
 
-## Sources of Truth
+## 真實來源
 
 - 產品規格：`spec-driven/ACTIVE_SPEC.md`
 - 本輪進度與問題：`docs/project-status.md`
@@ -12,16 +12,16 @@
 - 安全與人工核准：`.agent/guardrails.md`
 - API 合約：`docs/api-contract.md`
 - 架構決策：`docs/architecture.md`
-- 三天計畫：`docs/implementation-plan.md`
+- 實作計畫：`docs/implementation-plan.md`
 - 工作流程：`.agent/skills/daily-dispatch.md`、`.agent/skills/urgent-order-insertion.md`
 
-## Round Progress Management
+## 每輪進度管理
 
 每輪開始先讀 Active Spec、Project Status、Validation Report，再讀 Guardrails、Developer Contract 與相關 Skill。`project-status.md` 同時只能有一個 `NOW`，`NEXT` 最多三項；所有新問題先依類型進入 `OPEN ISSUES`，真正阻止工作的條件才進入 `BLOCKED`。完成後必須更新 `DONE THIS ROUND` 與 `LAST VALIDATION`。
 
 不得另外建立 `NOW.md`、`TODO.md`、`DONE.md` 或第二套進度真實來源。
 
-## Locked Stack
+## 鎖定技術棧
 
 - CPython 3.12.13
 - FastAPI 0.141.1 / Pydantic 2.13.5
@@ -31,13 +31,13 @@
 - pandas 3.0.5 / openpyxl 3.1.5
 - pytest 9.1.1 / ruff 0.16.5 / mypy 2.3.1
 
-Direct pins are in `pyproject.toml`; the Python 3.12 Windows resolution is in `requirements.lock`. The approved local `.venv` is installed from that lock; global Python remains unchanged.
+直接相依套件版本固定於 `pyproject.toml`；Windows Python 3.12 的解析結果記錄在 `requirements.lock`。核准的本機 `.venv` 依此 lock 安裝，且不修改全域 Python。
 
-## Workbook Contract
+## Workbook 契約
 
-Both input workbooks contain exactly four sheets: `orders`, `packages`, `vehicles`, and `zones`.
+輸入 workbook 必須恰好包含四張工作表：`orders`、`packages`、`vehicles` 與 `zones`。
 
-The only list delimiter in Excel is the pipe character `|`. Examples:
+Excel 中的 list delimiter 只有 pipe character `|`。例如：
 
 - `service_zone_codes`: `Z1|Z2|Z3`
 - `covered_cities`: `新北市|臺北市`
@@ -45,20 +45,20 @@ The only list delimiter in Excel is the pipe character `|`. Examples:
 - `tdx_city_codes`: `NWT|TPE`
 - `adjacent_zone_codes`: `Z2|Z3`
 
-REST responses always expose these values as JSON arrays; delimiter strings never cross the API boundary.
+REST response 一律以 JSON arrays 暴露這些值；delimiter strings 不會穿越 API boundary。
 
-## External Provider Modes
+## 外部 Provider 模式
 
-- Default demo mode: `SimulatedRouteProvider` plus reproducible simulated congestion.
-- Google Routes: optional, server-side key, strict field mask, timeout, cache policy review, graceful fallback.
-- TDX: optional P0 health/status integration; real road-to-zone congestion mapping is P1.
-- OpenAI unavailable: REST import, validation, planning, confirmation, and queries remain available; only `/agent/chat` degrades.
+- 預設 Demo 模式：`SimulatedRouteProvider` 加上可重現的 simulated congestion。
+- Google Routes：選用的 server-side key、strict field mask、timeout、cache policy review 與 graceful fallback。
+- TDX：選用的 P0 health/status integration；實際 road-to-zone congestion mapping 屬於後續擴充功能。
+- OpenAI 不可用時：REST import、validation、planning、confirmation 與 queries 仍可使用；只有 `/agent/chat` 降級。
 
 本機 `.env` 僅供已核准的開發環境使用，永不提交；`.env.example` 只保留空白變數與 `gpt-5-mini` 預設模型。
 
-## Planned Local Commands
+## 本機指令
 
-These commands run the local implementation and keyless validation gates:
+以下指令用於執行本機 implementation 與 keyless validation gates：
 
 ```powershell
 python -m venv .venv
@@ -70,17 +70,12 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-The keyless suite includes the real Agents SDK runner with `ScriptedModel`, strict deterministic
-tools, and prompt-injection guardrails. The live gate uses `gpt-5-mini` only when credentials are
-present; missing Browser/TDX credentials skip or fallback without blocking backend P0. Backend P0
-and the OpenAI Agent are human-accepted as `DONE`; Frontend Integration remains `PENDING` and the
-overall project remains `IN_PROGRESS`.
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞後端核心功能。Backend P0 與 OpenAI Agent 已由人工驗收為 `DONE`；Frontend Integration 仍為 `PENDING`，整體專案仍為 `IN_PROGRESS`。
 
-## Frontend Delivery Quick Start
+## 前端交付快速開始
 
-The commands below are sufficient for a clean Windows checkout after installing CPython 3.12.
-Confirm `python --version` reports `3.12.x` first (the Windows `py -3.12` launcher is also
-acceptable). Run these from the repository root; they do not change global Python or Git settings.
+完成 CPython 3.12 安裝後，以下指令即可建立乾淨的 Windows checkout。請先確認
+`python --version` 顯示 `3.12.x`（Windows `py -3.12` launcher 也可使用）。指令均在 repository root 執行，不會修改全域 Python 或 Git 設定。
 
 ```powershell
 python -m venv .venv
@@ -89,65 +84,57 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 .\.venv\Scripts\python.exe -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Open [Swagger UI](http://127.0.0.1:8000/docs), the raw schema at
-`http://127.0.0.1:8000/openapi.json`, or readiness at `http://127.0.0.1:8000/ready`.
+開啟 [Swagger UI](http://127.0.0.1:8000/docs)、原始 schema
+`http://127.0.0.1:8000/openapi.json`，或 readiness
+`http://127.0.0.1:8000/ready`。
 
-### Frontend environment variables
+### 前端環境變數
 
-These are the only values the frontend needs to know:
+前端只需要知道以下變數：
 
 ```dotenv
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 ```
 
-`VITE_GOOGLE_MAPS_BROWSER_API_KEY` is optional and must be restricted to the exact frontend
-origins and Maps JavaScript API before use. The backend `.env` uses
-`CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`. Never expose
-`OPENAI_API_KEY`, `GOOGLE_ROUTES_SERVER_API_KEY`, `TDX_CLIENT_ID`, or `TDX_CLIENT_SECRET` to a
-browser bundle; the browser key is not the server key.
+`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 為選用項目，使用前必須限制於精確的 frontend origins 與 Maps JavaScript API。後端 `.env` 使用
+`CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`。絕不可將
+`OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`TDX_CLIENT_ID` 或 `TDX_CLIENT_SECRET` 暴露至 browser bundle；browser key 與 server key 不同。
 
-## Demo workbook and one-command check
+## Demo workbook 與一鍵檢查
 
-The canonical, fictitious workbook is [data/samples/demo-delivery-40-orders.xlsx](data/samples/demo-delivery-40-orders.xlsx).
-It has exactly four sheets (`orders`, `packages`, `vehicles`, `zones`), 40 orders, 80 packages,
-4 vehicles, 5 zones, and 365 kg total. Run the Chinese, no-dispatch walkthrough with:
+標準的虛構 workbook 是 [data/samples/demo-delivery-40-orders.xlsx](data/samples/demo-delivery-40-orders.xlsx)。
+它恰好包含四張工作表（`orders`、`packages`、`vehicles`、`zones`）、40 張訂單、80 個 package、4 台車、5 個區域，總重 365 kg。執行中文且不 dispatch 的 walkthrough：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_p0_demo.py
 ```
 
-The walkthrough imports the workbook, creates an OR-Tools plan, shows the overload redistribution
-and one exception, previews `ORD-041`, and stops before Dispatch or deployment.
+此 walkthrough 會匯入 workbook、建立 OR-Tools plan、顯示超重重新分配與一個例外、預覽 `ORD-041`，並在 Dispatch 或 deployment 前停止。
 
-## API integration in the shortest path
+## 最短 API 串接流程
 
-Set `api = $env:VITE_API_BASE_URL` (or the equivalent frontend runtime setting), then call:
+將 `api = $env:VITE_API_BASE_URL`（或等效的前端 runtime 設定），依序呼叫：
 
 1. `POST /api/v1/datasets/import-excel` with the demo workbook as multipart `file`.
 2. `GET /api/v1/datasets/{dataset_id}/validation`; stop and display all field errors if invalid.
 3. `POST /api/v1/plans` with `{"dataset_id":"DS-*","algorithm":"ORTOOLS"}`.
-4. `GET /api/v1/plans/{plan_id}` and `GET /api/v1/plans/{plan_id}/map-data` to render cards/map.
-5. Optionally `POST /api/v1/agent/chat` with `plan_id`, `plan_version`, and an order ID for an
-   evidence-only explanation.
-6. For a pre-dispatch urgent order, call the preview endpoint and render its diff; confirm only
-   after a human reviews the exact version.
-7. `POST /api/v1/plans/{plan_id}/confirm` is the human approval checkpoint. The demo does not call
-   `/dispatch`; a real operator may call it only after explicit confirmation.
+4. `GET /api/v1/plans/{plan_id}` 與 `GET /api/v1/plans/{plan_id}/map-data`，繪製 cards/map。
+5. 可選擇以 `plan_id`、`plan_version` 與 order ID 呼叫 `POST /api/v1/agent/chat`，取得只引用 evidence 的說明。
+6. 出發前有 urgent order 時，呼叫 preview endpoint 並呈現 diff；人工檢視精確版本後才能確認。
+7. `POST /api/v1/plans/{plan_id}/confirm` 是人工核准 checkpoint。Demo 不呼叫 `/dispatch`；實際操作人員僅能在明確確認後呼叫。
 
-Every response includes `X-Request-ID`; mutation/error bodies also include `request_id`. IDs and
-versions are opaque and must be passed back exactly.
+每個 response 都包含 `X-Request-ID`；mutation/error body 也包含 `request_id`。IDs 與 versions 為 opaque 值，必須原樣傳回。
 
-## Endpoint examples (all 13 contract routes)
+## 端點範例（全部 13 條契約路由）
 
-The full schemas and status-code matrix are in [docs/api-contract.md](docs/api-contract.md).
-These compact examples show the frontend request and response shape for every route.
+完整 schema 與 status-code matrix 請參考 [docs/api-contract.md](docs/api-contract.md)。以下精簡範例展示每條路由的前端 request 與 response shape。
 
-| Method and path | Request | Successful response (abbreviated) |
+| Method 與 path | Request | Successful response（縮略） |
 |---|---|---|
 | `GET /health` | none | `{"status":"ok","service":"ai-delivery-dispatch-agent","request_id":"REQ-*"}` |
 | `GET /ready` | none | `{"status":"ready","components":{"database":"ready","optimizer":"ready","openai":"degraded","google_routes":"disabled","tdx":"disabled"}}` |
-| `POST /api/v1/datasets/import-excel` | `multipart/form-data`, field `file=demo-delivery-40-orders.xlsx` | `201 {"dataset_id":"DS-*","status":"VALIDATED","counts":{"orders":40,"packages":80,"vehicles":4,"zones":5},"total_weight_kg":365.0}` |
+| `POST /api/v1/datasets/import-excel` | `multipart/form-data`，field `file=demo-delivery-40-orders.xlsx` | `201 {"dataset_id":"DS-*","status":"VALIDATED","counts":{"orders":40,"packages":80,"vehicles":4,"zones":5},"total_weight_kg":365.0}` |
 | `GET /api/v1/datasets/{dataset_id}` | path `dataset_id=DS-*` | `{"dataset_id":"DS-*","status":"VALIDATED","counts":{"orders":40,"packages":80,"vehicles":4,"zones":5},"total_weight_kg":365.0}` |
 | `GET /api/v1/datasets/{dataset_id}/validation` | path `dataset_id=DS-*` | `{"dataset_id":"DS-*","validation":{"is_valid":true,"error_count":0,"warning_count":0,"errors":[],"warnings":[]}}` |
 | `POST /api/v1/plans` | `{"dataset_id":"DS-*","algorithm":"ORTOOLS","route_provider_preference":"AUTO","traffic_mode":"AUTO","simulation_seed":20260901}` | `201 {"plan_id":"PLAN-*","version":1,"state":"PROPOSED","algorithm":"ORTOOLS","summary":{"assigned_order_count":40,"assigned_weight_kg":365.0}}` |
@@ -155,49 +142,33 @@ These compact examples show the frontend request and response shape for every ro
 | `GET /api/v1/plans/{plan_id}/map-data` | optional query `?version=1` | `{"plan_id":"PLAN-*","version":1,"provider_mode":"SIMULATED","depot":{...},"routes":[...]}` |
 | `POST /api/v1/plans/{plan_id}/urgent-insert/preview` | `{"base_plan_version":1,"order":{...},"packages":[...]}` | `200 {"base_version":1,"preview_version":2,"mode":"MINIMAL_CHANGE","diff":{...},"requires_human_confirmation":true}` |
 | `POST /api/v1/plans/{plan_id}/confirm` | `{"version":2,"confirmation":"CONFIRM_PLAN","dispatcher_reference":"demo-dispatcher"}` | `200 {"plan_id":"PLAN-*","version":2,"state":"CONFIRMED","audit_event_id":"AUD-*"}` |
-| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | `200 {"plan_id":"PLAN-*","version":2,"state":"DISPATCHED","audit_event_id":"AUD-*"}`; do not call in the demo |
+| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | `200 {"plan_id":"PLAN-*","version":2,"state":"DISPATCHED","audit_event_id":"AUD-*"}`；Demo 不呼叫 |
 | `POST /api/v1/agent/chat` | `{"session_id":"SESSION-001","message":"為什麼 ORD-032 改派？","context":{"plan_id":"PLAN-*","plan_version":2,"order_id":"ORD-032"}}` | `200 {"message":"...","evidence":[{"tool":"explain_assignment","data":{...}}],"requires_human_confirmation":false}` |
 | `GET /api/v1/providers/status` | none | `{"providers":[{"name":"simulated_routes","status":"healthy","mode":"SIMULATED"},...]}` |
 
-The import endpoint is the only multipart route. All other request/response bodies are JSON. For
-the complete urgent payload and Plan/Map shapes, copy the examples in `docs/api-contract.md`
-rather than inventing fields in the client.
+Import endpoint 是唯一的 multipart route，其餘 request／response body 均為 JSON。完整 urgent payload 與 Plan/Map shape 請依 `docs/api-contract.md` 的範例實作，不要在 client 自行創造欄位。
 
-## Three frontend demonstration flows
+## 三條前端展示流程
 
-### 40-order initial schedule
+### 40 單初始排程
 
-Import the fixed workbook, validate `40/80/4/5` counts and 365 kg, then create the OR-Tools plan.
-Render each vehicle's orders, sequence, package/weight totals, utilization, AM/PM legality,
-deterministic recommendation reason, and Validator result. Routes start and end at `DEPOT-001`.
-The plan is `PROPOSED` and must remain visibly awaiting confirmation.
+匯入固定 workbook，驗證 `40/80/4/5` 數量與 365 kg，再建立 OR-Tools plan。呈現每台車的 orders、sequence、package／weight totals、utilization、AM/PM 合法性、deterministic recommendation reason 與 Validator result。Routes 從 `DEPOT-001` 出發並返回；plan 為 `PROPOSED`，必須清楚顯示等待確認。
 
-### Overload redistribution
+### 超重重新分配
 
-The fixture deliberately concentrates 112 kg in Z4. `VEH-002` has a 100 kg limit, so the client
-must show the legal redistribution to an eligible vehicle such as `VEH-003`, not an overloaded
-route and not a silently dropped order. Display the exception/evidence fields if any order is
-`UNASSIGNABLE` or has `TIME_WINDOW_CONFLICT`.
+Fixture 刻意將 112 kg 集中在 Z4；`VEH-002` 上限為 100 kg，因此 client 必須顯示分配至合資格車輛（例如 `VEH-003`）的合法重新分配，不得顯示超載 route，也不得靜默丟棄 order。若 order 為 `UNASSIGNABLE` 或 `TIME_WINDOW_CONFLICT`，請顯示 exception／evidence 欄位。
 
 ### `ORD-041` urgent insertion
 
-Use the initial response's exact `plan_id`, `version=1`, dataset identity, and OR-Tools algorithm
-as `base_plan_version`; never rebuild a Baseline “before” plan. Preview is immutable and non-mutating:
-it returns `mode=MINIMAL_CHANGE`, before/after algorithm and dataset hash, assigned weight,
-unassigned IDs, per-vehicle loads, and a computed diff. The accepted fixture evidence is
-365 → 367 kg, existing vehicle moves `0`, only `VEH-003` affected, distance `+137 m`, and time
-`+17 s`. Confirm only the returned preview version after human review.
+使用初始 response 的精確 `plan_id`、`version=1`、dataset identity 與 OR-Tools algorithm 作為 `base_plan_version`；不得重建 Baseline「before」plan。Preview 為 immutable 且 non-mutating，回傳 `mode=MINIMAL_CHANGE`、before／after algorithm 與 dataset hash、assigned weight、unassigned IDs、per-vehicle loads 與 computed diff。已驗收的 fixture evidence 為 365 → 367 kg、existing vehicle moves `0`、僅影響 `VEH-003`、距離 `+137 m`、時間 `+17 s`。人工檢視後才能確認回傳的 preview version。
 
-## Agent conversation flow
+## Agent 對話流程
 
-Send a natural-language question with the plan/order context to `/api/v1/agent/chat`. The Agent may
-call the allowlisted deterministic planning/evidence tool, then answers only from its returned
-evidence. It must not calculate weights, invent route numbers, confirm, or dispatch. If OpenAI is
-unavailable, show `AGENT_UNAVAILABLE` and keep the deterministic REST UI usable.
+將附有 plan/order context 的自然語言問題送至 `/api/v1/agent/chat`。Agent 可呼叫 allowlisted deterministic planning／evidence tool，且只能根據回傳 evidence 作答。不得自行計算 weights、捏造 route numbers、confirm 或 dispatch。OpenAI 不可用時顯示 `AGENT_UNAVAILABLE`，並維持 deterministic REST UI 可用。
 
-## Map payload
+## 地圖資料格式
 
-`GET /map-data` returns:
+`GET /map-data` 回傳：
 
 ```json
 {
@@ -213,13 +184,11 @@ unavailable, show `AGENT_UNAVAILABLE` and keep the deterministic REST UI usable.
 }
 ```
 
-Treat `provider_mode=SIMULATED` as a visible “模擬資料” badge; the polyline is not GPS. Google
-server credentials and raw provider headers never belong in the browser.
+`provider_mode=SIMULATED` 必須顯示「模擬資料」badge；polyline 不是 GPS。Google server credentials 與 raw provider headers 絕不能放入 browser。
 
-## Errors and exceptions
+## 錯誤與例外
 
-Branch on the stable `error.code`, display `message`, attach `field_errors` to the relevant form
-cell, and retain `request_id` for support:
+請依穩定的 `error.code` 分支處理，顯示 `message`，將 `field_errors` 附在相應的表單欄位，並保留 `request_id` 供支援追蹤：
 
 ```json
 {
@@ -234,20 +203,15 @@ cell, and retain `request_id` for support:
 }
 ```
 
-Important codes are `DATASET_VALIDATION_FAILED`, `MANUAL_REVIEW`, `TIME_WINDOW_CONFLICT`,
-`UNASSIGNABLE`, `PLAN_NOT_FOUND`, `PLAN_VERSION_CONFLICT`, `PLAN_NOT_CONFIRMABLE`,
-`PLAN_ALREADY_DISPATCHED`, `URGENT_ORDER_INVALID`, `URGENT_INSERT_UNASSIGNABLE`,
-`AGENT_UNAVAILABLE`, and `LIMIT_REACHED`. Do not retry non-retryable validation/state errors or
-invent missing values. A dispatched plan is read-only and cannot accept an urgent insertion.
+重要 codes 包含 `DATASET_VALIDATION_FAILED`、`MANUAL_REVIEW`、`TIME_WINDOW_CONFLICT`、
+`UNASSIGNABLE`、`PLAN_NOT_FOUND`、`PLAN_VERSION_CONFLICT`、`PLAN_NOT_CONFIRMABLE`、
+`PLAN_ALREADY_DISPATCHED`、`URGENT_ORDER_INVALID`、`URGENT_INSERT_UNASSIGNABLE`、
+`AGENT_UNAVAILABLE` 與 `LIMIT_REACHED`。不可 retry non-retryable validation/state errors，也不可自行填入缺漏值。已 dispatched 的 plan 為 read-only，不能接受 urgent insertion。
 
-## API, Swagger, and CORS delivery check
+## API、Swagger 與 CORS 交付檢查
 
-The backend registers and exercises all 13 contract method/path pairs. FastAPI publishes the same
-routes in `/openapi.json` and Swagger UI at `/docs`. CORS is an explicit allowlist from
-`CORS_ALLOWED_ORIGINS`; set the exact frontend origin(s), never a permanent `*`. A browser
-preflight from an allowed origin receives the CORS headers; an unlisted origin must not be treated
-as allowed.
+後端已註冊並測試全部 13 組契約 method/path。FastAPI 在 `/openapi.json` 與 `/docs` 發布相同 routes。CORS 使用 `CORS_ALLOWED_ORIGINS` 的明確 allowlist；請設定精確的 frontend origin(s)，不可永久使用 `*`。允許來源的 browser preflight 會取得 CORS headers；未列出的 origin 不得視為允許。
 
-## Scope Exclusions
+## 範圍排除
 
-No production deployment, live TMS/ERP/GPS, WebSocket, vehicle-in-motion insertion, depot return for pickup, real fleet control, multi-Agent, A2A, or AP2 is included in this MVP.
+本版本不包含 production deployment、live TMS/ERP/GPS、WebSocket、vehicle-in-motion insertion、depot return for pickup、real fleet control、multi-Agent、A2A 或 AP2。

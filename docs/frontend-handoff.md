@@ -1,7 +1,7 @@
-# Frontend Handoff
+# 前端交付說明
 
-Backend implementation is available locally. After installing CPython 3.12, confirm
-`python --version` reports `3.12.x`, then use this clean-checkout sequence from the repository root:
+後端 implementation 可在本機使用。安裝 CPython 3.12 後，確認 `python --version` 顯示
+`3.12.x`，再從 repository root 執行以下乾淨 checkout 流程：
 
 ```powershell
 python -m venv .venv
@@ -9,67 +9,60 @@ python -m venv .venv
 $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 ```
 
-Then start FastAPI:
+接著啟動 FastAPI：
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then open Swagger at `http://127.0.0.1:8000/docs` or use the pinned schema at
-`docs/openapi-snapshot.sha256`. The snapshot test fails closed if the 13-route contract changes
-without a deliberate update.
+開啟 Swagger `http://127.0.0.1:8000/docs`，或使用固定的 schema
+`docs/openapi-snapshot.sha256`。若 13-route contract 未經刻意更新而變更，snapshot test 會 fail closed。
 
-## Frontend environment variables
+## 前端環境變數
 
 ```dotenv
 VITE_API_BASE_URL=http://127.0.0.1:8000
 VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 ```
 
-The browser key is optional and must be restricted to exact HTTP referrers and the Maps JavaScript
-API. The backend allowlist is `CORS_ALLOWED_ORIGINS`; set it to every exact local frontend origin.
-Never put `OPENAI_API_KEY`, `GOOGLE_ROUTES_SERVER_API_KEY`, `TDX_CLIENT_ID`, or
-`TDX_CLIENT_SECRET` in frontend variables or bundles.
+Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps JavaScript API。Backend allowlist 為 `CORS_ALLOWED_ORIGINS`，請列出每個精確的 local frontend origin。絕不可將 `OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`TDX_CLIENT_ID` 或 `TDX_CLIENT_SECRET` 放入 frontend variables 或 bundles。
 
-## Demo fixture
+## Demo fixture（展示資料）
 
-Use `data/samples/demo-delivery-40-orders.xlsx` (repository-root relative path). It is the
-fictitious four-sheet fixture with 40 orders, 80 packages, 4 vehicles, 5 zones, and 365 kg. The
-Chinese no-dispatch walkthrough is:
+使用 `data/samples/demo-delivery-40-orders.xlsx`（repository-root relative path）。這是虛構的四工作表 fixture，包含 40 orders、80 packages、4 vehicles、5 zones 與 365 kg。中文且不 dispatch 的 walkthrough：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_p0_demo.py
 ```
 
-## What the frontend can rely on
+## 前端可依賴的行為
 
-- REST only; no WebSocket.
-- Swagger/OpenAPI will be served by FastAPI (`/docs`, `/openapi.json`).
-- Plan and preview payloads are versioned and immutable by `plan_id + version`.
-- All list fields are JSON arrays.
-- Map payload contains depot, ordered stops, legs, vehicle colors, polyline, ETA, and provider warning.
-- Animation is a client-side accelerated movement along the returned polyline; it is not GPS.
-- Every proposed/preview plan requires human confirmation.
+- 僅提供 REST，不提供 WebSocket。
+- Swagger／OpenAPI 由 FastAPI 提供（`/docs`、`/openapi.json`）。
+- Plan 與 preview payload 依 `plan_id + version` versioned 且 immutable。
+- 所有 list fields 都是 JSON arrays。
+- Map payload 包含 depot、ordered stops、legs、vehicle colors、polyline、ETA 與 provider warning。
+- Animation 是 client-side 沿 returned polyline 的加速移動，不是 GPS。
+- 每個 proposed／preview plan 都需要 human confirmation。
 
-## Recommended frontend sequence
+## 建議的前端串接順序
 
 ```text
 1. POST import-excel
 2. GET dataset validation
 3. POST plans
-4. GET plan and map-data
+4. GET plan 與 map-data
 5. Render vehicles/stops/exceptions/provider badge
-6. Optional urgent-insert preview and show diff
-7. Human clicks confirm for exact plan/version
+6. 可選的 urgent-insert preview 並顯示 diff
+7. 人工針對精確 plan/version 按下 confirm
 8. Optional mark dispatched
 ```
 
-## Endpoint request/response examples
+## Endpoint request／response 範例
 
-The backend implements all 13 method/path pairs in `docs/api-contract.md`; the following is the
-frontend-sized request/response index. All bodies are JSON except the multipart import.
+後端已實作 `docs/api-contract.md` 的全部 13 組 method/path；以下是前端所需的 request／response index。除 multipart import 外，所有 body 都是 JSON。
 
-| Endpoint | Request | Response to handle |
+| Endpoint | Request | 前端處理的 Response |
 |---|---|---|
 | `GET /health` | none | `{"status":"ok","service":"ai-delivery-dispatch-agent","request_id":"REQ-*"}` |
 | `GET /ready` | none | `{"status":"ready","components":{...},"request_id":"REQ-*"}` |
@@ -85,44 +78,30 @@ frontend-sized request/response index. All bodies are JSON except the multipart 
 | `POST /api/v1/agent/chat` | `{"session_id":"SESSION-001","message":"為什麼 ORD-032 改派？","context":{"plan_id":"PLAN-*","plan_version":2,"order_id":"ORD-032"}}` | `200 {"message":"...","evidence":[{"tool":"explain_assignment","data":{...}}]}` |
 | `GET /api/v1/providers/status` | none | `{"providers":[{"name":"simulated_routes","status":"healthy","mode":"SIMULATED"},...]}` |
 
-Use the generated [Swagger UI](http://127.0.0.1:8000/docs) or
-`http://127.0.0.1:8000/openapi.json` for the exact schema. Do not invent omitted fields.
+使用產生的 [Swagger UI](http://127.0.0.1:8000/docs) 或
+`http://127.0.0.1:8000/openapi.json` 取得精確 schema。不要自行創造省略的欄位。
 
-## Required demo flows
+## 必要 Demo 流程
 
-### 40-order initial plan
+### 40 單初始 plan
 
-Call import → validation → `POST /plans` with `algorithm=ORTOOLS` → plan and map queries. The
-expected fixture counts are 40 orders / 80 packages / 4 vehicles / 5 zones / 365 kg. Show each
-vehicle's orders, package count, load/utilization, stop sequence, evidence-grounded reason, and
-independent Validator status. Keep the `PROPOSED` plan visibly awaiting confirmation.
+依序呼叫 import → validation → `POST /plans`（`algorithm=ORTOOLS`）→ plan 與 map queries。Fixture 預期為 40 orders／80 packages／4 vehicles／5 zones／365 kg。顯示每台車的 orders、package count、load／utilization、stop sequence、evidence-grounded reason 與 independent Validator status。`PROPOSED` plan 必須清楚顯示等待確認。
 
-### Overload redistribution
+### 超重重新分配
 
-The fixture's Z4 demand totals 112 kg while `VEH-002` allows 100 kg. The UI must show the legal
-reassignment to an eligible vehicle (the accepted plan uses `VEH-003`) and never display an
-overloaded route as valid or silently drop an order. Surface `UNASSIGNABLE` or
-`TIME_WINDOW_CONFLICT` exceptions with their evidence when no legal assignment exists.
+Fixture 的 Z4 demand 總重 112 kg，而 `VEH-002` 上限為 100 kg。UI 必須顯示重新分配到 eligible vehicle（已驗收 plan 使用 `VEH-003`），不得把 overloaded route 顯示為有效，也不得靜默刪除 order。沒有合法 assignment 時，請以 evidence 顯示 `UNASSIGNABLE` 或 `TIME_WINDOW_CONFLICT` exceptions。
 
 ### `ORD-041` urgent insertion
 
-Send the exact initial `plan_id`, `base_plan_version=1`, dataset identity, and OR-Tools plan to the
-preview endpoint. The backend returns an immutable preview, not a mutation of the base plan. The
-accepted result is `mode=MINIMAL_CHANGE`: before 40 orders / 365 kg and loads 93/97/152/23 kg;
-after 367 kg; existing order vehicle moves 0; only `VEH-003` changes; distance +137 m; duration
-+17 s. Render `reassigned_orders`, `sequence_changes`, `vehicle_load_changes`, and both metric
-deltas, then ask for human confirmation of the returned preview version.
+將精確 initial `plan_id`、`base_plan_version=1`、dataset identity 與 OR-Tools plan 送至 preview endpoint。Backend 回傳 immutable preview，不修改 base plan。已驗收結果為 `mode=MINIMAL_CHANGE`：before 40 orders／365 kg，車輛 loads 93／97／152／23 kg；after 367 kg；existing order vehicle moves 0；僅 `VEH-003` 變更；distance +137 m；duration +17 s。呈現 `reassigned_orders`、`sequence_changes`、`vehicle_load_changes` 與兩項 metric deltas，再請人工確認回傳的 preview version。
 
-### Agent dialogue
+### Agent 對話
 
-Send the user's natural-language question with `plan_id`, `plan_version`, and (for an order
-explanation) `order_id`. The Agent invokes only allowlisted deterministic tools and may quote only
-their evidence. It cannot calculate a new weight, invent a route, confirm, or dispatch. If the
-endpoint returns `AGENT_UNAVAILABLE`, keep all deterministic REST screens available.
+將使用者的自然語言問題連同 `plan_id`、`plan_version`（若要說明 order，另帶 `order_id`）送出。Agent 只能呼叫 allowlisted deterministic tools，且只能引用其 evidence。不得計算新 weight、捏造 route、confirm 或 dispatch。Endpoint 回傳 `AGENT_UNAVAILABLE` 時，仍維持所有 deterministic REST screens 可用。
 
-## UI state mapping
+## UI state 對照
 
-| API state | Suggested UI |
+| API state | 建議的 UI |
 |---|---|
 | DRAFT | importing/processing |
 | VALIDATED | dataset valid; ready to plan |
@@ -130,25 +109,25 @@ endpoint returns `AGENT_UNAVAILABLE`, keep all deterministic REST screens availa
 | CONFIRMED | approved by dispatcher; dispatch CTA available |
 | DISPATCHED | read-only; urgent insertion disabled |
 
-## Provider badges
+## Provider 標籤
 
-- `GOOGLE`: Google route data; follow map attribution requirements.
-- `TDX`: TDX traffic enrichment.
-- `MIXED`: clearly show which fields came from each provider.
-- `SIMULATED`: prominent `模擬資料` badge; never say live traffic/ETA.
-- `UNAVAILABLE`: show degraded feature, not a fabricated value.
+- `GOOGLE`：Google route data；遵守 map attribution requirements。
+- `TDX`：TDX traffic enrichment。
+- `MIXED`：清楚標示各欄位來源 provider。
+- `SIMULATED`：顯示醒目的 `模擬資料` badge；絕不稱為 live traffic／ETA。
+- `UNAVAILABLE`：顯示降級功能，不得顯示捏造值。
 
-## Vehicle card fields
+## Vehicle card 欄位
 
-Display `order_count`, `package_count`, `planned_load_kg`, `max_load_kg`, `load_utilization`, `service_zone_codes`, total distance/time, and exception/warning count.
+顯示 `order_count`、`package_count`、`planned_load_kg`、`max_load_kg`、`load_utilization`、`service_zone_codes`、total distance/time 與 exception／warning count。
 
-## Stop fields
+## Stop 欄位
 
-Display sequence, location label, AM/PM, ETA, service duration (3 minutes), leg distance/time, order weight, and explanation with expandable evidence.
+顯示 sequence、location label、AM/PM、ETA、service duration（3 minutes）、leg distance/time、order weight，以及可展開 evidence 的 explanation。
 
-### Map JSON format
+### Map JSON 格式
 
-`GET /api/v1/plans/{plan_id}/map-data` returns one depot and one route object per vehicle:
+`GET /api/v1/plans/{plan_id}/map-data` 為每台 vehicle 回傳一個 depot 與一個 route object：
 
 ```json
 {
@@ -164,28 +143,27 @@ Display sequence, location label, AM/PM, ETA, service duration (3 minutes), leg 
 }
 ```
 
-`provider_mode=SIMULATED` must show a prominent 模擬資料 badge. The polyline is a deterministic
-preview, not GPS; client-side animation must not imply live vehicle tracking.
+`provider_mode=SIMULATED` 必須顯示醒目的「模擬資料」badge。Polyline 是 deterministic preview，不是 GPS；client-side animation 不得暗示 live vehicle tracking。
 
-## Exceptions
+## 例外狀態
 
-Render severity, code, message, affected IDs, and `suggested_actions`. Do not infer a frontend workaround that bypasses the backend validator.
+呈現 severity、code、message、affected IDs 與 `suggested_actions`。不得自行推導繞過 backend validator 的 frontend workaround。
 
-## Urgent insert diff
+## Urgent insert 差異
 
-Show:
+請顯示：
 
-- inserted order;
-- vehicle reassignments;
-- stop sequence changes;
-- each vehicle's load/utilization delta;
-- total distance/duration delta;
-- feasibility, exceptions, provider warnings;
-- explicit confirmation of the preview version.
+- inserted order；
+- vehicle reassignments；
+- stop sequence changes；
+- 每台 vehicle 的 load/utilization delta；
+- total distance/duration delta；
+- feasibility、exceptions、provider warnings；
+- 對 preview version 的明確 confirmation。
 
-## Error handling
+## 錯誤處理
 
-Use `error.code` for branching, `message` for the main notice, `field_errors` next to form/workbook fields, and `request_id` for support. Important cases:
+使用 `error.code` 做分支，使用 `message` 顯示主要通知，將 `field_errors` 放在相應的 form／workbook fields，並保留 `request_id` 供支援追蹤。重要案例：
 
 ```json
 {
@@ -200,9 +178,7 @@ Use `error.code` for branching, `message` for the main notice, `field_errors` ne
 }
 ```
 
-Render every field error beside its order/package/column, preserve `requires_manual_review`, and
-do not guess a missing value. Keep partial plans visible only when the response explicitly marks
-them partial and reconciles the unassigned orders.
+每個 field error 都要顯示在相應的 order／package／column 旁，保留 `requires_manual_review`，不得猜測缺漏值。只有 response 明確標示 partial 且已對 unassigned orders 完成 reconciliation 時，才可顯示 partial plans。
 
 - `DATASET_VALIDATION_FAILED`: display all field errors.
 - `TIME_WINDOW_CONFLICT` / `UNASSIGNABLE`: show exception, keep partial plan visible if returned.
@@ -211,19 +187,16 @@ them partial and reconciles the unassigned orders.
 - `AGENT_UNAVAILABLE`: keep deterministic REST UI usable.
 - `LIMIT_REACHED`: stop automatic retries.
 
-## CORS setup
+## CORS 設定
 
-Backend reads a comma-separated allowlist from `CORS_ALLOWED_ORIGINS`. Frontend must provide its exact development origin, such as `http://localhost:5173`. Do not ask the backend to leave `*` enabled.
+Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend 必須提供精確的 development origin，例如 `http://localhost:5173`；不得要求 backend 長期啟用 `*`。
 
-## Keys
+## 金鑰邊界
 
-- Frontend receives only the Google Browser Key, restricted to exact HTTP referrers and Maps JavaScript API.
-- Backend Server Key is never sent to the frontend.
-- TDX and OpenAI credentials remain backend-only.
+- 前端只能接收 Google Browser Key，且限制於精確 HTTP referrers 與 Maps JavaScript API。
+- Backend Server Key 絕不傳送至 frontend。
+- TDX 與 OpenAI credentials 僅能留在 backend。
 
-## Current integration status
+## 目前整合狀態
 
-The current local server implements all documented routes. Sample numeric values in
-`api-contract.md` illustrate shape; generated solver outputs come from the fixed demo fixture and
-are validated independently. The frontend should use `tests/test_demo_flow.py` as the no-dispatch
-integration sequence and must never call `/dispatch` without an explicit dispatcher action.
+目前 local server 已實作所有文件化 routes。`api-contract.md` 中的 sample numeric values 僅示範 shape；產生的 solver outputs 來自固定 Demo fixture，並經獨立驗證。Frontend 應以 `tests/test_demo_flow.py` 作為 no-dispatch integration sequence，除非有明確的 dispatcher action，絕不可呼叫 `/dispatch`。

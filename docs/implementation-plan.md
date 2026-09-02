@@ -1,189 +1,137 @@
-# Three-Day Implementation Plan
+# 實作計畫
 
-## Gate
+## 實作閘門
 
-No item below begins until the user sends `APPROVE_IMPLEMENTATION`. That command authorizes local Feature Code and local deterministic tests only; dependencies, external services, Git, deployment, and production remain separately governed.
+下列工作須在使用者輸入 `APPROVE_IMPLEMENTATION` 後才能開始。該指令只授權 local Feature Code 與 local deterministic tests；dependencies、external services、Git、deployment 與 production 仍依各自的核准規則處理。
 
-## Per-Round Control Loop
+## 每輪控制循環
 
-Before each implementation round:
+1. 讀取 `spec-driven/ACTIVE_SPEC.md`、`docs/project-status.md` 與 `docs/validation-report.md`。
+2. 設定唯一主要 `NOW`，`NEXT` 不超過三項。
+3. 分類 open work：Requirement Change、Code Bug、Data Issue、External Provider Issue、Architecture Change 或已核准的一般工作。
+4. 需求／架構變更先提出影響草案並等待人工核准；Code Bug 先建立可重現的失敗測試。
+5. 執行範圍明確的變更與驗證。
+6. 以 evidence 更新 `DONE THIS ROUND`、`LAST VALIDATION`、`OPEN ISSUES`／`BLOCKED` 與下一個 `NOW`／`NEXT`。
 
-1. Read `spec-driven/ACTIVE_SPEC.md`, `docs/project-status.md`, and `docs/validation-report.md`.
-2. Set exactly one primary `NOW` item and at most three `NEXT` items.
-3. Classify open work: Requirement Change, Code Bug, Data Issue, External Provider Issue, Architecture Change, or approved delivery work.
-4. Requirement/architecture changes require a written impact proposal and human approval; Code Bugs require a reproducing failing test first.
-5. Implement and verify the bounded work.
-6. Update `DONE THIS ROUND`, `LAST VALIDATION`, `OPEN ISSUES`/`BLOCKED`, and the next `NOW`/`NEXT`.
+`docs/project-status.md` 是唯一進度來源，不得建立 NOW／TODO／DONE 的分散檔案。
 
-`docs/project-status.md` is the sole progress ledger; no separate NOW/TODO/DONE files are allowed.
+## 演算法與 Benchmark 交付契約
 
-## Algorithm and Benchmark Delivery Contract
+核准後採以下實作順序：
 
-Implementation order after approval is deliberate:
+1. 先建立 independent Validator 與 metrics calculator。
+2. 建立 deterministic Baseline：stable order sort → First-Fit Eligible Vehicle → time-feasible Nearest Neighbor → explicit unassigned reconciliation。
+3. 凍結／版本化 simulated matrix，並記錄其 hash 與 40-order／4-vehicle／5-zone fixture hash。
+4. 建立 OR-Tools CVRPTW：Capacity／Time Dimensions、allowed vehicles、hard AM/PM windows、lunch break、180-second service、depot start/end。
+5. 鎖定搜尋參數：`PARALLEL_CHEAPEST_INSERTION`、`GUIDED_LOCAL_SEARCH`、10 秒 `time_limit`、1,000 `solution_limit`。
+6. 讓兩種演算法使用完全相同的 snapshot，並由同一套 Validator／metrics calculator 評估。
 
-1. Implement the independent Validator and metric calculator first.
-2. Implement deterministic Baseline: stable order sort → First-Fit Eligible Vehicle → time-feasible Nearest Neighbor → explicit unassigned reconciliation.
-3. Freeze/version the simulated matrix and record its hash with the 40-order/4-vehicle/5-zone fixture hash.
-4. Implement OR-Tools CVRPTW: Capacity/Time Dimensions, allowed vehicles, hard AM/PM windows, lunch break, 180-second service, depot start/end.
-5. Lock search parameters: `PARALLEL_CHEAPEST_INSERTION`, `GUIDED_LOCAL_SEARCH`, 10-second `time_limit`, 1,000 `solution_limit`.
-6. Run both algorithms on the exact same snapshot and have the same Validator/metric calculator evaluate both.
-
-| Benchmark output | Unit/formula |
+| Benchmark output | 單位／公式 |
 |---|---|
-| Total distance | meters, sum of fixed-matrix route arcs |
-| Total driving time | seconds, sum of fixed-matrix duration arcs |
-| Vehicle load/utilization | kg and `planned_load_kg / max_load_kg` per vehicle |
-| Utilization gap | max utilization minus min utilization across four vehicles |
-| Unassigned | count plus ordered IDs/reasons |
-| Violations | overload, cross-zone, duplicate, and time-window counts separately |
-| Solve time | monotonic milliseconds around algorithm only; median of five measured runs after one warm-up |
-| Improvement | `(baseline - optimized) / baseline * 100`, or `null` when Baseline is zero |
+| Total distance | meters；fixed-matrix route arcs 的總和 |
+| Total driving time | seconds；fixed-matrix duration arcs 的總和 |
+| Vehicle load/utilization | kg 與 `planned_load_kg / max_load_kg` |
+| Utilization gap | 四台車最大 utilization 減最小 utilization |
+| Unassigned | count 加上有序 IDs／reasons |
+| Violations | 分別回報 overload、cross-zone、duplicate、time-window counts |
+| Solve time | 只量測 algorithm；一次 warm-up 後取五次 measured runs 的 median |
+| Improvement | `(baseline - optimized) / baseline * 100`；Baseline 為零時為 `null` |
 
-Canonical comparison rejects live Google matrices. Reproducibility requires pinned runtime/OR-Tools, committed fixture and matrix version/hash, integer units, stable entity/node/tie ordering, identical search parameters, a single process, and equal routes/metrics across repeated runs. A wall-clock timeout before the fixed solution limit makes the run non-canonical rather than changing Golden values.
+Canonical comparison 排除 live Google matrices。為確保 Reproducibility，必須固定 runtime／OR-Tools、committed fixture 與 matrix version/hash、integer units、stable entity／node／tie ordering、相同 search parameters、single process，以及相同 routes／metrics。若 Wall-clock timeout 早於固定 solution limit，該 run 標記為 non-canonical，不得修改 Golden values。
 
-## Day 1 — Contract-first frontend unblock
+## 已完成核心功能
 
-### P0 deliverables
+### 資料、API 與持久化
 
-1. Create package skeleton matching `architecture.md`.
-2. Implement strict config and stable API/error envelopes with request ID middleware.
-3. Implement domain schemas, SQLAlchemy models/migrations, and repositories.
-4. Implement four-sheet importer, `|` normalization, validation report, and field errors.
-5. Wire `/health`, `/ready`, dataset import/query/validation, provider status.
-6. Publish generated OpenAPI plus sample plan/map/error payloads and CORS setup.
-7. Turn the provided workbook template/sample into executable import fixtures.
+1. 建立符合 `architecture.md` 的 package layout。
+2. 實作 strict config、stable API／error envelopes、request ID middleware 與 CORS allowlist。
+3. 實作 domain schemas、SQLAlchemy models／repositories 與 SQLite persistence。
+4. 實作四工作表 importer、`|` normalization、validation report 與 field errors。
+5. 提供 `/health`、`/ready`、dataset import/query/validation 與 provider status。
+6. 提供完整 OpenAPI／Swagger、sample plan／map／error payloads 與 frontend handoff。
 
-### Verification
+### Deterministic planning 與 lifecycle
 
-- Workbook validation matrix passes.
-- SQLite transaction/import tests pass.
-- OpenAPI contains agreed endpoint names/schemas.
-- Frontend can mock against documented payloads before solver exists.
+1. 提供固定 seed／matrix 的 `SimulatedRouteProvider` 與 simplified polyline。
+2. 提供 shared independent Validator 與 Benchmark metrics calculator。
+3. 提供 First-Fit Eligible Vehicle + Nearest Neighbor Baseline。
+4. 提供帶有硬性 constraints、明確 strategies 與 bounded solve 的 OR-Tools CVRPTW。
+5. 提供 no-solution／partial-solution status mapping 與 unassigned reconciliation。
+6. 提供 plan/version persistence、plan query 與 map-data。
+7. 提供 order-41 minimum-change preview，失敗時回傳有標示的 `FULL_REPLAN` fallback。
+8. 以 unit／integration／contract tests 覆蓋 critical invariants 與 Benchmark formulas。
 
-### Frontend handoff checkpoint
+### Agent、Provider、Observability 與安全
 
-Provide Swagger URL, OpenAPI JSON, IDs/error conventions, multipart example, plan/map samples, and `provider_mode` display rule.
+1. 使用一個 OpenAI Agent 與 strict function tools。
+2. 實作 evidence-only explanation、tool guardrails 與 prompt-injection protection。
+3. 實作 OpenAI tracing 設定、JSON logs、correlation IDs 與 usage／limit enforcement。
+4. 實作 Google Routes adapter 與 field masks；缺 key 時使用明確 fallback。
+5. 實作 TDX credential settings、provider health/status、timeout 與 graceful fallback。
+6. 將 provider verification 分為 always-on keyless simulated／mock tests 與 opt-in live integration tests。
+7. 缺少或拒絕 credentials 時，live tests skip 或 fallback，不得破壞 keyless suite。
+8. 確認 API Key 不會進入 output、logs、traces、assertions、snapshots、fixtures 或 Git。
+9. 維護 README、frontend handoff、Demo script、validation report 與 regression evidence。
 
-## Day 2 — Deterministic planning and lifecycle
+Agents SDK 驗收包含 real `Runner.run` Agent、strict tools、`OpenAIResponsesModel` live smoke，以及 provider-neutral `ScriptedModel` E2E：daily dispatch、highest-load lookup、unassigned explanation、urgent insertion、missing-data questions、prompt injection 與 evidence-only numeric grounding。Live request 固定使用 `gpt-5-mini`；Responses tools 使用 top-level `name`／`parameters`／`strict`，不使用 Chat Completions nested function envelope。既有 HTTP 400 `missing_required_parameter` 僅作 regression diagnostic，不以更換 model 隱藏。
 
-### P0 deliverables
+API gate 統計 13 組 documented method/path、13 組 FastAPI registrations 與 13 組 exercised responses。40-order Demo gate 執行 import → validation → initial plan → route-provider fallback → Agent explanation → confirm → order-41 preview/diff，並刻意不 dispatch。`src/observability` 會產生 redacted JSONL trajectory events，並施行 turn／tool／token／wall-clock／repeated-call limits；`docs/openapi-snapshot.sha256` 對 contract drift fail closed。
 
-1. Implement `SimulatedRouteProvider` with fixed seed/matrix and simplified polyline.
-2. Implement the shared independent Validator and Benchmark metric calculator.
-3. Implement the deterministic First-Fit Eligible Vehicle + Nearest Neighbor Baseline.
-4. Implement candidate filtering and the OR-Tools CVRPTW with locked strategies, objective priorities, and bounded solve.
-5. Implement explicit no-solution/partial-solution status mapping and unassigned reconciliation.
-6. Implement plan/version persistence, plan query, and map-data.
-7. Implement order-41 minimum-change preview; warm-start the base routes, then broaden affected routes, and only then emit a labelled `FULL_REPLAN` fallback preview.
-8. Add unit/integration/contract tests for every critical invariant and Benchmark formula.
+`tests/test_competition_acceptance.py` 覆蓋 Z4 112 kg concentration、missing address／weight／time cells、time-window／capacity exceptions 與 independent Validator。`scripts/run_p0_demo.py` 是 40-order／4-vehicle fixture 的中文 walkthrough，預覽 order 41 且不 dispatch／deploy。
 
-### Verification
+Urgent insertion 先在 eligible existing routes 的合法位置執行 deterministic minimum-change search；preview 保留 base plan algorithm／identity，回傳 before／after dataset hashes 與 assigned weights，並標示 `MINIMAL_CHANGE`。只有 candidate 無法通過 independent Validator 時，才產生帶有 scope／moved-order metadata 的 `FULL_REPLAN`。
 
-- Demo 40 orders total 350–380 kg and satisfies 5×8 / AM20 / PM20.
-- Concentrated Z4 demand causes legal redistribution, never overload.
-- Baseline and OR-Tools receive byte-identical fixture/matrix identities and use the same Validator.
-- Canonical repeated runs produce identical routes and metrics; solve time is reported as a median, not asserted exactly across machines.
-- Benchmark reports every required metric and uses `null`, not division-by-zero, for undefined percentage improvements.
-- Preview does not mutate base; stale/dispatched operations fail correctly.
-- Fixed simulated matrix produces repeatable exact output.
+## 驗證標準
 
-## Day 3 — Agent, providers, observability, demo hardening
+- OpenAI-off test 證明 deterministic REST continuity。
+- Google／TDX error tests 證明明確 fallback／warnings。
+- 沒有 provider keys 時，所有 keyless tests 通過，live tests 明確 skip。
+- Credential-output capture 與 repository scan 證明 secret values 不會輸出或提交。
+- Agent Evals 證明 tool routing、evidence grounding、approval boundary 與 injection defense。
+- 完整 `pytest`、`ruff`、`mypy`、OpenAPI／endpoint contract、secret scan、Benchmark 與 Golden suite 通過後，才能依人工驗收更新狀態。
+- Validation report 必須記錄 pytest pass／skip count、skip reasons、驗收案例、Demo status 與 Git status。
 
-### P0 deliverables
+## 後續擴充功能
 
-1. Implement one OpenAI Agent and the listed strict function tools.
-2. Implement evidence-only explanation and tool/prompt-injection guardrails.
-3. Add OpenAI tracing configuration, JSON logs, correlation IDs, usage/limit enforcement.
-4. Implement Google Routes adapter and field masks; retain default fallback if no key.
-5. Implement TDX credential settings, provider health/status, timeout and graceful fallback.
-6. Split provider verification into always-on keyless simulated/mock tests and opt-in live integration tests.
-7. Make live tests skip when required environment variables are absent; missing/rejected keys may fallback but never fail the keyless suite.
-8. Verify no API Key value reaches output, logs, traces, assertions, snapshots, fixtures, or Git.
-9. Complete README, frontend handoff, demo script, validation report, and regression run.
+1. Google live traffic routing 與更精緻的 polyline integration。
+2. TDX live road congestion mapping 到 segments／zones。
+3. 可重現的 simulated congestion route-change scenario。
+4. 額外 animation time-axis data。
 
-The Agents SDK acceptance gate is explicit: run one real `Runner.run` Agent with strict tools and
-an `OpenAIResponsesModel` live smoke, plus provider-neutral `ScriptedModel` E2E cases for daily
-dispatch, highest-load lookup, unassigned explanation, urgent insertion, missing-data questions,
-prompt injection, and evidence-only numeric grounding. The live request remains on `gpt-5-mini`;
-Responses tools use top-level `name`/`parameters`/`strict` fields and never the Chat Completions
-nested function envelope. A prior HTTP 400 `missing_required_parameter` is retained as a regression
-diagnostic, not hidden by a model change.
+## 檔案變更預期
 
-The API gate counts 13 documented method/path pairs, 13 FastAPI registrations, and 13 exercised
-responses. The 40-order demo gate runs import → validation → initial plan → route-provider
-fallback → Agent explanation → confirm → order-41 preview/diff and deliberately does not dispatch.
-The implemented `src/observability` package writes redacted JSONL trajectory events and enforces
-turn/tool/token/wall-clock/repeated-call limits; `docs/openapi-snapshot.sha256` fails closed on
-contract drift.
-
-The competition P0 gate additionally requires executable field-level import errors, deterministic
-Plan stop recommendations, and a real urgent-insert diff. `tests/test_competition_acceptance.py`
-covers the 112 kg Z4 concentration, missing address/weight/time cells, explicit time-window and
-capacity exceptions, and independent Validator reconciliation. `scripts/run_p0_demo.py` is the
-one-command Chinese walkthrough for the 40-order/4-vehicle fixture; it previews order 41 and
-never dispatches or deploys.
-
-Urgent insertion is implemented as a deterministic minimum-change search over legal positions in
-eligible existing routes. The preview retains the base plan's algorithm and identity, returns
-before/after dataset hashes and assigned weights, and reports `MINIMAL_CHANGE`; `FULL_REPLAN` is
-only a validated fallback with explicit scope and moved-order metadata.
-
-### Verification
-
-- OpenAI-off test proves deterministic REST continuity.
-- Google/TDX error tests prove explicit fallback/warnings.
-- Test collection with zero provider keys passes all keyless tests and marks live tests skipped.
-- A credential-output capture and repository scan prove secret values are never emitted or committed.
-- Agent Evals prove correct tool routing, evidence grounding, approval boundary, and injection defense.
-- Full `pytest`, `ruff`, `mypy`, OpenAPI/endpoint contract, secret scan, Benchmark, and Golden suite
-  pass. P0 and the OpenAI Agent remain `IN_PROGRESS` until the implementation gate is explicitly
-  closed after reviewing the evidence; passing tests alone do not change that status.
-- The final P0 evidence report must include the exact pytest pass/skip count, the three conditional
-  skip reasons, competition acceptance names, demo output status, and a clean Git status. Missing
-  Browser/TDX credentials remain frontend/P1 conditions and do not convert mock tests into live
-  passes.
-
-## P1 — Only if all P0 gates are green
-
-1. Google live traffic routing and polished polyline integration.
-2. TDX live road congestion mapping to segments/zones.
-3. Reproducible simulated congestion route-change scenario.
-4. Additional animation time-axis data.
-
-## File Change Forecast
-
-| Area | Planned purpose |
+| Area | 目的 |
 |---|---|
-| `src/api` | routes, schemas, middleware, CORS, error handler |
-| `src/domain` | immutable business models and enums |
-| `src/services` | import, validation, planning, evidence, diff |
-| `src/optimization` | OR-Tools model and independent validator |
-| `src/providers` | simulated, Google Routes, TDX adapters |
-| `src/repositories` | SQLAlchemy persistence/versioning |
-| `src/agent` | single Agent and strict function tools |
-| `src/observability` | JSON logging/tracing/metrics/limits |
-| `tests` | unit, integration, contract, Evals |
+| `src/api` | routes、dependencies、envelopes、middleware、CORS、error handler |
+| `src/domain` | immutable business models 與 enums |
+| `src/services` | import、validation、planning、evidence、diff |
+| `src/optimization` | OR-Tools model 與 independent validator |
+| `src/providers` | simulated、Google Routes、TDX adapters |
+| `src/repositories` | SQLAlchemy repositories 與 versioning |
+| `src/agent` | single Agent 與 strict function tools |
+| `src/observability` | JSON logging／tracing／metrics／limits |
+| `tests` | unit、integration、contract、Evals |
 | `alembic` | SQLite schema migrations |
 
-## Risks and Mitigations
+## 風險與緩解
 
-| Risk | Impact | Mitigation |
+| 風險 | 影響 | 緩解 |
 |---|---|---|
-| Three-day scope pressure | incomplete quality | P0 contract-first, P1 hard cut, simulated providers |
-| OR-Tools time/lunch modeling error | illegal plan | fixed time fixtures + independent validator |
-| External keys absent | demo failure | fallback is default and tested |
-| Live traffic nondeterminism | flaky tests | exact simulated tests; live only invariants/ranges |
-| Time-limited local search drifts across machines | unstable Golden metrics | fixed solution limit/order/matrix; canonical-run qualification; time reported separately |
-| Partial solution hides dropped work | unsafe/incomplete dispatch | explicit disjunction reconciliation + shared independent Validator |
-| Urgent full reshuffle surprises dispatcher | operational instability | minimum-change tiers; labelled full-replan fallback and before/after diff |
-| Missing API Keys fail CI/local work | blocked development | always-on keyless suite; conditional live skip/fallback |
-| Agent hallucinated numbers | misleading explanation | evidence schema and Eval; no numeric source in prompt |
-| Plan race/stale preview | wrong confirmation | immutable versions + optimistic concurrency |
-| Provider cost loop | denial of wallet | quotas, cache, timeouts, retries, Agent step/token limits |
+| 範圍複雜度 | 品質或完整性不足 | contract-first、核心功能優先、simulated providers |
+| OR-Tools time／lunch modeling error | illegal plan | fixed time fixtures + independent validator |
+| External keys absent | Demo 無法使用外部能力 | fallback 為預設且有測試 |
+| Live traffic nondeterminism | flaky tests | exact simulated tests；live 僅驗證 invariants／ranges |
+| Time-limited local search drift | Golden metrics 不穩定 | 固定 solution limit／order／matrix，並獨立回報 solve time |
+| Partial solution 隱藏 dropped work | unsafe／incomplete dispatch | explicit disjunction reconciliation + shared Validator |
+| Urgent full reshuffle | operational instability | minimum-change tiers、標示 full-replan fallback 與 before／after diff |
+| Missing API Keys | development block | always-on keyless suite；conditional live skip／fallback |
+| Agent hallucinated numbers | misleading explanation | evidence schema 與 Eval；prompt 不提供 numeric source |
+| Plan race／stale preview | wrong confirmation | immutable versions + optimistic concurrency |
+| Provider cost loop | denial of wallet | quotas、cache、timeouts、retries、Agent limits |
 
-## Stop/Review Checkpoints
+## 檢查點
 
-- End Day 1: frontend contract review.
-- End Day 2: deterministic invariant and state-machine review.
-- Before any live key usage: secret restrictions, quota/budget, and provider terms review.
-- Before any deployment/Git push: separate Conditional LGTM.
+- 前端 contract review。
+- Deterministic invariant 與 state-machine review。
+- 使用 live key 前，確認 secret restrictions、quota／budget 與 provider terms。
+- 任何 deployment 或 Git push 前，依規範取得獨立 Conditional LGTM。

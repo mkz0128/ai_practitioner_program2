@@ -1,9 +1,9 @@
-# Specification Validation Report
+# 規格驗證報告
 
-## Snapshot
+## 狀態快照
 
 ```yaml
-validated_on: 2026-09-02
+validated_on: 2026-09-03
 scope: specification_harness_algorithm_benchmark_contracts_feature_code_agent_e2e_api_contract_demo_flow_competition_acceptance
 feature_code_present: true
 implementation_gate: APPROVE_IMPLEMENTATION
@@ -15,123 +15,118 @@ overall_project_status: in_progress
 git_repository: true
 ```
 
-## Checks Planned for This Round
+## 本輪檢查
 
-| Check | Expected evidence | Status |
+| 檢查 | 預期證據 | 狀態 |
 |---|---|---|
-| Required files exist | path inventory | Passed — 24 required artifacts |
-| Golden Dataset JSON parses | JSON parser | Passed |
-| Observability config parses | JSON parser (YAML 1.2-compatible JSON syntax) | Passed |
-| TOML parses | Python `tomllib` | Passed |
-| Direct dependency versions match lock | comparison script | Passed — 16 direct pins |
-| Python 3.12 dependency resolution | pip dry-run report | Passed — no install, no conflict |
-| Spec/API/Harness terminology | 13-endpoint cross-file checks | Passed |
-| Markdown structure | balanced code-fence check across 16 files | Passed |
-| Secret patterns | repository text scan | Passed — none detected |
-| Workbook sheet/column contract | artifact inspect | Passed — four exact sheets and headers |
-| Demo counts and total weight | artifact inspect/calculation | Passed — 40 orders, 80 packages, 4 vehicles, 5 zones, 365 kg |
-| Demo distribution | deterministic audit | Passed — AM 20, PM 20, Z4 112 kg |
-| Workbook formula errors | artifact match scan | Passed — none detected |
-| Workbook visual quality | render/view all 8 sheets, repair, rerender | Passed |
-| Feature gate | exact approval recorded; `src/` implementation allowed only after approval | Passed — `APPROVE_IMPLEMENTATION` |
-| Git baseline safety | repository-local identity, empty remote, 26-file secret/action/deployment scan | Passed |
-| Algorithm specification coverage | Baseline, CVRPTW dimensions, strategies, limits, partial/failure policy | Passed |
-| Fair Benchmark contract | identical fixture/matrix identity, 12 metrics, formulas, reproducibility controls | Passed |
-| API Key test layers | always-on keyless, conditional live, missing-key skip/fallback, secret redaction | Passed |
-| Golden Dataset extension | JSON parse and GD-013–GD-030 traceability | Passed — 30 total cases |
-| Responses API parameter diagnostic | `gpt-5-mini` direct text and strict function request; malformed Chat envelope regression | Passed — correct requests PASS; historical HTTP 400 `missing_required_parameter` explained without secret output |
-| OpenAI Agents SDK E2E | `Runner.run` + strict deterministic tools + independent Validator + evidence-only final answer | Passed — live opt-in daily dispatch PASS; seven provider-neutral SDK scenarios PASS |
-| API contract coverage | Documented method/path pairs vs FastAPI routes and safe response exercise | Passed — 13 defined / 13 implemented / 13 exercised |
-| 40-order demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff; no dispatch | Passed — base version remained unchanged |
-| Observability and cost guard | Redacted JSONL trajectory events, correlation IDs, fail-closed Agent limits, and regression tests | Passed — `src/observability`, 3 boundary/redaction tests |
-| OpenAPI snapshot | Stable hash and exact 13-path set | Passed — `docs/openapi-snapshot.sha256` and snapshot test |
-| Frontend clean install/startup | Fresh CPython 3.12.13 venv installs `requirements.lock` and starts FastAPI | Passed — health `200`, Swagger `/docs` `200`, OpenAPI `200` |
-| Frontend API/CORS surface | 13 OpenAPI paths and explicit allowed-origin preflight | Passed — 13 paths; CORS `http://localhost:5173` allowed |
-| Demo workbook handoff path | Repository-relative fixture is present and readable | Passed — `data/samples/demo-delivery-40-orders.xlsx` |
-| Competition field errors | Missing address/time/weight cells identify order/package/field and require manual review | Passed — executable acceptance fixture |
-| Plan evidence reasons | Every assigned stop contains deterministic zone/weight/load/time/distance evidence | Passed — Plan API acceptance test |
-| Urgent preview diff | Reassignment, sequence, load, and metric deltas are calculated from before/after plans | Passed — order-41 demo assertion and diff builder |
-| Chinese P0 demo | One command prints 40/4 routes, redistribution, exception, full preview diff, and human checkpoint | Passed — `scripts/run_p0_demo.py` exits 0; no Dispatch/deploy |
-| Urgent base-plan identity | Demo preview uses the same OR-Tools plan ID/version/dataset/algorithm and matching 365 kg before state | Passed — regression test and Demo output |
-| Minimum-change insertion | Legal existing-route insertion preserves unaffected routes and produces a one-vehicle change for ORD-041 | Passed — `MINIMAL_CHANGE`, Validator valid |
+| 必要檔案存在 | 路徑清單 | 通過 — 24 項必要產物 |
+| Golden Dataset JSON 可解析 | JSON parser | 通過 |
+| Observability 設定可解析 | JSON parser（相容 YAML 1.2 的 JSON 語法） | 通過 |
+| TOML 可解析 | Python `tomllib` | 通過 |
+| 直接相依版本符合 lock | comparison script | 通過 — 16 個 direct pins |
+| Python 3.12 相依解析 | pip dry-run report | 通過 — 無安裝、無衝突 |
+| Spec／API／Harness 術語一致 | 13-endpoint cross-file checks | 通過 |
+| Markdown 結構 | 16 個檔案的 code fence 成對檢查 | 通過 |
+| Secret patterns | repository text scan | 通過 — 未偵測到 |
+| Workbook 工作表／欄位契約 | artifact inspect | 通過 — 四張精確工作表與標題 |
+| Demo 筆數與總重量 | artifact inspect/calculation | 通過 — 40 orders、80 packages、4 vehicles、5 zones、365 kg |
+| Demo 分布 | deterministic audit | 通過 — AM 20、PM 20、Z4 112 kg |
+| Workbook 公式錯誤 | artifact match scan | 通過 — 未偵測到 |
+| Workbook 視覺品質 | 8 張工作表 render/view、修正、重新 render | 通過 |
+| Feature gate | 已記錄精確核准；僅核准後允許 `src/` implementation | 通過 — `APPROVE_IMPLEMENTATION` |
+| Git 基準安全 | repository-local identity、空遠端、26 檔 secret/action/deployment scan | 通過 |
+| 演算法規格覆蓋 | Baseline、CVRPTW dimensions、strategies、limits、partial/failure policy | 通過 |
+| 公平 Benchmark 契約 | 相同 fixture/matrix identity、12 項指標、公式、可重現控制 | 通過 |
+| API Key 測試分層 | always-on keyless、conditional live、缺 key skip/fallback、secret redaction | 通過 |
+| Golden Dataset 擴充 | JSON parse 與 GD-013–GD-030 traceability | 通過 — 共 30 個案例 |
+| Responses API 參數診斷 | `gpt-5-mini` direct text 與 strict function request；malformed Chat envelope regression | 通過 — 正確 requests PASS；歷史 HTTP 400 `missing_required_parameter` 已在不輸出 secret 下說明 |
+| OpenAI Agents SDK E2E | `Runner.run` + strict deterministic tools + independent Validator + evidence-only final answer | 通過 — live opt-in daily dispatch PASS；7 個 provider-neutral SDK scenarios PASS |
+| API contract 覆蓋 | 文件 method/path 與 FastAPI routes 比對及安全 response exercise | 通過 — 13 defined／13 implemented／13 exercised |
+| 40-order Demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff；不 dispatch | 通過 — base version 未變更 |
+| Observability 與 cost guard | Redacted JSONL trajectory events、correlation IDs、fail-closed Agent limits、regression tests | 通過 — `src/observability`、3 個 boundary/redaction tests |
+| OpenAPI snapshot | stable hash 與精確 13-path set | 通過 — `docs/openapi-snapshot.sha256` 與 snapshot test |
+| 前端乾淨安裝／啟動 | 全新 CPython 3.12.13 venv 安裝 `requirements.lock` 並啟動 FastAPI | 通過 — health `200`、Swagger `/docs` `200`、OpenAPI `200` |
+| 前端 API／CORS 介面 | 13 個 OpenAPI paths 與明確 allowed-origin preflight | 通過 — 13 paths；允許 `http://localhost:5173` |
+| Demo workbook 交付路徑 | repository-relative fixture 存在且可讀 | 通過 — `data/samples/demo-delivery-40-orders.xlsx` |
+| 競賽欄位錯誤 | 缺少 address/time/weight cells 指出 order/package/field 並要求人工複核 | 通過 — executable acceptance fixture |
+| Plan evidence reasons | 每個 assigned stop 都有 deterministic zone/weight/load/time/distance evidence | 通過 — Plan API acceptance test |
+| Urgent preview diff | 從 before/after plans 計算 reassignment、sequence、load 與 distance/time deltas | 通過 — order-41 Demo assertion 與 diff builder |
+| 中文核心功能 Demo | 單一指令列出 40/4 routes、重新分配、例外、完整 preview diff 與人工 checkpoint | 通過 — `scripts/run_p0_demo.py` 結束碼 0；無 Dispatch/deploy |
+| Urgent base-plan identity | Demo preview 使用相同 OR-Tools plan ID/version/dataset/algorithm 且 before 為 365 kg | 通過 — regression test 與 Demo output |
+| Minimum-change insertion | 合法既有路線插入保留未受影響路線，ORD-041 僅影響一台車 | 通過 — `MINIMAL_CHANGE`、Validator valid |
+| 對外內容清理 | 已追蹤 Markdown／JSON／YAML／TOML 移除私人交付時程與個人工作安排 | 通過 — 僅保留技術識別字與程式碼既有字串 |
+| 文件中文化與格式 | 說明文字使用繁體中文；Markdown links、code fences 與結構可解析 | 通過 |
 
-## Dependency Resolution Evidence
+## 相依套件解析證據
 
-- Runtime used for resolution: CPython 3.12.13.
-- Resolver: pip 26.2.1 `--dry-run --ignore-installed --report`.
-- Result: all direct and transitive requirements resolved; no packages installed.
-- Lock target: current Windows x86-64 development environment. A separate Linux lock/wheel verification is required before any Linux deployment.
+- 解析使用的 Runtime：CPython 3.12.13。
+- Resolver：pip 26.2.1 `--dry-run --ignore-installed --report`。
+- 結果：所有 direct 與 transitive requirements 均可解析；未安裝套件。
+- Lock 目標：目前 Windows x86-64 開發環境。若要 Linux 部署，仍需另行完成 Linux lock／wheel 驗證。
 
-## External Reference Review
+## 外部參考檢視
 
-- OpenAI official guidance supports Agent orchestration/tool use and current model configuration; model is environment-driven.
-- Google Compute Route Matrix requires field masks and exposes status/condition/distance/duration fields.
-- Google recommends key restrictions; Browser and Server credentials are split.
-- TDX official Swagger describes Client ID/Secret member access and road traffic v2 data services.
-- Depot address geocode is recorded with source URL/date in `ACTIVE_SPEC.md`.
-- OR-Tools official routing options define explicit first-solution strategies, `GUIDED_LOCAL_SEARCH`, `solution_limit`, `time_limit`, and solver termination statuses.
-- OR-Tools official CVRP/VRPTW guidance supports Capacity and Time Dimensions, per-node time-window constraints, waiting slack, and depot-bounded routes.
-- OR-Tools official routing-task guidance supports warm-starting from existing routes; the dropped-visits guidance requires explicit penalties and dropped-node reporting.
+- OpenAI 官方指引支援 Agent orchestration／tool use 與目前模型設定；模型由環境設定驅動。
+- Google Compute Route Matrix 需要 field masks，並提供 status／condition／distance／duration 欄位。
+- Google 建議限制金鑰權限；Browser 與 Server credentials 分離。
+- TDX 官方 Swagger 說明 Client ID／Secret 存取與 road traffic v2 data services。
+- Depot address geocode 的來源 URL／日期已記錄於 `ACTIVE_SPEC.md`。
+- OR-Tools 官方 routing options 定義 first-solution strategies、`GUIDED_LOCAL_SEARCH`、`solution_limit`、`time_limit` 與 solver termination statuses。
+- OR-Tools 官方 CVRP／VRPTW 指引支援 Capacity 與 Time Dimensions、每個節點的 time-window constraints、waiting slack 與 depot-bounded routes。
+- OR-Tools routing-task 指引支援從既有 routes warm-start；dropped-visits 指引要求明確 penalties 與 dropped-node reporting。
 
-## Algorithm and Benchmark Specification Verification
+## 演算法與 Benchmark 規格驗證
 
-| Control | Locked decision | Result |
+| 控制項 | 鎖定決策 | 結果 |
 |---|---|---|
-| Baseline | First-Fit Eligible Vehicle + time-feasible Nearest Neighbor | Present in architecture, requirements, plan, and GD-013 |
-| Optimized model | OR-Tools CVRPTW with Capacity/Time Dimensions and allowed vehicles | Present |
-| Search | `PARALLEL_CHEAPEST_INSERTION` + `GUIDED_LOCAL_SEARCH` | Present |
-| Limits | 10-second hard cap + 1,000-solution cap | Present |
-| Hard constraints | unsplittable, capacity, zone, AM/PM, lunch, 180-second service, depot return | Present |
-| Output trust | independent Validator required for Baseline and Optimized | Present |
-| Partial/failure | explicit solver status, unassigned reconciliation, no invalid confirmable plan | Present |
-| Urgent order 41 | minimum-change tiers; labelled `FULL_REPLAN` only as fallback preview | Present |
-| Fair input | same 40 orders, four vehicles, five zones, depot, and simulated matrix hash | Present |
-| Live traffic | excluded from canonical/Golden Benchmark values | Present |
-| Reproducibility | pins, hashes, integer units, stable ordering, fixed parameters, run protocol | Present |
-| Credentials | keyless always runs; live conditional; secret values never emitted | Present |
+| Baseline | First-Fit Eligible Vehicle + time-feasible Nearest Neighbor | 已出現在 architecture、requirements、plan 與 GD-013 |
+| Optimized model | OR-Tools CVRPTW with Capacity／Time Dimensions and allowed vehicles | 已具備 |
+| Search | `PARALLEL_CHEAPEST_INSERTION` + `GUIDED_LOCAL_SEARCH` | 已具備 |
+| Limits | 10-second hard cap + 1,000-solution cap | 已具備 |
+| Hard constraints | unsplittable、capacity、zone、AM/PM、lunch、180-second service、depot return | 已具備 |
+| Output trust | Baseline 與 Optimized 均要求 independent Validator | 已具備 |
+| Partial/failure | 明確 solver status、unassigned reconciliation、不可確認的無效方案 | 已具備 |
+| Urgent order 41 | minimum-change tiers；只有 fallback preview 才標記 `FULL_REPLAN` | 已具備 |
+| Fair input | 相同 40 orders、4 vehicles、5 zones、depot 與 simulated matrix hash | 已具備 |
+| Live traffic | 排除於 canonical／Golden Benchmark 數值 | 已具備 |
+| Reproducibility | pins、hashes、integer units、stable ordering、fixed parameters、run protocol | 已具備 |
+| Credentials | keyless 永遠可執行；live conditional；不輸出 secret values | 已具備 |
 
-## Runtime Verification
+## Runtime 驗證
 
-- FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, dispatch lifecycle, urgent preview, and structured explanation tests passed.
-- Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, Benchmark, SQLite repository, urgent preview, structured evidence, and provider fallback tests passed.
-- Keyless suite: `33 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests scripts`: passed; `mypy src`: passed across 26 source files.
-- Agents SDK scenario suite: `7 passed`; explicit live `Runner.run` with `gpt-5-mini`, strict `plan_dispatch`, and Validator: `1 passed`.
-- Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
-- API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
-- OpenAPI snapshot: exact 13-path set and SHA-256 snapshot matched; redacted observability and `RunBudget` limit tests passed.
-- Frontend delivery check: a fresh CPython 3.12.13 temporary environment installed `requirements.lock`; FastAPI served `/health`, `/docs`, and `/openapi.json`; OpenAPI exposed all 13 contract paths; an allowed-origin OPTIONS preflight returned `Access-Control-Allow-Origin: http://localhost:5173`.
-- Competition acceptance: Z4's 112 kg is split legally beyond 100 kg VEH-002 (including VEH-003);
-  missing `location_label`/`time_slot`/`weight_kg` cells return entity/field paths with manual
-  review flags; explicit `TIME_WINDOW_CONFLICT` and `UNASSIGNABLE` cases reconcile through the
-  independent Validator; order 41 produces non-empty sequence/load changes and computed deltas.
-- Demo command: `.venv\\Scripts\\python.exe scripts/run_p0_demo.py` completed successfully and
-  printed Chinese per-vehicle order/weight/utilization/reason evidence, redistribution, exception,
-  full preview diff, and a human-confirmation prompt; Dispatch and deployment were not invoked.
-- Corrected urgent Demo evidence: OR-Tools initial plan before = 40 assigned / 365 kg with vehicle
-  loads `93/97/152/23`; order 41 is inserted into VEH-003 with no existing reassignment, only
-  four sequence records on that route, load `152 -> 154 kg`, distance `+137 m`, and time `+17 s`.
-  Base and preview algorithm are both ORTOOLS; their dataset hashes are explicitly returned.
-- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; latest measured solve times were Baseline `0.584ms` and OR-Tools `5,985.454ms`, reported only and not as exact cross-machine criteria.
-- Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
-- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Frontend Integration remains pending and is limited to client-side API/UI work; no P1 feature work was started.
+- FastAPI import／health／readiness、Excel upload、plan creation、map payload、confirmation、dispatch lifecycle、urgent preview 與 structured explanation tests 均通過。
+- Deterministic parser、package aggregation、Baseline、OR-Tools CVRPTW、shared simulated matrix、independent Validator、Benchmark、SQLite repository、urgent preview、structured evidence 與 provider fallback tests 均通過。
+- Keyless suite：`33 passed, 3 skipped (conditional Agent/Responses/Google live tests)`；`ruff check src tests scripts` 通過；`mypy src` 通過，共 26 個 source files。
+- Agents SDK scenario suite：`7 passed`；使用 `gpt-5-mini` 的 explicit live `Runner.run`、strict `plan_dispatch` 與 Validator：`1 passed`。
+- Explicit direct Responses smoke：`1 passed`（text 加 strict function call、`gpt-5-mini`；bounded caps 256／512）。
+- API contract：`13 / 13 / 13`（defined／implemented／exercised）；Demo flow：`1 passed`，刻意在 dispatch 前停止。
+- OpenAPI snapshot：精確 13-path set 與 SHA-256 snapshot 相符；redacted observability 與 `RunBudget` limit tests 通過。
+- 前端交付檢查：全新的 CPython 3.12.13 temporary environment 安裝 `requirements.lock`；FastAPI 提供 `/health`、`/docs`、`/openapi.json`；OpenAPI 暴露全部 13 個契約 paths；允許來源的 OPTIONS preflight 回傳 `Access-Control-Allow-Origin: http://localhost:5173`。
+- 競賽驗收：Z4 的 112 kg 合法分散，未集中超過 100 kg 的 `VEH-002`；缺少 `location_label`／`time_slot`／`weight_kg` 時回傳 entity／field paths 與人工複核旗標；`TIME_WINDOW_CONFLICT` 與 `UNASSIGNABLE` 經 independent Validator reconciliation；order 41 產生非空 sequence／load changes 與計算後差異。
+- Demo 指令：`.venv\\Scripts\\python.exe scripts/run_p0_demo.py` 成功完成，以中文輸出每台車的訂單／重量／使用率／理由證據、重新分配、例外、完整 preview diff 與人工確認提示；未呼叫 Dispatch 或 deployment。
+- 修正後 urgent Demo 證據：OR-Tools initial plan before = 40 assigned／365 kg，車輛載重 `93/97/152/23`；order 41 插入 `VEH-003`，既有訂單換車數為 0，該路線 4 筆 sequence records，載重 `152 -> 154 kg`，距離 `+137 m`、時間 `+17 s`。Base 與 preview algorithm 均為 ORTOOLS，並明確回傳 dataset hashes。
+- Canonical simulated run（10-second cap）：Baseline `183,955m / 23,023s`、2 unassigned；OR-Tools `161,257m / 20,185s`、0 unassigned；無 Validator violations；最近量測 solve times 為 Baseline `0.584ms`、OR-Tools `5,985.454ms`，僅供報告，不作跨機器 exact value。
+- Live preflight：OpenAI Chat text／strict tool `PASS`；Google Routes matrix `PASS`；TDX `SKIPPED`（後續擴充）。刻意錯誤的 Responses tool envelope 重現 HTTP 400 `missing_required_parameter`；修正 `input`、top-level `tools`、`strict` 與 `max_output_tokens` 後，`gpt-5-mini` requests 通過。未輸出 key、header 或完整 request。
+- Browser key 仍屬前端工作且目前缺少；Google server fallback 明確。Frontend Integration 仍為 `PENDING`，範圍限於 client-side API／UI 工作；本輪未開始後續擴充功能。
+- 本輪僅進行文件中文化與對外內容清理；未修改程式、API、演算法、測試邏輯，亦未執行 Dispatch、deployment 或正式環境操作。
 
-## Human Acceptance Decision
+## 人工驗收決策
 
-| Area | Status | Accepted evidence |
+| 領域 | 狀態 | 已接受證據 |
 |---|---|---|
-| Backend P0 | `DONE` | Legal overload redistribution; 40-order OR-Tools plan with zero violations; field-level errors; computed urgent diff; independent Validator pass. |
-| OpenAI Agent | `DONE` | Agents SDK end-to-end tool invocation, strict deterministic planning/evidence tools, evidence-only response, and regression coverage were human-accepted. |
-| Frontend Integration | `PENDING` | UI still needs to consume the documented API and display the evidence/demo flow. |
-| Overall Project | `IN_PROGRESS` | Backend and Agent gates are complete, but frontend integration is not complete. |
+| Backend P0 | `DONE` | 合法超重重新分配；40-order OR-Tools plan 零違規；欄位級錯誤；計算後 urgent diff；independent Validator 通過。 |
+| OpenAI Agent | `DONE` | Agents SDK end-to-end tool invocation、strict deterministic planning／evidence tools、evidence-only response 與 regression coverage 已由人工驗收。 |
+| Frontend Integration | `PENDING` | UI 仍需消費已文件化 API 並呈現 evidence／Demo flow。 |
+| Overall Project | `IN_PROGRESS` | Backend 與 Agent gates 已完成，但前端整合尚未完成。 |
 
-### Preserved urgent-insert evidence
+### 保留的 urgent-insert 證據
 
-- Initial OR-Tools plan: 40 assigned orders, 365 kg total, vehicle loads `93/97/152/23 kg`, zero unassigned.
-- `ORD-041` preview mode: `MINIMAL_CHANGE`; existing order vehicle changes `0`; only `VEH-003` is affected.
-- Before/after: `365 kg → 367 kg`, `0 → 0` unassigned, distance `+137 m`, duration `+17 s`.
-- Independent Validator: `PASS` for both before and after plans.
-- No Dispatch, deployment, or formal-environment operation was executed.
+- Initial OR-Tools plan：40 assigned orders、總重 365 kg、車輛載重 `93/97/152/23 kg`、zero unassigned。
+- `ORD-041` preview mode：`MINIMAL_CHANGE`；既有訂單換車數 `0`；僅影響 `VEH-003`。
+- Before／after：`365 kg → 367 kg`、`0 → 0` unassigned、距離 `+137 m`、duration `+17 s`。
+- Independent Validator：before 與 after plans 均為 `PASS`。
+- 未執行 Dispatch、deployment 或正式環境操作。
 
-## Final Result
+## 最終結果
 
-Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. Backend P0 and the OpenAI Agent are **DONE** by explicit human acceptance. Frontend Integration remains **PENDING**, so Overall Project remains **IN_PROGRESS**. No dispatch or deployment was performed.
+Specification／Harness readiness：**PASS**。Implementation gate 因明確的 `APPROVE_IMPLEMENTATION` 而開啟；deterministic core 與 FastAPI first slice 已實作，`feature_code_allowed: true`。Backend P0 與 OpenAI Agent 依人工驗收為 **DONE**。Frontend Integration 仍為 **PENDING**，因此 Overall Project 維持 **IN_PROGRESS**。未執行 dispatch 或 deployment。

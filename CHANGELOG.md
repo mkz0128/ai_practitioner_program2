@@ -1,35 +1,36 @@
-# Changelog
+# 變更紀錄
 
-## Unreleased — 2026-09-02
+## 未發布 — 2026-09-03
 
-### Added
+### 新增
 
-- Precise workbook missing-field errors for order/package/field paths with manual-review markers.
-- Deterministic evidence-grounded Plan stop recommendations for zone, weight, load, time, and matrix order.
-- Computed urgent-insert reassignment, sequence, vehicle-load, and distance/time deltas.
-- Executable competition acceptance tests and the Chinese `scripts/run_p0_demo.py` preview walkthrough.
-- Golden Dataset cases GD-026–GD-030 for field validation, evidence, urgent diff, demo, and Validator gates.
+- Workbook 缺漏欄位錯誤可精確定位 order／package／field，並帶有 manual-review markers。
+- 以 deterministic evidence 產生涵蓋 zone、weight、load、time 與 matrix 順序的 Plan stop recommendations。
+- 計算 urgent-insert 的 reassignment、sequence、vehicle-load 與 distance/time deltas。
+- 新增可執行的競賽驗收 tests 與中文 `scripts/run_p0_demo.py` preview walkthrough。
+- 新增 GD-026–GD-030 Golden Dataset cases，涵蓋 field validation、evidence、urgent diff、Demo 與 Validator gates。
+- 完成已追蹤說明文件的繁體中文化與對外內容清理，統一產品定位並移除內部交付規劃描述；未變更程式、API、演算法或測試邏輯。
 
-### Safety
+### 安全與狀態
 
-- Human acceptance promoted Backend P0 and OpenAI Agent to `DONE`; Frontend Integration remains `PENDING` and Overall Project remains `IN_PROGRESS`.
-- Accepted evidence is preserved: legal overload redistribution, 40-order OR-Tools zero-violation plan, `ORD-041` `MINIMAL_CHANGE`, zero existing-order vehicle moves, only `VEH-003` affected, `+137 m` and `+17 s`, and independent Validator `PASS`.
-- The demo never Dispatches, deploys, or touches the formal environment.
-- Urgent insertion now compares the exact OR-Tools base plan and defaults to validated `MINIMAL_CHANGE`; full replan requires explicit mode, reason, and movement scope.
+- 人工驗收已將 Backend P0 與 OpenAI Agent 標記為 `DONE`；Frontend Integration 維持 `PENDING`，Overall Project 維持 `IN_PROGRESS`。
+- 保留驗收 evidence：合法 overload redistribution、40-order OR-Tools zero-violation plan、`ORD-041` `MINIMAL_CHANGE`、existing-order vehicle moves 為 0、僅 `VEH-003` 受影響、`+137 m`、`+17 s` 與 independent Validator `PASS`。
+- Demo 不執行 Dispatch、deployment 或 formal environment 操作。
+- Urgent insertion 比較精確的 OR-Tools base plan，預設使用 validated `MINIMAL_CHANGE`；full replan 必須明確回傳 mode、reason 與 movement scope。
 
 ## 0.1.0-spec — 2026-09-01
 
-### Added
+### 新增
 
-- Canonical product specification for the explainable delivery dispatch Copilot.
-- Single-Agent architecture and two workflow Skills.
-- REST API and frontend handoff contracts.
-- Deterministic validation, optimization, plan versioning, and fallback requirements.
-- Version-locked Python toolchain and resolved dependency lock.
-- Project-specific observability, denial-of-wallet, security, Evals, and human approval rules.
-- Four-sheet input template and fixed-seed 40-order demo dataset plan.
+- 可解釋 AI 配送調度 Copilot 的 canonical product specification。
+- Single-Agent architecture 與兩個 workflow Skills。
+- REST API 與 frontend handoff contracts。
+- Deterministic validation、optimization、plan versioning 與 fallback requirements。
+- Version-locked Python toolchain 與 resolved dependency lock。
+- 專案專用的 observability、denial-of-wallet、security、Evals 與 human approval rules。
+- 四工作表 input template 與固定 seed 的 40-order Demo dataset plan。
 
 ### Security
 
-- Feature implementation remains locked pending `APPROVE_IMPLEMENTATION`.
-- Production, secrets, PII, deployment, external writes, and user confirmation impersonation are prohibited.
+- Feature implementation 在收到 `APPROVE_IMPLEMENTATION` 前維持鎖定。
+- 禁止 production、secrets、PII、deployment、external writes 與冒用使用者 confirmation。

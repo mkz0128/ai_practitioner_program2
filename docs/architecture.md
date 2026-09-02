@@ -1,17 +1,17 @@
-# Architecture Decision Record
+# 架構決策紀錄
 
-## Decision Summary
+## 決策摘要
 
-Use one FastAPI application with a layered modular monolith, one OpenAI Agent, strict function tools, deterministic domain/validation/optimization services, replaceable external providers, SQLAlchemy/SQLite persistence, and a separate plan validator.
+採用單一 FastAPI application 與分層 modular monolith，配置一個 OpenAI Agent、strict function tools、deterministic domain／validation／optimization services、可替換的 external providers、SQLAlchemy／SQLite persistence，以及獨立的 plan validator。
 
-## Logical Layers
+## 邏輯分層
 
 ```text
-Frontend / Swagger client
+Frontend／Swagger client
         |
-FastAPI routes + strict request/response schemas
+FastAPI routes + strict request／response schemas
         |
-Application services / use cases
+Application services／use cases
    |          |             |
 Agent tools   Deterministic  Plan lifecycle
    |          services      + repositories
@@ -27,9 +27,9 @@ One Agent     |             |
                     |-- TDXTrafficProvider (P0 status; P1 mapping)
 ```
 
-Dependency direction points inward. Domain, validation, optimizer, and plan validator may not import Agent or provider implementations.
+相依方向一律朝內。Domain、validation、optimizer 與 plan validator 不得 import Agent 或 provider implementations。
 
-## Planned Source Layout
+## 原始碼配置
 
 ```text
 src/
@@ -49,74 +49,60 @@ tests/
 └── evals/
 ```
 
-This layout is the approved implementation target; the deterministic core, FastAPI transport,
-SQLite repository, strict evidence tools, provider fallback adapters, and restart hydration now
-live under `src/`. Observability hardening and the final implementation gate remain tracked work.
+此配置是已核准的實作目標；deterministic core、FastAPI transport、SQLite repository、strict evidence tools、provider fallback adapters 與 restart hydration 均位於 `src/`。Observability hardening 與最終實作閘門仍須依進度管理追蹤。
 
 ## ADR-001 — Single Agent
 
-**Decision:** exactly one OpenAI Agents SDK Agent.
+**決策：**固定使用一個 OpenAI Agents SDK Agent。
 
-**Reason:** only intent routing and explanation need probabilistic behavior; adding delegation/handoffs creates latency, cost, state, and evaluation surface without MVP value.
+**理由：**只有 intent routing 與 explanation 需要 probabilistic behavior；加入 delegation／handoffs 會增加 latency、cost、state 與 evaluation surface，且不屬於本版本範圍。
 
-**Constraints:** no handoffs, A2A, AP2, or sub-agents inside the product. Each tool has strict Pydantic input/output. The model comes from `OPENAI_MODEL`.
+**限制：**產品內不得使用 handoffs、A2A、AP2 或 sub-agents。每個 tool 都有 strict Pydantic input/output；model 來自 `OPENAI_MODEL`。
 
-The runtime gate is an actual OpenAI Agents SDK `Agent` executed by `Runner.run`, not a prompt-only
-wrapper. Its strict tools are `plan_dispatch`, `highest_load_vehicle`, `explain_unassigned`, and
-`preview_urgent_insert`. Every planning tool invokes the deterministic planner and independent
-Validator before returning compact JSON evidence. The model may summarize only values present in
-that evidence; it may not calculate weights, routes, legality, or metrics.
+Runtime gate 是由 `Runner.run` 執行的實際 OpenAI Agents SDK `Agent`，不是只包裝 prompt。Strict tools 為 `plan_dispatch`、`highest_load_vehicle`、`explain_unassigned` 與 `preview_urgent_insert`。每個 planning tool 在回傳精簡 JSON evidence 前，都會呼叫 deterministic planner 與 independent Validator。Model 只能摘要 evidence 已存在的值，不得計算 weights、routes、legality 或 metrics。
 
-The keyless SDK E2E suite uses the SDK's `ScriptedModel`, which exercises the real tool dispatch
-and guardrail pipeline without network access. The opt-in live gate uses `OpenAIResponsesModel`
-with `gpt-5-mini`, `parallel_tool_calls=false`, `max_tokens=2048`, `max_turns=4`, tracing disabled
-for sensitive data, and a single planning tool call requirement.
+Keyless SDK E2E suite 使用 SDK 的 `ScriptedModel`，在沒有 network access 的情況下執行實際 tool dispatch 與 guardrail pipeline。Opt-in live gate 使用 `OpenAIResponsesModel` 與 `gpt-5-mini`、`parallel_tool_calls=false`、`max_tokens=2048`、`max_turns=4`，停用 sensitive data tracing，並要求只呼叫一次 planning tool。
 
-Responses API request shape is locked separately from Chat Completions: `input` and
-`max_output_tokens` are top-level fields, and each strict function tool has top-level `name`,
-`description`, `parameters`, and `strict`. A nested Chat Completions `function` envelope is invalid
-for Responses and is classified as `missing_required_parameter` (HTTP 400), never retried by
-changing to a more expensive model. Direct text and strict-tool requests are smoke-tested before
-the live Agent gate.
+Responses API request shape 與 Chat Completions 分開鎖定：`input` 與 `max_output_tokens` 是 top-level fields，每個 strict function tool 具備 top-level `name`、`description`、`parameters` 與 `strict`。Nested Chat Completions `function` envelope 對 Responses 無效，分類為 `missing_required_parameter`（HTTP 400），不得改用更昂貴 model 重試。Live Agent gate 前會先 smoke-test direct text 與 strict-tool requests。
 
 ## ADR-002 — Deterministic Core
 
-**Decision:** arithmetic, validation, assignment, route sequencing, time feasibility, state transitions, and evidence data are deterministic.
+**決策：**arithmetic、validation、assignment、route sequencing、time feasibility、state transitions 與 evidence data 均為 deterministic。
 
-**Reason:** these are contractual invariants. The LLM cannot be the source of numeric truth.
+**理由：**這些是契約不變量，LLM 不得作為 numeric truth 的來源。
 
-**Control:** explanations receive structured evidence such as vehicle capacity, planned load, utilization, zone eligibility, incremental distance/duration, time-window slack, and provider mode.
+**控制：**explanations 接收 vehicle capacity、planned load、utilization、zone eligibility、incremental distance/duration、time-window slack 與 provider mode 等 structured evidence。
 
 ## ADR-003 — Modular Monolith
 
-**Decision:** one deployable FastAPI process for the MVP.
+**決策：**使用一個可部署的 FastAPI process。
 
-**Reason:** fastest three-day integration, simple transactions and debugging, no distributed-state tax. Provider interfaces retain future extraction options.
+**理由：**交易與除錯較簡單，避免 distributed-state 成本；provider interfaces 保留未來拆分的選項。
 
 ## ADR-004 — OR-Tools with Independent Validation
 
-Model an unsplittable capacitated vehicle routing problem with vehicle eligibility and time dimensions:
+模型定義為不可拆單、具容量限制且包含 vehicle eligibility 與 time dimensions 的 vehicle routing problem：
 
-- node demand = deterministic order total weight;
-- allowed vehicles = AVAILABLE ∩ service zone ∩ residual capacity candidate;
-- time dimension includes travel and three-minute service;
-- AM `[08:00,12:00]`, PM `[13:00,17:00]` hard windows;
-- lunch is modeled as non-service interval/route break, not an LLM note;
-- depot is start/end for every vehicle;
-- objective uses large-priority feasibility penalties/lexicographic passes, then travel, then load-balance tie-break.
+- node demand = deterministic order total weight；
+- allowed vehicles = AVAILABLE ∩ service zone ∩ residual capacity candidate；
+- time dimension 包含行駛與每站 three-minute service；
+- AM `[08:00,12:00]`、PM `[13:00,17:00]` 為 hard windows；
+- lunch 建模為 non-service interval／route break，不是 LLM note；
+- 每輛車均以 depot 作為 start／end；
+- objective 先以高優先級 feasibility penalties／lexicographic passes 處理，再考量 travel，最後以 load-balance 作 tie-break。
 
-After solving, a separate validator recomputes all invariants from domain data. Solver success alone never grants `valid=true`.
+求解後由獨立 validator 依 domain data 重新計算所有不變量。Solver success 本身不會使 `valid=true`。
 
 ### Deterministic Baseline
 
-The Benchmark reference is intentionally simple and is not an optimization fallback:
+Benchmark reference 刻意保持簡單，並不是 optimization fallback：
 
-1. Sort orders by `priority` (`HIGH` first), time-window start, then `order_id`; sort vehicles by `vehicle_id`.
-2. **First-Fit Eligible Vehicle** assigns each unsplittable order to the first `AVAILABLE` vehicle that serves its zone and has enough residual capacity, including `current_load_kg`.
-3. If the first candidate cannot produce a legal time-feasible route, try the next eligible vehicle in the same stable order.
-4. **Nearest Neighbor** sequences each vehicle from `DEPOT-001` using the fixed matrix's `distance_m`; ties use `duration_s`, then `order_id`. Only a next stop that preserves AM/PM, lunch, three-minute service, and depot-return feasibility may be selected.
-5. Every route returns to `DEPOT-001`. An order with no legal assignment/sequence is emitted in `unassigned_orders` with a stable reason; it is never omitted.
-6. The independent Validator evaluates the Baseline output too. An invalid Baseline is reported as a Benchmark result but can never become a confirmable plan.
+1. 依 `priority`（先 `HIGH`）、time-window start、再 `order_id` 排序 orders；依 `vehicle_id` 排序 vehicles。
+2. **First-Fit Eligible Vehicle** 將每張 unsplittable order 指派給第一輛服務其 zone 且具足夠 residual capacity（包含 `current_load_kg`）的 `AVAILABLE` vehicle。
+3. 若第一個 candidate 無法產生合法且符合 time-feasible 的 route，依相同穩定順序嘗試下一輛 eligible vehicle。
+4. **Nearest Neighbor** 以 fixed matrix 的 `distance_m` 從 `DEPOT-001` 排列每輛車；平手時依 `duration_s`、再依 `order_id`。只有能維持 AM/PM、lunch、三分鐘 service 與 depot-return feasibility 的下一個 stop 才能選取。
+5. 每條 route 都返回 `DEPOT-001`。沒有合法 assignment／sequence 的 order 以穩定 reason 輸出至 `unassigned_orders`，不得省略。
+6. Independent Validator 同樣檢查 Baseline output。無效 Baseline 只能作為 Benchmark 結果回報，不得成為可確認 plan。
 
 ### Optimized CVRPTW Model
 
@@ -145,92 +131,71 @@ objective_priority:
 validator_required: true
 ```
 
-`PARALLEL_CHEAPEST_INSERTION` is explicit rather than `AUTOMATIC` and constructs a multi-route initial solution by cheapest feasible insertions. `GUIDED_LOCAL_SEARCH` is selected to escape local minima and therefore always receives a finite time limit. The canonical 40-order solve has a 10-second hard cap and a 1,000-solution cap; reaching either returns the best feasible candidate found plus its termination reason.
+`PARALLEL_CHEAPEST_INSERTION` 明確取代 `AUTOMATIC`，以 cheapest feasible insertions 建立 multi-route initial solution。`GUIDED_LOCAL_SEARCH` 用於跳脫 local minima，因此一律設定有限 time limit。標準 40-order solve 設有 10 秒 hard cap 與 1,000-solution cap；任一上限達到時，回傳已找到的最佳 feasible candidate 與 termination reason。
 
-The Capacity Dimension enforces per-vehicle capacity using deterministic whole-order demand. The Time Dimension uses integer seconds, allows required waiting, enforces arrival/service completion inside AM or PM, reserves the 12:00–13:00 break, includes 180 seconds at each stop, and bounds every route between the depot start/end. Vehicle/zone eligibility is expressed as allowed vehicles for each order node.
+Capacity Dimension 以 deterministic whole-order demand 強制每輛 vehicle capacity。Time Dimension 使用 integer seconds，允許必要 waiting，強制 arrival／service completion 位於 AM 或 PM，保留 12:00–13:00 break，每站包含 180 秒，並限制每條 route 位於 depot start/end 之間。Vehicle／zone eligibility 以每個 order node 的 allowed vehicles 表示。
 
-Objectives use integer costs and a documented dominating coefficient: dropping one order costs more than the maximum possible travel-plus-balance improvement, total travel time dominates the bounded utilization-gap term, and distance remains a reported metric. Coefficients are derived from the fixed matrix upper bound and recorded with the run, never chosen from live traffic. The independent Validator recomputes assignment uniqueness, no split, capacity, eligibility, time/lunch, depot endpoints, and all metric totals from source data.
+Objectives 使用 integer costs 與文件化的 dominating coefficient：丟棄一張 order 的成本高於 travel-plus-balance 最大可能改善，total travel time 支配有界的 utilization-gap term，distance 仍獨立回報。Coefficients 由 fixed matrix upper bound 推導並隨 run 記錄，絕不從 live traffic 選取。Independent Validator 從 source data 重新計算 assignment uniqueness、no split、capacity、eligibility、time/lunch、depot endpoints 與全部 metric totals。
 
-### No-solution and Partial-solution Policy
+### 無解與 Partial-solution 政策
 
-- Pre-validation classifies orders with no eligible vehicle, invalid data, or impossible single-order capacity before solving.
-- Solver-optional visits use deterministic high disjunction penalties so the minimum number of orders is dropped before travel optimization. Every dropped node becomes an explicit `unassigned_orders` entry with evidence.
-- `ROUTING_FAIL`, `ROUTING_FAIL_TIMEOUT` without a candidate, `ROUTING_INVALID`, and `ROUTING_INFEASIBLE` produce stable errors and no confirmable proposal.
-- A time-limited feasible candidate may be returned only with `optimality_proven: false`, solver status/termination metadata, explicit exceptions, and a passing independent Validator.
-- A valid partial plan stays `PROPOSED`, sets `complete: false`, lists all unassigned orders, and requires explicit human review; it is never represented as a complete solution.
+- Pre-validation 在 solving 前先分類沒有 eligible vehicle、資料無效或單一 order capacity 不可能的 orders。
+- Solver-optional visits 使用 deterministic high disjunction penalties，使最少數量的 orders 在 travel optimization 前被 dropped。每個 dropped node 都必須以 evidence 明確列在 `unassigned_orders`。
+- 沒有 candidate 的 `ROUTING_FAIL`、`ROUTING_FAIL_TIMEOUT`、`ROUTING_INVALID` 與 `ROUTING_INFEASIBLE` 會產生穩定錯誤，不建立可確認 proposal。
+- Time-limited feasible candidate 只有在 `optimality_proven: false`、solver status／termination metadata、明確 exceptions 且 independent Validator 通過時才可回傳。
+- 有效 partial plan 維持 `PROPOSED`、設定 `complete: false`、列出所有 unassigned orders 並要求明確人工檢視；不得表示為完整 solution。
 
-### Urgent Order 41 Replanning
+### Urgent Order 41 重新規劃
 
-Default policy is **minimum-change replanning**, not an unrestricted full reshuffle:
+預設政策是 **minimum-change replanning**，不是不受限制的 full reshuffle：
 
-1. Start from the exact base plan/version and warm-start from its routes.
-2. First try inserting order 41 while preserving existing vehicle assignments and relative stop order.
-3. If infeasible, unlock only eligible affected routes and minimize moved-order count and sequence displacement before travel/load tie-breaks.
-4. Only if that fails, create a separately labelled `FULL_REPLAN` fallback preview. It must expose scope, moved orders, before/after metrics, and the reason escalation was needed.
-5. No preview mutates the base plan; exact plan/version confirmation remains mandatory.
+1. 從精確 base plan/version 開始，並以既有 routes warm-start。
+2. 優先插入 order 41，同時保留既有 vehicle assignments 與相對 stop order。
+3. 若不可行，只解鎖 eligible affected routes，並在 travel／load tie-breaks 前先最小化 moved-order count 與 sequence displacement。
+4. 只有上述方法失敗才建立獨立標示的 `FULL_REPLAN` fallback preview，且必須暴露 scope、moved orders、before／after metrics 與升級原因。
+5. Preview 不得修改 base plan；精確 plan/version confirmation 仍為必要條件。
 
-The implementation first evaluates every legal insertion position on every eligible existing
-route, keeping all other vehicle assignments and their relative order unchanged. The lowest
-deterministic distance/time insertion is returned as `mode: MINIMAL_CHANGE`. Only when no such
-candidate passes the independent Validator does the service fall back to the same algorithm's
-full replan and return `mode: FULL_REPLAN`, `full_replan_reason`, `affected_vehicle_count`, and
-`moved_order_count`.
+實作會先評估每條 eligible existing route 的所有合法 insertion positions，保持其他 vehicle assignments 與相對順序不變。選出 deterministic distance／time 最低的 insertion，並回傳 `mode: MINIMAL_CHANGE`。只有沒有 candidate 通過 independent Validator 時，service 才以相同 algorithm 進行 full replan，回傳 `mode: FULL_REPLAN`、`full_replan_reason`、`affected_vehicle_count` 與 `moved_order_count`。
 
-### P0 Competition Acceptance Controls
+### 核心功能驗收控制
 
-The importer emits one `MISSING_REQUIRED_FIELD` error per missing required cell. Paths are
-stable and entity-addressable (`orders.<order_id>.location_label`,
-`orders.<order_id>.time_slot`, and `packages.<package_id>.weight_kg`), and each such error sets
-`requires_manual_review: true`; the validation report carries the aggregate flag as well.
+Importer 對每個缺漏的 required cell 產生一個 `MISSING_REQUIRED_FIELD` error。Paths 穩定且可定位 entity（`orders.<order_id>.location_label`、`orders.<order_id>.time_slot` 與 `packages.<package_id>.weight_kg`），每個 error 都設定 `requires_manual_review: true`；validation report 也攜帶 aggregate flag。
 
-Plan stop `reason` is produced by `src/services/evidence.py` from the validated order, vehicle,
-route stop, fixed matrix leg, and independent Validator result. Its evidence includes zone
-eligibility, order weight, post-assignment load/utilization, legal time slot, previous node,
-distance/duration, and the deterministic sequence basis. The Agent may quote this object only;
-it is never a source of numeric values.
+Plan stop `reason` 由 `src/services/evidence.py` 根據 validated order、vehicle、route stop、fixed matrix leg 與 independent Validator result 產生。Evidence 包含 zone eligibility、order weight、post-assignment load/utilization、legal time slot、previous node、distance/duration 與 deterministic sequence basis。Agent 只能引用此 object，不得將自身文字作為 numeric values 來源。
 
-Urgent previews use a deterministic plan diff builder. `reassigned_orders`, `sequence_changes`,
-and per-vehicle `vehicle_load_changes` are calculated from before/after assignments and route
-positions, while distance/time deltas are computed from plan totals. The inserted order itself is
-reported as a sequence change when it enters a route, and the base version remains immutable.
+Urgent previews 使用 deterministic plan diff builder。`reassigned_orders`、`sequence_changes` 與 per-vehicle `vehicle_load_changes` 由 before／after assignments 與 route positions 計算；distance／time deltas 由 plan totals 計算。插入 route 的 order 本身會回報為 sequence change，且 base version 保持 immutable。
 
-## ADR-005 — Fair Benchmark Contract
+## ADR-005 — 公平 Benchmark 契約
 
-Baseline and Optimized runs consume the same canonical input snapshot: the same 40 orders, four vehicles, five zones, stable row/entity ordering, `DEPOT-001`, and the same versioned fixed simulated distance/duration matrix. Google live traffic is excluded from fixed Benchmark values; live runs report only invariants and observed ranges and cannot replace the canonical result.
+Baseline 與 Optimized runs 使用相同 canonical input snapshot：相同的 40 orders、4 vehicles、5 zones、穩定 row/entity ordering、`DEPOT-001` 與相同版本的 fixed simulated distance/duration matrix。固定 Benchmark values 排除 Google live traffic；live runs 僅回報 invariants 與 observed ranges，不得取代 canonical result。
 
-| Metric | Definition |
+| Metric | 定義 |
 |---|---|
-| Total distance | Sum of fixed-matrix `distance_m` for every depot/stop arc |
-| Total driving time | Sum of fixed-matrix `duration_s`; excludes waiting and service |
-| Vehicle load/utilization | `current_load_kg + assigned_weight_kg`; utilization is load / max load |
-| Utilization gap | Maximum minus minimum utilization across all four vehicles |
-| Unassigned orders | Count plus complete ordered IDs/reason codes |
-| Violations | Separate overload, cross-zone, duplicate, and time-window counts from Validator |
-| Solve time | Monotonic elapsed milliseconds, measured around algorithm execution only |
-| Improvement vs Baseline | `(baseline - optimized) / baseline * 100`; lower-is-better metrics only, `null` when Baseline is zero |
+| Total distance | 每個 depot／stop arc 的 fixed-matrix `distance_m` 總和 |
+| Total driving time | fixed-matrix `duration_s` 總和；不含 waiting 與 service |
+| Vehicle load/utilization | `current_load_kg + assigned_weight_kg`；utilization 為 load／max load |
+| Utilization gap | 四輛 vehicles 中最大與最小 utilization 的差 |
+| Unassigned orders | Count 加上完整且有序的 IDs／reason codes |
+| Violations | 由 Validator 分別計算 overload、cross-zone、duplicate 與 time-window counts |
+| Solve time | 只量測 algorithm execution 的 monotonic elapsed milliseconds |
+| Improvement vs Baseline | `(baseline - optimized) / baseline * 100`；僅適用 lower-is-better metrics，Baseline 為零時為 `null` |
 
-Reproducibility controls are: pinned OR-Tools/runtime versions; committed fixture and matrix version/hash; integer meters/seconds/grams; stable order/vehicle/node ordering and tie-breakers; identical search parameters; single-process canonical run; one unmeasured warm-up plus five measured runs; route/metric equality checks across runs; median solve time reported separately and never asserted as an exact cross-machine value. If the 10-second cap fires before the fixed solution limit or route equality fails, the run is marked non-canonical rather than silently updating Golden values.
+Reproducibility controls 包含：pinned OR-Tools／runtime versions；committed fixture 與 matrix version/hash；integer meters／seconds／grams；穩定 order／vehicle／node ordering 與 tie-breakers；相同 search parameters；single-process canonical run；一次未計量 warm-up 加五次 measured runs；跨 runs 的 route／metric equality checks；median solve time 分開回報，絕不宣稱為跨機器 exact value。若 10 秒 cap 在固定 solution limit 前觸發，或 route equality 失敗，run 標記為 non-canonical，不得靜默更新 Golden values。
 
-## ADR-006 — API Key Test Layers
+## ADR-006 — API Key 測試分層
 
-| Layer | Provider behavior | Gate and expected outcome |
+| Layer | Provider behavior | 閘門與預期結果 |
 |---|---|---|
-| Keyless tests | Simulated/mock Google, TDX, and OpenAI adapters | Always runnable; no network or credential dependency; missing keys use fallback and must pass |
-| Live integration tests | Explicit live adapter and narrow real request | Run only when that provider's required environment variables exist; otherwise `skip`, never fail |
+| Keyless tests | Simulated/mock Google、TDX 與 OpenAI adapters | 永遠可執行；不依賴 network 或 credentials；缺 key 使用 fallback 且必須通過 |
+| Live integration tests | 明確的 live adapter 與最小 real request | 僅在該 provider 所需 environment variables 存在時執行；否則 `skip`，不可失敗 |
 
-Tests may check only whether a required variable is present. They may never read a secret into assertions, output it, serialize it, include it in exception text, logs, traces, snapshots, fixtures, or Git. Provider clients must redact authorization headers and query credentials. A missing/rejected key degrades to a stable skip/fallback result according to test layer; it never breaks the keyless suite.
+Tests 只能檢查 required variable 是否存在。絕不可將 secret 讀入 assertions、output、serialization、exception text、logs、traces、snapshots、fixtures 或 Git。Provider clients 必須 redact authorization headers 與 query credentials。Missing／rejected key 依測試分層降級為穩定的 skip／fallback result，絕不破壞 keyless suite。
 
-## Runtime Acceptance Gate
+## Runtime 驗收閘門
 
-The endpoint contract is executable: `tests/test_api_contract.py` extracts all 13 documented
-routes, compares method/path pairs against FastAPI's registered routes, and exercises every route
-with a safe success or stable error response. The 40-order demo gate then runs import, validation,
-initial plan, map/provider fallback, evidence explanation, human confirmation, and order-41
-preview/diff. It intentionally stops before dispatch, and asserts that the base plan/version
-remains unchanged. These checks are evidence gates, not a declaration that P0 or the Agent is
-complete while the implementation phase remains open.
+Endpoint contract 是可執行的：`tests/test_api_contract.py` 解析全部 13 條文件路由，與 FastAPI 註冊的 method/path 比對，並以安全成功或穩定錯誤 response 執行每條路由。40-order Demo gate 接著執行 import、validation、initial plan、map/provider fallback、evidence explanation、human confirmation 與 order-41 preview/diff。流程刻意在 dispatch 前停止，並確認 base plan/version 未變更。這些是 evidence gates，不是未經驗證的完成宣稱。
 
-## ADR-007 — Provider Isolation and Fallback
+## ADR-007 — Provider 隔離與 Fallback
 
 ```yaml
 RouteMatrixProvider:
@@ -244,13 +209,13 @@ TrafficProvider:
   output: status/multiplier/evidence, or unavailable warning
 ```
 
-`SimulatedRouteProvider` is deterministic and default. Google missing/error/timeouts fall back visibly. TDX is traffic enrichment only. OpenAI outage bypasses only natural-language orchestration.
+`SimulatedRouteProvider` 是 deterministic 且為預設。Google missing／error／timeouts 會明確 fallback；TDX 僅作 traffic enrichment；OpenAI outage 只繞過 natural-language orchestration。
 
-Google Compute Route Matrix requires a field mask. Planned minimum fields: `originIndex,destinationIndex,status,condition,distanceMeters,duration`; route geometry requests only distance, duration, encoded polyline, and leg fields needed by the frontend. Wildcard masks are forbidden outside manual investigation.
+Google Compute Route Matrix 需要 field mask。規劃的最小欄位為 `originIndex,destinationIndex,status,condition,distanceMeters,duration`；route geometry 僅要求 frontend 所需的 distance、duration、encoded polyline 與 leg fields。除 manual investigation 外禁止 wildcard masks。
 
-Google caching is transient and configurable (default 900 seconds). Durable storage of raw Google content is disabled until current service terms are reviewed; derived plan records retain provider identity, timestamp, and only fields legally permitted.
+Google caching 採 transient 且可設定（預設 900 秒）。完成目前 service terms review 前停用 raw Google content 的 durable storage；derived plan records 僅保留 provider identity、timestamp 與法律允許的欄位。
 
-## ADR-008 — Persistence and Versioning
+## ADR-008 — Persistence 與 Versioning
 
 Planned tables:
 
@@ -266,7 +231,7 @@ Planned tables:
 | provider_runs | mode, latency, warning, freshness, request fingerprint |
 | agent_sessions | session ID and non-sensitive usage metadata |
 
-SQLite transactions protect import and state changes. Confirmation uses optimistic concurrency on `plan_id + version`; stale requests return `PLAN_VERSION_CONFLICT`.
+SQLite transactions 保護 import 與 state changes。Confirmation 使用 `plan_id + version` 的 optimistic concurrency；stale requests 回傳 `PLAN_VERSION_CONFLICT`。
 
 ## State Machine
 
@@ -276,44 +241,44 @@ DRAFT -> VALIDATED -> PROPOSED -> CONFIRMED -> DISPATCHED
                       +-- urgent preview creates new PROPOSED version
 ```
 
-No reverse transition or implicit confirmation. Preview is immutable and side-effect-free. Every accepted/rejected transition writes an audit event.
+不允許 reverse transition 或 implicit confirmation。Preview 為 immutable 且 side-effect-free；每個 accepted／rejected transition 都寫入 audit event。
 
 ## Request Flow — Daily Dispatch
 
-1. Import multipart workbook, hash it, parse four sheets.
-2. Normalize list fields and validate; persist only controlled records/metadata.
-3. Resolve route matrix provider and collect explicit mode/warnings.
-4. Build deterministic candidates/model; solve.
-5. Recompute invariants in independent validator.
-6. Persist immutable PROPOSED version and evidence.
-7. Agent or REST returns structured plan; human confirms separately.
+1. Import multipart workbook、計算 hash 並解析四張工作表。
+2. Normalize list fields 並 validate；只持久化受控 records／metadata。
+3. Resolve route matrix provider 並收集明確 mode／warnings。
+4. 建立 deterministic candidates／model 並 solve。
+5. 在 independent validator 中重新計算 invariants。
+6. 持久化 immutable PROPOSED version 與 evidence。
+7. Agent 或 REST 回傳 structured plan；由 human 另行確認。
 
 ## Request Flow — Urgent Insert
 
-1. Load exact base version and require pre-dispatch state.
-2. Validate order/packages.
-3. Re-optimize against a copy; validate candidate.
-4. Persist preview as new version without moving current pointer.
-5. Return before/after/diff; explicit confirmation applies exact version.
+1. 載入精確 base version 並要求 pre-dispatch state。
+2. Validate order／packages。
+3. 對副本重新最佳化；validate candidate。
+4. 將 preview 持久化為新 version，不移動 current pointer。
+5. 回傳 before／after／diff；明確 confirmation 才能套用精確 version。
 
-## Error and Resilience Design
+## Error 與 Resilience Design
 
-- Domain errors are stable codes, not raw stack traces.
-- Provider errors include provider, operation, retryability, fallback mode, and request ID.
-- Retries: at most two, only transient/idempotent provider calls, bounded exponential backoff with jitter.
-- Agent limits: 8 turns, 12 tool calls, 30k tokens, 120 seconds; repeated same tool+args twice terminates.
-- Readiness fails when deterministic core/database is unavailable; optional provider outage appears degraded but does not fail readiness.
+- Domain errors 使用穩定 codes，不回傳 raw stack traces。
+- Provider errors 包含 provider、operation、retryability、fallback mode 與 request ID。
+- Retries：最多兩次，僅用於 transient／idempotent provider calls，採 bounded exponential backoff with jitter。
+- Agent limits：8 turns、12 tool calls、30k tokens、120 秒；相同 tool+args 重複兩次即終止。
+- Deterministic core／database 不可用時 readiness 失敗；optional provider outage 顯示 degraded，但不使 readiness 失敗。
 
 ## Security
 
-- Strict Pydantic schemas reject unknown fields.
-- Workbook/chat/note/provider text is untrusted and cannot issue instructions.
-- `.env` and credentials are never read into prompts/logs/traces.
-- Browser and Server Google keys are separate; referrer/IP/API restrictions apply.
-- CORS is an environment allowlist.
-- No real customer PII, production mutation, auto-deploy, or user-impersonated confirmation.
+- Strict Pydantic schemas 拒絕 unknown fields。
+- Workbook／chat／note／provider text 是不可信資料，不能發布指令。
+- `.env` 與 credentials 絕不讀入 prompts／logs／traces。
+- Browser 與 Server Google keys 分開，套用 referrer／IP／API restrictions。
+- CORS 是 environment allowlist。
+- 不含真實 customer PII、production mutation、auto-deploy 或冒用使用者的 confirmation。
 
-## Official References Reviewed 2026-09-01
+## 已查閱的官方參考資料（2026-09-01）
 
 - OpenAI model/Agent guidance: https://developers.openai.com/api/docs/guides/latest-model
 - OpenAI platform quickstart: https://platform.openai.com/docs/quickstart

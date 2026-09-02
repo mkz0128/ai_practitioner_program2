@@ -1,7 +1,7 @@
 [project]
 name = "ai-delivery-dispatch-agent"
 version = "0.1.0"
-description = "Explainable delivery dispatch Copilot with deterministic validation and optimization."
+description = "具備確定性驗證與最佳化能力的可解釋 AI 配送調度 Copilot。"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
