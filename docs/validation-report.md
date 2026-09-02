@@ -45,6 +45,9 @@ git_repository: true
 | 40-order demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff; no dispatch | Passed — base version remained unchanged |
 | Observability and cost guard | Redacted JSONL trajectory events, correlation IDs, fail-closed Agent limits, and regression tests | Passed — `src/observability`, 3 boundary/redaction tests |
 | OpenAPI snapshot | Stable hash and exact 13-path set | Passed — `docs/openapi-snapshot.sha256` and snapshot test |
+| Frontend clean install/startup | Fresh CPython 3.12.13 venv installs `requirements.lock` and starts FastAPI | Passed — health `200`, Swagger `/docs` `200`, OpenAPI `200` |
+| Frontend API/CORS surface | 13 OpenAPI paths and explicit allowed-origin preflight | Passed — 13 paths; CORS `http://localhost:5173` allowed |
+| Demo workbook handoff path | Repository-relative fixture is present and readable | Passed — `data/samples/demo-delivery-40-orders.xlsx` |
 | Competition field errors | Missing address/time/weight cells identify order/package/field and require manual review | Passed — executable acceptance fixture |
 | Plan evidence reasons | Every assigned stop contains deterministic zone/weight/load/time/distance evidence | Passed — Plan API acceptance test |
 | Urgent preview diff | Reassignment, sequence, load, and metric deltas are calculated from before/after plans | Passed — order-41 demo assertion and diff builder |
@@ -96,6 +99,7 @@ git_repository: true
 - Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
 - API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
 - OpenAPI snapshot: exact 13-path set and SHA-256 snapshot matched; redacted observability and `RunBudget` limit tests passed.
+- Frontend delivery check: a fresh CPython 3.12.13 temporary environment installed `requirements.lock`; FastAPI served `/health`, `/docs`, and `/openapi.json`; OpenAPI exposed all 13 contract paths; an allowed-origin OPTIONS preflight returned `Access-Control-Allow-Origin: http://localhost:5173`.
 - Competition acceptance: Z4's 112 kg is split legally beyond 100 kg VEH-002 (including VEH-003);
   missing `location_label`/`time_slot`/`weight_kg` cells return entity/field paths with manual
   review flags; explicit `TIME_WINDOW_CONFLICT` and `UNASSIGNABLE` cases reconcile through the
@@ -109,7 +113,7 @@ git_repository: true
   Base and preview algorithm are both ORTOOLS; their dataset hashes are explicitly returned.
 - Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; latest measured solve times were Baseline `0.584ms` and OR-Tools `5,985.454ms`, reported only and not as exact cross-machine criteria.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
-- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Frontend acceptance remains pending; this does not reopen the accepted Backend P0 or OpenAI Agent status.
+- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Frontend Integration remains pending and is limited to client-side API/UI work; no P1 feature work was started.
 
 ## Human Acceptance Decision
 

@@ -12,7 +12,7 @@
 
 ## NOW
 
-- Frontend integration and acceptance against the documented local API; do not dispatch, deploy, or touch production.
+- Frontend delivery check: clean install/startup, 13-route Swagger/OpenAPI/CORS verification, and handoff documentation; do not dispatch, deploy, or touch production.
 
 ## NEXT
 
@@ -70,6 +70,8 @@
 - Implemented deterministic `MINIMAL_CHANGE` insertion that preserves unaffected vehicle assignments and relative order; full replan now exposes explicit mode/reason/scope metadata.
 - Added before/after algorithm, dataset hash, assigned weight, unassigned IDs, and per-vehicle load evidence, plus a regression test preventing Baseline/OR-Tools cross-comparison.
 - Recorded human acceptance: Backend P0 and OpenAI Agent are `DONE`; Frontend Integration remains `PENDING` and Overall Project remains `IN_PROGRESS`.
+- Completed frontend delivery check: clean CPython 3.12.13 venv installed `requirements.lock`, FastAPI started, Swagger/OpenAPI served, all 13 paths were present, and an allowed-origin CORS preflight returned the configured origin.
+- Documented frontend environment variables, API request/response index, shortest call sequence, demo workbook path, overload/ORD-041/Agent flows, map format, and error envelope.
 
 ## LAST VALIDATION
 
@@ -91,3 +93,4 @@
 - Competition P0 checklist: all requested executable cases and one-command demo pass; Backend P0 and OpenAI Agent are `DONE` by explicit human acceptance. Frontend Integration remains `PENDING`; Overall Project remains `IN_PROGRESS`.
 - Urgent preview correction and accepted evidence: aligned OR-Tools before/after is 365 kg → 367 kg, 0 → 0 unassigned; `MINIMAL_CHANGE` affects only `VEH-003`, existing order vehicle changes are `0`, distance is `+137 m`, time is `+17 s`, and the independent Validator passes.
 - No Dispatch, deployment, or production operation was executed.
+- Latest frontend delivery validation: clean-install/startup `PASS`; Swagger `/docs` `200`; `/openapi.json` `200` with 13 paths; CORS preflight `PASS` for `http://localhost:5173`; demo workbook path exists at `data/samples/demo-delivery-40-orders.xlsx`.
