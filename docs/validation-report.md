@@ -86,7 +86,7 @@ git_repository: true
 - Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
 - API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
 - OpenAPI snapshot: exact 13-path set and SHA-256 snapshot matched; redacted observability and `RunBudget` limit tests passed.
-- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time `5,037.672ms` (reported only, not exact cross-machine criterion).
+- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time `4,982.385ms` (reported only, not exact cross-machine criterion).
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
 - Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.
 
