@@ -291,15 +291,33 @@ Response `200`:
   "preview_version": 2,
   "feasible": true,
   "requires_human_confirmation": true,
-  "before": {"state":"PROPOSED","assigned_order_count":40,"total_weight_kg":365.0},
-  "after": {"state":"PROPOSED","assigned_order_count":41,"total_weight_kg":376.0},
+  "mode": "MINIMAL_CHANGE",
+  "full_replan_reason": null,
+  "affected_vehicle_count": 1,
+  "moved_order_count": 0,
+  "before": {
+    "state":"PROPOSED","algorithm":"ORTOOLS",
+    "dataset_hash":"sha256...base","assigned_order_count":40,
+    "assigned_weight_kg":365.0,"unassigned_orders":[],
+    "vehicles":[{"vehicle_id":"VEH-001","planned_load_kg":93.0,"load_utilization":0.775}]
+  },
+  "after": {
+    "state":"PROPOSED","algorithm":"ORTOOLS",
+    "dataset_hash":"sha256...preview","assigned_order_count":41,
+    "assigned_weight_kg":367.0,"unassigned_orders":[],
+    "vehicles":[{"vehicle_id":"VEH-003","planned_load_kg":154.0,"load_utilization":0.9625}]
+  },
+  "comparison": {
+    "base_algorithm":"ORTOOLS","preview_algorithm":"ORTOOLS",
+    "base_dataset_hash":"sha256...base","preview_dataset_hash":"sha256...preview"
+  },
   "diff": {
     "inserted_order_id": "ORD-041",
-    "reassigned_orders": [{"order_id":"ORD-032","from_vehicle_id":"VEH-002","to_vehicle_id":"VEH-003"}],
-    "sequence_changes": [],
-    "vehicle_load_changes": [],
-    "total_distance_delta_m": 5200,
-    "total_duration_delta_s": 960
+    "reassigned_orders": [],
+    "sequence_changes": [{"order_id":"ORD-041","from_sequence":null,"to_sequence":15,"to_vehicle_id":"VEH-003"}],
+    "vehicle_load_changes": [{"vehicle_id":"VEH-003","before_load_kg":152.0,"after_load_kg":154.0,"delta_load_kg":2.0}],
+    "total_distance_delta_m": 137,
+    "total_duration_delta_s": 17
   },
   "exceptions": [],
   "warnings": [{"code":"SIMULATED_ROUTE_DATA","message":"非 Google 即時資料"}],

@@ -13,6 +13,7 @@
 ### Safety
 
 - P0 remains `READY_FOR_HUMAN_REVIEW — not DONE`; the demo never Dispatches or deploys.
+- Urgent insertion now compares the exact OR-Tools base plan and defaults to validated `MINIMAL_CHANGE`; full replan requires explicit mode, reason, and movement scope.
 
 ## 0.1.0-spec — 2026-09-01
 

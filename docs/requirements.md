@@ -33,6 +33,7 @@ This document decomposes the approved product prompt into traceable requirements
 | FR-URG-001 | Preview exactly one pre-dispatch urgent order as a new immutable version. | GD-006; lifecycle tests |
 | FR-URG-002 | Return before/after assignment, sequence, distance/time, load, conflict diff. | Preview contract tests |
 | FR-URG-006 | Urgent preview computes non-placeholder reassignment, sequence, load, and distance/time deltas and independently validates the candidate. | Demo flow and order-41 acceptance test |
+| FR-URG-007 | Urgent preview compares the exact base algorithm/version/dataset identity and returns hashes, assigned weight, unassigned IDs, and per-vehicle loads before and after. | OR-Tools base regression test |
 | FR-URG-003 | Require explicit human confirmation of exact plan/version. | Transition tests; AC-002 |
 | FR-URG-004 | Reject automatic insertion after `DISPATCHED`. | GD-007; AC-006 |
 | FR-STATE-001 | Persist and audit `DRAFT→VALIDATED→PROPOSED→CONFIRMED→DISPATCHED`. | State-machine tests |

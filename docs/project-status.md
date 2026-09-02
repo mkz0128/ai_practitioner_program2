@@ -10,7 +10,7 @@
 
 ## NOW
 
-- Record and review executable competition P0 acceptance evidence; do not dispatch, deploy, or touch production.
+- Correct urgent-preview baseline identity and validate minimum-change insertion; do not dispatch, deploy, or touch production.
 
 ## NEXT
 
@@ -31,6 +31,7 @@
 - `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass, but P0/Agent remains open until the regression evidence is reviewed.
 - `API-001 — Acceptance`: all 13 contract routes and the 40-order preview flow pass automated checks; dispatch was intentionally not executed in the demo gate.
 - `P0-AC-001 — Competition Acceptance`: field-level import errors, evidence-grounded Plan reasons, and computed order-41 diff are executable; human review is still required before status changes.
+- `P0-URG-002 — Regression`: prior Demo compared OR-Tools initial output with a Baseline preview; correction is implemented and the aligned OR-Tools regression now passes.
 
 ## DONE THIS ROUND
 
@@ -63,6 +64,9 @@
 - Added executable competition acceptance tests for Z4 capacity redistribution, missing fields, time conflicts, all-capacity exhaustion, Validator reconciliation, and Plan API evidence.
 - Added `scripts/run_p0_demo.py`, a Chinese 40-order/4-vehicle preview walkthrough that stops before Dispatch/deployment.
 - Extended Golden Dataset to GD-026–GD-030 for field review, deterministic reasons, urgent diff, demo, and Validator gates.
+- Corrected the Demo to create one OR-Tools initial `plan_id/version/dataset` and use that exact identity for urgent preview.
+- Implemented deterministic `MINIMAL_CHANGE` insertion that preserves unaffected vehicle assignments and relative order; full replan now exposes explicit mode/reason/scope metadata.
+- Added before/after algorithm, dataset hash, assigned weight, unassigned IDs, and per-vehicle load evidence, plus a regression test preventing Baseline/OR-Tools cross-comparison.
 
 ## LAST VALIDATION
 
@@ -82,3 +86,4 @@
 - Responses diagnostic: historical malformed tool envelope → `BadRequestError` / HTTP 400 / `missing_required_parameter`; corrected top-level `input`, `tools[].name`, `tools[].parameters`, `tools[].strict`, and `max_output_tokens` with `gpt-5-mini` → direct text and strict tool `PASS`. No model upgrade permitted or used.
 - P0 engineering checklist: deterministic core, API contract, Agent SDK E2E, observability/cost guard, OpenAPI snapshot, and demo flow all have passing automated evidence; only human status sign-off remains.
 - Competition P0 checklist: all requested executable cases and one-command demo pass; P0 and OpenAI Agent remain `READY_FOR_HUMAN_REVIEW — not DONE` pending explicit human status sign-off.
+- Urgent preview correction: aligned OR-Tools before/after is 365 kg → 367 kg, 0 → 0 unassigned, one affected vehicle, and a 2 kg load delta; P0 remains not DONE pending human review.

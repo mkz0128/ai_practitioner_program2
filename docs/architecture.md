@@ -169,6 +169,13 @@ Default policy is **minimum-change replanning**, not an unrestricted full reshuf
 4. Only if that fails, create a separately labelled `FULL_REPLAN` fallback preview. It must expose scope, moved orders, before/after metrics, and the reason escalation was needed.
 5. No preview mutates the base plan; exact plan/version confirmation remains mandatory.
 
+The implementation first evaluates every legal insertion position on every eligible existing
+route, keeping all other vehicle assignments and their relative order unchanged. The lowest
+deterministic distance/time insertion is returned as `mode: MINIMAL_CHANGE`. Only when no such
+candidate passes the independent Validator does the service fall back to the same algorithm's
+full replan and return `mode: FULL_REPLAN`, `full_replan_reason`, `affected_vehicle_count`, and
+`moved_order_count`.
+
 ### P0 Competition Acceptance Controls
 
 The importer emits one `MISSING_REQUIRED_FIELD` error per missing required cell. Paths are

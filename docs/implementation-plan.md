@@ -123,6 +123,11 @@ capacity exceptions, and independent Validator reconciliation. `scripts/run_p0_d
 one-command Chinese walkthrough for the 40-order/4-vehicle fixture; it previews order 41 and
 never dispatches or deploys.
 
+Urgent insertion is implemented as a deterministic minimum-change search over legal positions in
+eligible existing routes. The preview retains the base plan's algorithm and identity, returns
+before/after dataset hashes and assigned weights, and reports `MINIMAL_CHANGE`; `FULL_REPLAN` is
+only a validated fallback with explicit scope and moved-order metadata.
+
 ### Verification
 
 - OpenAI-off test proves deterministic REST continuity.

@@ -43,13 +43,17 @@ def test_demo_40_order_flow_stops_before_dispatch() -> None:
         "/api/v1/plans",
         json={
             "dataset_id": dataset_id,
-            "algorithm": "BASELINE",
+            "algorithm": "ORTOOLS",
             "route_provider_preference": "SIMULATED",
         },
     )
     assert initial.status_code == 201, initial.text
     plan = initial.json()
-    assert plan["summary"]["assigned_order_count"] + plan["summary"]["unassigned_order_count"] == 40
+    assert plan["algorithm"] == "ORTOOLS"
+    assert plan["summary"]["assigned_order_count"] == 40
+    assert plan["summary"]["assigned_weight_kg"] == 365
+    assert plan["summary"]["unassigned_orders"] == []
+    assert [vehicle["planned_load_kg"] for vehicle in plan["vehicles"]] == [93.0, 97.0, 152.0, 23.0]
     assert plan["validation"]["valid"] is True
     plan_id = plan["plan_id"]
     order_id = next(
@@ -108,6 +112,21 @@ def test_demo_40_order_flow_stops_before_dispatch() -> None:
     assert body["preview_version"] == 2
     assert body["after"]["assigned_order_count"] + body["after"]["unassigned_order_count"] == 41
     assert body["diff"]["inserted_order_id"] == "ORD-041"
+    assert body["before"]["algorithm"] == "ORTOOLS"
+    assert body["before"]["dataset_hash"] == plan["dataset_hash"]
+    assert body["before"]["assigned_weight_kg"] == 365
+    assert body["before"]["unassigned_orders"] == []
+    assert [vehicle["planned_load_kg"] for vehicle in body["before"]["vehicles"]] == [
+        93.0,
+        97.0,
+        152.0,
+        23.0,
+    ]
+    assert body["after"]["algorithm"] == "ORTOOLS"
+    assert body["comparison"]["base_algorithm"] == body["comparison"]["preview_algorithm"]
+    assert body["mode"] == "MINIMAL_CHANGE"
+    assert body["affected_vehicle_count"] == 1
+    assert body["moved_order_count"] == 0
     assert body["diff"]["sequence_changes"], body
     assert body["diff"]["vehicle_load_changes"], body
     assert any(

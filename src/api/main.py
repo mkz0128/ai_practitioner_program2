@@ -20,10 +20,11 @@ from src.providers.tdx import TDXProvider
 from src.repositories.sqlite import SQLiteRepository
 from src.services.errors import ValidationReport
 from src.services.evidence import recommendation_reason
+from src.services.fingerprint import dataset_hash
 from src.services.importer import parse_workbook, validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.plan_diff import compute_plan_diff
-from src.services.planner import PlanResult, build_baseline, build_ortools
+from src.services.planner import PlanResult, build_baseline, build_ortools, try_minimal_insert
 from src.services.validator import PlanValidation, validate_plan
 
 
@@ -235,8 +236,21 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             }
         )
     assigned = sum(len(route.order_ids) for route in record.plan.routes)
+    assigned_order_ids = {
+        order_id for route in record.plan.routes for order_id in route.order_ids
+    }
     total_packages = sum(packages.values())
     total_weight = sum(order.total_weight_kg for order in dataset.orders) if dataset else 0.0
+    assigned_weight = (
+        sum(
+            orders[order_id].total_weight_kg
+            for order_id in assigned_order_ids
+            if order_id in orders
+        )
+        if dataset
+        else 0.0
+    )
+    current_dataset_hash = dataset_hash(dataset) if dataset else None
     return {
         "plan_id": record.plan_id,
         "version": record.version,
@@ -245,6 +259,7 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         "timezone": "Asia/Taipei",
         "provider_mode": record.matrix.provider_mode,
         "algorithm": record.plan.algorithm,
+        "dataset_hash": current_dataset_hash,
         "is_fully_feasible": record.plan.complete and record.validation.valid,
         "requires_human_confirmation": True,
         "summary": {
@@ -252,8 +267,21 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             "unassigned_order_count": len(record.plan.unassigned_orders),
             "total_package_count": total_packages,
             "total_weight_kg": round(total_weight, 3),
+            "assigned_weight_kg": round(assigned_weight, 3),
             "total_distance_m": record.plan.total_distance_m,
             "total_duration_s": record.plan.total_driving_time_s,
+            "algorithm": record.plan.algorithm,
+            "dataset_hash": current_dataset_hash,
+            "unassigned_orders": list(record.plan.unassigned_orders),
+            "vehicles": [
+                {
+                    "vehicle_id": route.vehicle_id,
+                    "planned_load_kg": route.planned_load_kg,
+                    "max_load_kg": route.max_load_kg,
+                    "load_utilization": route.load_utilization,
+                }
+                for route in record.plan.routes
+            ],
         },
         "vehicles": routes,
         "unassigned_orders": record.plan.unassigned_orders,
@@ -604,7 +632,19 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
         )
     preview_dataset_id = f"DS-{uuid4().hex[:12].upper()}"
     preview_matrix = SimulatedRouteProvider().build(new_dataset)
-    preview_plan = build_ortools(new_dataset, preview_matrix, settings.solver_time_limit_seconds)
+    preview_plan = try_minimal_insert(
+        base_record.plan, new_dataset, preview_matrix, new_order
+    )
+    mode = "MINIMAL_CHANGE"
+    full_replan_reason: str | None = None
+    if preview_plan is None:
+        mode = "FULL_REPLAN"
+        full_replan_reason = "NO_LEGAL_SINGLE_ROUTE_INSERTION"
+        preview_plan = (
+            build_ortools(new_dataset, preview_matrix, settings.solver_time_limit_seconds)
+            if base_record.plan.algorithm == "ORTOOLS"
+            else build_baseline(new_dataset, preview_matrix)
+        )
     preview_validation = validate_plan(new_dataset, preview_plan, preview_matrix)
     if not preview_validation.valid:
         return _error(
@@ -643,14 +683,39 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
     )
     repository.save_plan(preview_record, make_current=False)
     diff = compute_plan_diff(base_record.plan, preview_plan)
+    affected_vehicles = {
+        change["vehicle_id"]
+        for change in diff["vehicle_load_changes"]
+        if change["delta_load_kg"] != 0
+    }
+    affected_vehicles.update(
+        change["from_vehicle_id"]
+        for change in diff["sequence_changes"]
+        if change["from_vehicle_id"] is not None
+    )
+    affected_vehicles.update(
+        change["to_vehicle_id"]
+        for change in diff["sequence_changes"]
+        if change["to_vehicle_id"] is not None
+    )
     return {
         "plan_id": plan_id,
         "base_version": base_record.version,
         "preview_version": preview_version,
         "feasible": True,
         "requires_human_confirmation": True,
+        "mode": mode,
+        "full_replan_reason": full_replan_reason,
+        "affected_vehicle_count": len(affected_vehicles),
+        "moved_order_count": len(diff["reassigned_orders"]),
         "before": _plan_payload(base_record)["summary"],
         "after": _plan_payload(preview_record)["summary"],
+        "comparison": {
+            "base_algorithm": base_record.plan.algorithm,
+            "preview_algorithm": preview_plan.algorithm,
+            "base_dataset_hash": dataset_hash(dataset_record.dataset),
+            "preview_dataset_hash": dataset_hash(new_dataset),
+        },
         "diff": {"inserted_order_id": new_order.order_id, **diff},
         "warnings": [{"code": "SIMULATED_ROUTE_DATA", "message": "非 Google 即時資料."}],
         "request_id": _request_id(request),

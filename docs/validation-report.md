@@ -45,6 +45,8 @@ git_repository: true
 | Plan evidence reasons | Every assigned stop contains deterministic zone/weight/load/time/distance evidence | Passed — Plan API acceptance test |
 | Urgent preview diff | Reassignment, sequence, load, and metric deltas are calculated from before/after plans | Passed — order-41 demo assertion and diff builder |
 | Chinese P0 demo | One command prints 40/4 routes, redistribution, exception, full preview diff, and human checkpoint | Passed — `scripts/run_p0_demo.py` exits 0; no Dispatch/deploy |
+| Urgent base-plan identity | Demo preview uses the same OR-Tools plan ID/version/dataset/algorithm and matching 365 kg before state | Passed — regression test and Demo output |
+| Minimum-change insertion | Legal existing-route insertion preserves unaffected routes and produces a one-vehicle change for ORD-041 | Passed — `MINIMAL_CHANGE`, Validator valid |
 
 ## Dependency Resolution Evidence
 
@@ -97,6 +99,10 @@ git_repository: true
 - Demo command: `.venv\\Scripts\\python.exe scripts/run_p0_demo.py` completed successfully and
   printed Chinese per-vehicle order/weight/utilization/reason evidence, redistribution, exception,
   full preview diff, and a human-confirmation prompt; Dispatch and deployment were not invoked.
+- Corrected urgent Demo evidence: OR-Tools initial plan before = 40 assigned / 365 kg with vehicle
+  loads `93/97/152/23`; order 41 is inserted into VEH-003 with no existing reassignment, only
+  four sequence records on that route, load `152 -> 154 kg`, distance `+137 m`, and time `+17 s`.
+  Base and preview algorithm are both ORTOOLS; their dataset hashes are explicitly returned.
 - Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; latest measured solve times were Baseline `0.584ms` and OR-Tools `5,985.454ms`, reported only and not as exact cross-machine criteria.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
 - Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.

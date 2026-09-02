@@ -240,6 +240,72 @@ def build_baseline(dataset: Dataset, matrix: MatrixResult) -> PlanResult:
     )
 
 
+def try_minimal_insert(
+    base_plan: PlanResult, dataset: Dataset, matrix: MatrixResult, pending_order: Order
+) -> PlanResult | None:
+    """Insert one order while preserving all unaffected vehicle routes.
+
+    Every candidate keeps existing assignments and relative order intact. Only the
+    candidate vehicle's route receives a new stop; callers independently validate
+    the returned plan before exposing it.
+    """
+    vehicles = _vehicle_map(dataset)
+    orders = {order.order_id: order for order in dataset.orders}
+    orders[pending_order.order_id] = pending_order
+    candidates: list[tuple[tuple[int, int, int, str], PlanResult]] = []
+    for route_index, base_route in enumerate(base_plan.routes):
+        vehicle = vehicles.get(base_route.vehicle_id)
+        if vehicle is None or not _eligible(pending_order, vehicle):
+            continue
+        current_load = vehicle.current_load_kg + sum(
+            orders[order_id].total_weight_kg for order_id in base_route.order_ids
+        )
+        if current_load + pending_order.total_weight_kg > vehicle.max_load_kg:
+            continue
+        for position in range(len(base_route.order_ids) + 1):
+            candidate_ids = [*base_route.order_ids]
+            candidate_ids.insert(position, pending_order.order_id)
+            candidate_route = _route_metrics(candidate_ids, vehicle, orders, matrix)
+            if candidate_route is None:
+                continue
+            routes = [
+                candidate_route if index == route_index else base_route
+                for index, base_route in enumerate(base_plan.routes)
+            ]
+            unassigned = [
+                order_id
+                for order_id in base_plan.unassigned_orders
+                if order_id != pending_order.order_id
+            ]
+            candidate_plan = PlanResult(
+                algorithm=base_plan.algorithm,
+                state="PROPOSED",
+                complete=not unassigned,
+                provider_mode=matrix.provider_mode,
+                routes=routes,
+                unassigned_orders=sorted(unassigned),
+                unassigned_reasons={
+                    order_id: reason
+                    for order_id, reason in base_plan.unassigned_reasons.items()
+                    if order_id != pending_order.order_id
+                },
+                total_distance_m=sum(route.total_distance_m for route in routes),
+                total_driving_time_s=sum(route.total_duration_s for route in routes),
+                solver_status=base_plan.solver_status,
+                optimality_not_proven=base_plan.optimality_not_proven,
+            )
+            score = (
+                candidate_plan.total_distance_m - base_plan.total_distance_m,
+                candidate_plan.total_driving_time_s - base_plan.total_driving_time_s,
+                position,
+                base_route.vehicle_id,
+            )
+            candidates.append((score, candidate_plan))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
+
+
 def build_ortools(
     dataset: Dataset, matrix: MatrixResult, time_limit_seconds: int = 10
 ) -> PlanResult:
