@@ -112,6 +112,9 @@ diagnostic, not hidden by a model change.
 The API gate counts 13 documented method/path pairs, 13 FastAPI registrations, and 13 exercised
 responses. The 40-order demo gate runs import → validation → initial plan → route-provider
 fallback → Agent explanation → confirm → order-41 preview/diff and deliberately does not dispatch.
+The implemented `src/observability` package writes redacted JSONL trajectory events and enforces
+turn/tool/token/wall-clock/repeated-call limits; `docs/openapi-snapshot.sha256` fails closed on
+contract drift.
 
 ### Verification
 

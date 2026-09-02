@@ -49,8 +49,8 @@ This document decomposes the approved product prompt into traceable requirements
 | NFR-SEC-001 | No secrets, PII, full workbook, or chain-of-thought in logs/traces/context/Git. | Redaction tests and repository scan |
 | NFR-SEC-002 | CORS origins come from environment; no permanent wildcard. | Settings/ready tests |
 | NFR-SEC-003 | Untrusted chat/cells/provider text cannot override guardrails or approval. | GD-008 injection tests |
-| NFR-OBS-001 | Correlate request, dataset, plan/version, and Agent run IDs. | Log event schema tests |
-| NFR-COST-001 | Enforce turn/tool/token/time/retry/loop limits. | Boundary and limit tests |
+| NFR-OBS-001 | Correlate request, dataset, plan/version, and Agent run IDs without prompts, workbook contents, or secrets. | `JsonlEventRecorder` redaction and event-schema tests |
+| NFR-COST-001 | Enforce 8-turn, 12-tool, 30k-token, 120-second, and repeated-call limits with fail-closed `LIMIT_REACHED`. | `RunBudget` boundary tests and Agent runtime integration |
 | NFR-MNT-001 | Domain/optimizer/validator do not import Agent/LLM modules. | Architecture dependency test |
 | NFR-VER-001 | Python/dependencies/models use reviewed locks/config. | Lock consistency and config tests |
 | NFR-REP-001 | Canonical Benchmark pins runtime/OR-Tools, fixture/matrix hash, integer units, ordering, tie-breakers, search parameters, process model, warm-up, and measured-run protocol. | Repeated-run route/metric equality; GD-014 |
@@ -80,7 +80,7 @@ This document decomposes the approved product prompt into traceable requirements
 | Google Routes | Provider interface, field mask, split keys, fallback | provider tests | `architecture.md` |
 | TDX | P0 status/fallback, P1 mapping | provider tests | `implementation-plan.md` |
 | SQLite | Versioned persistence/audit | repository tests | `architecture.md` |
-| REST/OpenAPI/CORS | Contract-first API | snapshot/integration tests | `api-contract.md` |
+| REST/OpenAPI/CORS | Contract-first API | 13-route contract tests plus OpenAPI hash snapshot | `api-contract.md`, `openapi-snapshot.sha256` |
 | Observability/cost | Structured logs, tracing, limits | schema/limit tests | `observability.config` |
 | Golden/red team | Concrete algorithm, provider, Agent, injection, and API contract cases | Eval runner | `golden-dataset.json` |
 

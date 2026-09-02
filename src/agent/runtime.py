@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from uuid import uuid4
 
 from agents import (
     Agent,
@@ -20,6 +21,7 @@ from openai import AsyncOpenAI
 
 from src.config import get_settings
 from src.domain.models import Dataset, Order
+from src.observability import JsonlEventRecorder, LimitReachedError, RunBudget
 from src.services.importer import validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.planner import PlanResult, build_baseline, build_ortools
@@ -32,7 +34,42 @@ class DispatchAgentContext:
     matrix: MatrixResult
     plan: PlanResult | None = None
     pending_order: Order | None = None
+    request_id: str | None = None
+    dataset_id: str | None = None
+    plan_id: str | None = None
+    plan_version: int | None = None
+    agent_run_id: str = field(default_factory=lambda: f"RUN-{uuid4().hex[:12].upper()}")
+    budget: RunBudget = field(default_factory=RunBudget)
+    recorder: JsonlEventRecorder | None = None
     evidence: list[dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.recorder is None:
+            self.recorder = JsonlEventRecorder(self.agent_run_id)
+
+
+def _tool_started(
+    context: DispatchAgentContext, tool_name: str, arguments: dict[str, Any]
+) -> None:
+    context.budget.check_tool_call(tool_name, arguments)
+    assert context.recorder is not None
+    context.recorder.record(
+        "tool_started",
+        tool_name=tool_name,
+        argument_names=sorted(arguments),
+        tool_call_number=context.budget.tool_calls,
+    )
+
+
+def _tool_finished(context: DispatchAgentContext, tool_name: str) -> None:
+    assert context.recorder is not None
+    context.recorder.record(
+        "tool_finished",
+        tool_name=tool_name,
+        success=True,
+        tool_call_number=context.budget.tool_calls,
+        evidence_count=len(context.evidence),
+    )
 
 
 @function_tool(strict_mode=True)
@@ -41,6 +78,7 @@ def plan_dispatch(
     algorithm: Literal["BASELINE", "ORTOOLS"],
 ) -> str:
     """Build and independently validate a deterministic delivery plan."""
+    _tool_started(ctx.context, "plan_dispatch", {"algorithm": algorithm})
     if algorithm == "BASELINE":
         plan = build_baseline(ctx.context.dataset, ctx.context.matrix)
     else:
@@ -61,6 +99,7 @@ def plan_dispatch(
         "provider_mode": ctx.context.matrix.provider_mode,
     }
     ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "plan_dispatch")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -78,6 +117,7 @@ def _plan_for_query(context: DispatchAgentContext) -> PlanResult:
 @function_tool(strict_mode=True)
 def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Return the vehicle with the highest validated planned load."""
+    _tool_started(ctx.context, "highest_load_vehicle", {})
     plan = _plan_for_query(ctx.context)
     route = max(plan.routes, key=lambda item: (item.planned_load_kg, item.vehicle_id), default=None)
     evidence = {
@@ -89,6 +129,7 @@ def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
         "algorithm": plan.algorithm,
     }
     ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "highest_load_vehicle")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -97,12 +138,14 @@ def explain_unassigned(
     ctx: RunContextWrapper[DispatchAgentContext], order_id: str
 ) -> str:
     """Return only the validator-backed reason for an unassigned order."""
+    _tool_started(ctx.context, "explain_unassigned", {"order_id": order_id})
     plan = _plan_for_query(ctx.context)
     reason = plan.unassigned_reasons.get(order_id)
     if reason is None:
         reason = "ORDER_IS_ASSIGNED"
     evidence = {"tool": "explain_unassigned", "order_id": order_id, "reason": reason}
     ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "explain_unassigned")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -111,6 +154,7 @@ def preview_urgent_insert(
     ctx: RunContextWrapper[DispatchAgentContext], order_id: str
 ) -> str:
     """Preview a structured urgent order with deterministic planning and validation."""
+    _tool_started(ctx.context, "preview_urgent_insert", {"order_id": order_id})
     pending = ctx.context.pending_order
     if pending is None or pending.order_id != order_id:
         evidence = {
@@ -119,6 +163,7 @@ def preview_urgent_insert(
             "order_id": order_id,
         }
         ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "preview_urgent_insert")
         return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     if order_id in {order.order_id for order in ctx.context.dataset.orders}:
         evidence = {
@@ -127,6 +172,7 @@ def preview_urgent_insert(
             "order_id": order_id,
         }
         ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "preview_urgent_insert")
         return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     new_dataset = ctx.context.dataset.model_copy(
         update={
@@ -143,6 +189,7 @@ def preview_urgent_insert(
             "validation": dataset_validation.model_dump(mode="json"),
         }
         ctx.context.evidence.append(invalid_evidence)
+        _tool_finished(ctx.context, "preview_urgent_insert")
         return json.dumps(invalid_evidence, ensure_ascii=False, sort_keys=True)
     preview_matrix = SimulatedRouteProvider().build(new_dataset)
     preview_plan = build_ortools(new_dataset, preview_matrix, time_limit_seconds=2)
@@ -160,6 +207,7 @@ def preview_urgent_insert(
         "provider_mode": preview_matrix.provider_mode,
     }
     ctx.context.evidence.append(preview_evidence)
+    _tool_finished(ctx.context, "preview_urgent_insert")
     return json.dumps(preview_evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -218,20 +266,60 @@ async def run_dispatch_agent(
     model: Model | None = None,
     pending_order: Order | None = None,
     require_tool: bool = True,
+    request_id: str | None = None,
+    dataset_id: str | None = None,
+    plan_id: str | None = None,
+    plan_version: int | None = None,
 ) -> tuple[str, DispatchAgentContext, Any]:
-    context = DispatchAgentContext(dataset=dataset, matrix=matrix, pending_order=pending_order)
-    agent = create_dispatch_agent(model)
-    result = await Runner.run(
-        agent,
-        message,
-        context=context,
-        max_turns=4,
-        run_config=RunConfig(
-            tracing_disabled=True,
-            trace_include_sensitive_data=False,
-            workflow_name="delivery-dispatch-e2e",
-        ),
+    context = DispatchAgentContext(
+        dataset=dataset,
+        matrix=matrix,
+        pending_order=pending_order,
+        request_id=request_id,
+        dataset_id=dataset_id,
+        plan_id=plan_id,
+        plan_version=plan_version,
     )
+    agent = create_dispatch_agent(model)
+    assert context.recorder is not None
+    context.recorder.record("request_received", message_length=len(message))
+    context.recorder.record(
+        "context_loaded",
+        order_count=len(dataset.orders),
+        request_id=request_id,
+        dataset_id=dataset_id,
+        plan_id=plan_id,
+        plan_version=plan_version,
+    )
+    try:
+        result = await Runner.run(
+            agent,
+            message,
+            context=context,
+            max_turns=context.budget.settings.max_agent_turns_per_request,
+            run_config=RunConfig(
+                tracing_disabled=True,
+                trace_include_sensitive_data=False,
+                workflow_name="delivery-dispatch-e2e",
+            ),
+        )
+        context.budget.observe_usage(result.context_wrapper.usage)
+        context.budget.check_turn(getattr(result, "_current_turn", 0))
+        context.budget.check_wall_clock()
+    except LimitReachedError as exc:
+        context.recorder.record(
+            "error_observed", error_type=type(exc).__name__, error_code=exc.code
+        )
+        raise
+    except Exception as exc:
+        context.recorder.record("error_observed", error_type=type(exc).__name__)
+        raise
     if require_tool and not context.evidence:
         raise RuntimeError("AGENT_DID_NOT_CALL_PLAN_TOOL")
+    context.recorder.record(
+        "request_finished",
+        status="success",
+        tool_calls=context.budget.tool_calls,
+        total_tokens=context.budget.total_tokens,
+    )
     return result.final_output, context, result

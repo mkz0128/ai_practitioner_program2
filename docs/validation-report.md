@@ -39,6 +39,8 @@ git_repository: true
 | OpenAI Agents SDK E2E | `Runner.run` + strict deterministic tools + independent Validator + evidence-only final answer | Passed — live opt-in daily dispatch PASS; seven provider-neutral SDK scenarios PASS |
 | API contract coverage | Documented method/path pairs vs FastAPI routes and safe response exercise | Passed — 13 defined / 13 implemented / 13 exercised |
 | 40-order demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff; no dispatch | Passed — base version remained unchanged |
+| Observability and cost guard | Redacted JSONL trajectory events, correlation IDs, fail-closed Agent limits, and regression tests | Passed — `src/observability`, 3 boundary/redaction tests |
+| OpenAPI snapshot | Stable hash and exact 13-path set | Passed — `docs/openapi-snapshot.sha256` and snapshot test |
 
 ## Dependency Resolution Evidence
 
@@ -79,14 +81,15 @@ git_repository: true
 
 - FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, dispatch lifecycle, urgent preview, and structured explanation tests passed.
 - Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, Benchmark, SQLite repository, urgent preview, structured evidence, and provider fallback tests passed.
-- Keyless suite: `24 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests`: passed; `mypy src`: passed across 21 source files.
+- Keyless suite: `28 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests`: passed; `mypy src`: passed across 24 source files.
 - Agents SDK scenario suite: `7 passed`; explicit live `Runner.run` with `gpt-5-mini`, strict `plan_dispatch`, and Validator: `1 passed`.
 - Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
 - API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
+- OpenAPI snapshot: exact 13-path set and SHA-256 snapshot matched; redacted observability and `RunBudget` limit tests passed.
 - Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time `5,037.672ms` (reported only, not exact cross-machine criterion).
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
-- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Bounded request tracing/usage metrics and final human review remain staged follow-up work; no claim is made that P0 or the OpenAI Agent is complete.
+- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.
 
 ## Final Result
 
-Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. P0 and the OpenAI Agent remain **IN_PROGRESS / not signed off** pending final review of the Responses regression, live/provider evidence, and remaining observability gates.
+Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. All currently actionable P0 engineering checks pass. P0 and the OpenAI Agent remain **READY_FOR_HUMAN_REVIEW / not DONE** pending explicit status sign-off and frontend acceptance; no dispatch or deployment was performed.

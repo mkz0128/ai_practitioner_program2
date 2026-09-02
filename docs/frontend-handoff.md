@@ -1,5 +1,15 @@
 # Frontend Handoff
 
+Backend implementation is available locally. Start it from the repository root with:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn src.api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Then open Swagger at `http://127.0.0.1:8000/docs` or use the pinned schema at
+`docs/openapi-snapshot.sha256`. The snapshot test fails closed if the 13-route contract changes
+without a deliberate update.
+
 ## What the frontend can rely on
 
 - REST only; no WebSocket.
@@ -88,4 +98,7 @@ Backend reads a comma-separated allowlist from `CORS_ALLOWED_ORIGINS`. Frontend 
 
 ## Current integration status
 
-This round defines the contract and workbook fixtures only. No server exists until `APPROVE_IMPLEMENTATION`; sample numeric values in `api-contract.md` illustrate shape and are not generated solver outputs.
+The current local server implements all documented routes. Sample numeric values in
+`api-contract.md` illustrate shape; generated solver outputs come from the fixed demo fixture and
+are validated independently. The frontend should use `tests/test_demo_flow.py` as the no-dispatch
+integration sequence and must never call `/dispatch` without an explicit dispatcher action.

@@ -236,7 +236,7 @@ lock_file: requirements.lock
 version_snapshot_date: 2026-09-01
 ```
 
-No `latest`, caret, tilde, or open-ended dependency range is allowed in application dependencies. Model name is read only from `OPENAI_MODEL`; current proposed demo default is `gpt-5.6-luna`, subject to eval and account availability.
+No `latest`, caret, tilde, or open-ended dependency range is allowed in application dependencies. Model name is read only from `OPENAI_MODEL`; the locked demo default is `gpt-5-mini` and must not be silently upgraded.
 
 ## 8. External Providers and Degradation
 
