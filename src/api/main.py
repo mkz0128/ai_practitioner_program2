@@ -19,8 +19,10 @@ from src.domain.models import Dataset, Order, Package, Priority, Vehicle, Vehicl
 from src.providers.tdx import TDXProvider
 from src.repositories.sqlite import SQLiteRepository
 from src.services.errors import ValidationReport
+from src.services.evidence import recommendation_reason
 from src.services.importer import parse_workbook, validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
+from src.services.plan_diff import compute_plan_diff
 from src.services.planner import PlanResult, build_baseline, build_ortools
 from src.services.validator import PlanValidation, validate_plan
 
@@ -169,6 +171,7 @@ def _validation_payload(report: ValidationReport) -> dict[str, Any]:
         "is_valid": report.is_valid,
         "error_count": len(report.errors),
         "warning_count": len(report.warnings),
+        "requires_manual_review": report.requires_manual_review,
         "errors": [error.model_dump() for error in report.errors],
         "warnings": [warning.model_dump() for warning in report.warnings],
     }
@@ -188,6 +191,33 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             if dataset
             else None
         )
+        cumulative_load = vehicle.current_load_kg if vehicle else 0.0
+        previous_node_id = "DEPOT-001"
+        stops: list[dict[str, Any]] = []
+        for stop in route.stops:
+            order = orders.get(stop.order_id)
+            if order is None:
+                continue
+            cumulative_load = round(cumulative_load + order.total_weight_kg, 3)
+            stop_payload = {
+                **stop.model_dump(),
+                "location_label": order.location_label,
+                "reason": recommendation_reason(
+                    route,
+                    stop,
+                    vehicle,
+                    order,
+                    previous_node_id,
+                    cumulative_load,
+                    record.matrix.provider_mode,
+                    record.validation.valid,
+                    record.plan.algorithm,
+                )
+                if vehicle
+                else None,
+            }
+            stops.append(stop_payload)
+            previous_node_id = stop.order_id
         routes.append(
             {
                 "vehicle_id": route.vehicle_id,
@@ -201,15 +231,7 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
                 "total_distance_m": route.total_distance_m,
                 "total_duration_s": route.total_duration_s,
                 "route_provider_mode": record.matrix.provider_mode,
-                "stops": [
-                    {
-                        **stop.model_dump(),
-                        "location_label": orders[stop.order_id].location_label
-                        if stop.order_id in orders
-                        else stop.order_id,
-                    }
-                    for stop in route.stops
-                ],
+                "stops": stops,
             }
         )
     assigned = sum(len(route.order_ids) for route in record.plan.routes)
@@ -398,6 +420,7 @@ async def import_excel(request: Request, file: Annotated[UploadFile, File(...)])
             "DATASET_VALIDATION_FAILED",
             "工作簿驗證失敗。",
             field_errors=[error.model_dump() for error in report.errors],
+            requires_manual_review=report.requires_manual_review,
         )
     dataset_id = f"DS-{uuid4().hex[:12].upper()}"
     record = DatasetRecord(
@@ -619,23 +642,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
         preview_record.created_at,
     )
     repository.save_plan(preview_record, make_current=False)
-    before_vehicle = {
-        order_id: route.vehicle_id
-        for route in base_record.plan.routes
-        for order_id in route.order_ids
-    }
-    after_vehicle = {
-        order_id: route.vehicle_id for route in preview_plan.routes for order_id in route.order_ids
-    }
-    reassigned = [
-        {
-            "order_id": order_id,
-            "from_vehicle_id": before_vehicle[order_id],
-            "to_vehicle_id": after_vehicle[order_id],
-        }
-        for order_id in sorted(set(before_vehicle) & set(after_vehicle))
-        if before_vehicle[order_id] != after_vehicle[order_id]
-    ]
+    diff = compute_plan_diff(base_record.plan, preview_plan)
     return {
         "plan_id": plan_id,
         "base_version": base_record.version,
@@ -644,16 +651,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
         "requires_human_confirmation": True,
         "before": _plan_payload(base_record)["summary"],
         "after": _plan_payload(preview_record)["summary"],
-        "diff": {
-            "inserted_order_id": new_order.order_id,
-            "reassigned_orders": reassigned,
-            "sequence_changes": [],
-            "vehicle_load_changes": [],
-            "total_distance_delta_m": preview_plan.total_distance_m
-            - base_record.plan.total_distance_m,
-            "total_duration_delta_s": preview_plan.total_driving_time_s
-            - base_record.plan.total_driving_time_s,
-        },
+        "diff": {"inserted_order_id": new_order.order_id, **diff},
         "warnings": [{"code": "SIMULATED_ROUTE_DATA", "message": "非 Google 即時資料."}],
         "request_id": _request_id(request),
     }

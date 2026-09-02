@@ -89,6 +89,37 @@ def _rows(sheet: Any, sheet_name: str, errors: list[FieldError]) -> list[dict[st
     expected = list(SHEET_FIELDS[sheet_name])
     headers = [str(value).strip() if value is not None else "" for value in values[0]]
     if headers != expected:
+        required_fields = {
+            "orders": {"location_label", "time_slot"},
+            "packages": {"weight_kg"},
+        }.get(sheet_name, set())
+        missing_required_columns = sorted(required_fields - set(headers))
+        if missing_required_columns:
+            identifier_field = "order_id" if sheet_name == "orders" else "package_id"
+            identifier_index = (
+                headers.index(identifier_field) if identifier_field in headers else None
+            )
+            for row_number, row in enumerate(values[1:], start=2):
+                if all(value is None for value in row):
+                    continue
+                identifier = (
+                    row[identifier_index]
+                    if identifier_index is not None and identifier_index < len(row)
+                    else None
+                )
+                identifier = (
+                    str(identifier).strip() if identifier is not None else f"row-{row_number}"
+                )
+                for field in missing_required_columns:
+                    errors.append(
+                        FieldError(
+                            path=f"{sheet_name}.{identifier}.{field}",
+                            code="MISSING_REQUIRED_FIELD",
+                            message=f"{sheet_name} {identifier} 缺少必填欄位 {field}。",
+                            requires_manual_review=True,
+                        )
+                    )
+            return []
         errors.append(
             FieldError(
                 path=f"{sheet_name}[1]",
@@ -146,6 +177,28 @@ def parse_workbook(
         ("zones", Zone, zones),
     ):
         for row_number, record in enumerate(records[sheet_name], start=2):
+            required_fields = {
+                "orders": ("location_label", "time_slot"),
+                "packages": ("weight_kg",),
+            }.get(sheet_name, ())
+            missing_fields = [
+                field
+                for field in required_fields
+                if record.get(field) is None or not str(record.get(field)).strip()
+            ]
+            if missing_fields:
+                identifier_field = "order_id" if sheet_name == "orders" else "package_id"
+                identifier = record.get(identifier_field) or f"row-{row_number}"
+                for field in missing_fields:
+                    errors.append(
+                        FieldError(
+                            path=f"{sheet_name}.{identifier}.{field}",
+                            code="MISSING_REQUIRED_FIELD",
+                            message=f"{sheet_name} {identifier} 缺少必填欄位 {field}。",
+                            requires_manual_review=True,
+                        )
+                    )
+                continue
             try:
                 normalized = dict(record)
                 if sheet_name == "orders":

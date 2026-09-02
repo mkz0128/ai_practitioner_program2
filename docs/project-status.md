@@ -10,7 +10,7 @@
 
 ## NOW
 
-- Package final P0 evidence for human review; do not dispatch, deploy, or touch production.
+- Record and review executable competition P0 acceptance evidence; do not dispatch, deploy, or touch production.
 
 ## NEXT
 
@@ -30,6 +30,7 @@
 - `SCOPE-001 — Deferred P1`: Google live geometry/traffic and TDX mapping remain optional; the canonical Benchmark uses simulated data.
 - `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass, but P0/Agent remains open until the regression evidence is reviewed.
 - `API-001 — Acceptance`: all 13 contract routes and the 40-order preview flow pass automated checks; dispatch was intentionally not executed in the demo gate.
+- `P0-AC-001 — Competition Acceptance`: field-level import errors, evidence-grounded Plan reasons, and computed order-41 diff are executable; human review is still required before status changes.
 
 ## DONE THIS ROUND
 
@@ -56,21 +57,28 @@
 - Corrected the canonical model documentation to `gpt-5-mini` and preserved the prior Responses schema regression as a tracked issue without changing model tier.
 - Implemented redacted JSONL trajectory recording and fail-closed Agent budgets (turn/tool/token/wall-clock/repeated-call) with correlation fields and tests.
 - Added OpenAPI SHA-256 snapshot regression coverage and updated frontend handoff with the local FastAPI startup command and no-dispatch integration sequence.
+- Added deterministic field-level workbook errors with `requires_manual_review` propagation for missing order/package values and columns.
+- Added Plan API evidence-grounded recommendation reasons sourced from validated domain/matrix data; no LLM numeric generation is involved.
+- Added computed urgent preview diff for reassignment, sequence, per-vehicle load/utilization, and total distance/time deltas.
+- Added executable competition acceptance tests for Z4 capacity redistribution, missing fields, time conflicts, all-capacity exhaustion, Validator reconciliation, and Plan API evidence.
+- Added `scripts/run_p0_demo.py`, a Chinese 40-order/4-vehicle preview walkthrough that stops before Dispatch/deployment.
+- Extended Golden Dataset to GD-026–GD-030 for field review, deterministic reasons, urgent diff, demo, and Validator gates.
 
 ## LAST VALIDATION
 
 - Date: `2026-09-02 Asia/Taipei`
 - Credential preflight: OpenAI model/key and Google Routes server key `CONFIGURED`; Browser key and TDX credentials `MISSING`; values not read or logged.
 - Live smoke: OpenAI Chat text/strict tool `PASS`; initial malformed Responses request returned `BadRequestError` and is retained as a regression case; corrected Responses text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED`.
-- Dependencies: locked install `PASS`; latest keyless `pytest` 28 passed, 3 conditional tests skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 24 source files.
+- Dependencies: locked install `PASS`; latest keyless `pytest` 33 passed, 3 conditional tests skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 26 source files.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
 - Latest canonical Benchmark run (10-second solver cap): both plans valid with zero overload/cross-zone/duplicate/time-window violations; OR-Tools solve time `4,982.385ms` (wall-clock metric only, not a cross-machine Golden value).
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
 - Git finalization: `origin/main` matches local `HEAD` after the implementation and status pushes; tracked working tree is clean.
 - Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
 - Plaintext credential source: protected by Git exclusion and ready for user deletion; never added to Git.
-- Latest keyless validation: `28 passed, 3 skipped`; Agents SDK scenarios `7 passed`; explicit live Agent E2E `1 passed`; direct Responses smoke `1 passed`; API contract `13 defined / 13 implemented / 13 exercised`; OpenAPI snapshot `PASS`; demo flow `1 passed` and stopped before dispatch.
+- Latest keyless validation: `33 passed, 3 skipped`; Agents SDK scenarios `7 passed`; explicit live Agent E2E `1 passed`; direct Responses smoke `1 passed`; API contract `13 defined / 13 implemented / 13 exercised`; OpenAPI snapshot `PASS`; demo flow plus competition acceptance `6 passed` and stopped before dispatch.
 - Skipped tests are intentionally conditional: `test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool` requires `RUN_LIVE_AGENT_E2E=1`; `test_live_google_requires_explicit_environment_key` requires an exported Google Routes credential; `test_responses_gpt5_mini_text_and_strict_tool_smoke` requires `RUN_LIVE_RESPONSES_SMOKE=1`.
-- Latest quality gates: `ruff check .` `PASS`; `mypy src` `PASS` (24 files); secret scan `PASS`; no Actions/deploy workflow; latest commit recorded in the final status push; working tree clean before this status-only update.
+- Latest quality gates: `ruff check src tests scripts` `PASS`; `mypy src` `PASS` (26 files); secret scan `PASS`; no Actions/deploy workflow; working tree will be clean after this round's commit.
 - Responses diagnostic: historical malformed tool envelope → `BadRequestError` / HTTP 400 / `missing_required_parameter`; corrected top-level `input`, `tools[].name`, `tools[].parameters`, `tools[].strict`, and `max_output_tokens` with `gpt-5-mini` → direct text and strict tool `PASS`. No model upgrade permitted or used.
 - P0 engineering checklist: deterministic core, API contract, Agent SDK E2E, observability/cost guard, OpenAPI snapshot, and demo flow all have passing automated evidence; only human status sign-off remains.
+- Competition P0 checklist: all requested executable cases and one-command demo pass; P0 and OpenAI Agent remain `READY_FOR_HUMAN_REVIEW — not DONE` pending explicit human status sign-off.

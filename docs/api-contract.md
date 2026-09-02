@@ -125,7 +125,20 @@ The natural-language `summary` may only restate values present in `evidence`.
           "leg_distance_m": 3500,
           "leg_duration_s": 720,
           "order_weight_kg": 9.0,
-          "reason": {"summary": "...", "evidence": {}}
+          "reason": {
+            "summary": "deterministic evidence-only recommendation",
+            "evidence": {
+              "vehicle_zone_eligible": true,
+              "order_weight_kg": 9.0,
+              "post_assignment_load_kg": 92.0,
+              "post_assignment_utilization": 0.766667,
+              "time_window_legal": true,
+              "leg_distance_m": 3500,
+              "leg_duration_s": 720,
+              "distance_basis": "fixed_simulated_matrix",
+              "sequence_basis": "First-Fit eligible vehicle + Nearest Neighbor (fixed simulated matrix)"
+            }
+          }
         }
       ]
     }

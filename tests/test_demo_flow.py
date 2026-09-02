@@ -108,6 +108,11 @@ def test_demo_40_order_flow_stops_before_dispatch() -> None:
     assert body["preview_version"] == 2
     assert body["after"]["assigned_order_count"] + body["after"]["unassigned_order_count"] == 41
     assert body["diff"]["inserted_order_id"] == "ORD-041"
+    assert body["diff"]["sequence_changes"], body
+    assert body["diff"]["vehicle_load_changes"], body
+    assert any(
+        change["delta_load_kg"] != 0 for change in body["diff"]["vehicle_load_changes"]
+    )
     assert isinstance(body["diff"]["total_distance_delta_m"], int)
     assert isinstance(body["diff"]["total_duration_delta_s"], int)
     assert client.get(f"/api/v1/plans/{plan_id}").json()["version"] == 1

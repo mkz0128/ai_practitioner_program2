@@ -116,6 +116,13 @@ The implemented `src/observability` package writes redacted JSONL trajectory eve
 turn/tool/token/wall-clock/repeated-call limits; `docs/openapi-snapshot.sha256` fails closed on
 contract drift.
 
+The competition P0 gate additionally requires executable field-level import errors, deterministic
+Plan stop recommendations, and a real urgent-insert diff. `tests/test_competition_acceptance.py`
+covers the 112 kg Z4 concentration, missing address/weight/time cells, explicit time-window and
+capacity exceptions, and independent Validator reconciliation. `scripts/run_p0_demo.py` is the
+one-command Chinese walkthrough for the 40-order/4-vehicle fixture; it previews order 41 and
+never dispatches or deploys.
+
 ### Verification
 
 - OpenAI-off test proves deterministic REST continuity.
@@ -126,6 +133,10 @@ contract drift.
 - Full `pytest`, `ruff`, `mypy`, OpenAPI/endpoint contract, secret scan, Benchmark, and Golden suite
   pass. P0 and the OpenAI Agent remain `IN_PROGRESS` until the implementation gate is explicitly
   closed after reviewing the evidence; passing tests alone do not change that status.
+- The final P0 evidence report must include the exact pytest pass/skip count, the three conditional
+  skip reasons, competition acceptance names, demo output status, and a clean Git status. Missing
+  Browser/TDX credentials remain frontend/P1 conditions and do not convert mock tests into live
+  passes.
 
 ## P1 — Only if all P0 gates are green
 

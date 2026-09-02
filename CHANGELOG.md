@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — 2026-09-02
+
+### Added
+
+- Precise workbook missing-field errors for order/package/field paths with manual-review markers.
+- Deterministic evidence-grounded Plan stop recommendations for zone, weight, load, time, and matrix order.
+- Computed urgent-insert reassignment, sequence, vehicle-load, and distance/time deltas.
+- Executable competition acceptance tests and the Chinese `scripts/run_p0_demo.py` preview walkthrough.
+- Golden Dataset cases GD-026–GD-030 for field validation, evidence, urgent diff, demo, and Validator gates.
+
+### Safety
+
+- P0 remains `READY_FOR_HUMAN_REVIEW — not DONE`; the demo never Dispatches or deploys.
+
 ## 0.1.0-spec — 2026-09-01
 
 ### Added

@@ -7,6 +7,7 @@ This document decomposes the approved product prompt into traceable requirements
 | ID | Requirement | Verification |
 |---|---|---|
 | FR-IMP-001 | Import one `.xlsx` with exactly four named sheets. | Workbook unit tests; import endpoint contract |
+| FR-IMP-002 | Missing `location_label`, `time_slot`, or package `weight_kg` returns an entity/field-specific `MISSING_REQUIRED_FIELD` error with `requires_manual_review`. | `tests/test_competition_acceptance.py` field-level fixture |
 | FR-VAL-001 | Validate IDs, relationships, counts, weights, coordinates, zones, slots, vehicle status/load. | Validation suite; GD-003/004/010/011/012 |
 | FR-PLAN-001 | Create a deterministic initial 40-order dispatch plan. | Optimizer/validator tests; GD-001 |
 | FR-PLAN-002 | Keep all packages for an order on one vehicle. | Invariant test; AC-001 |
@@ -27,9 +28,11 @@ This document decomposes the approved product prompt into traceable requirements
 | FR-BENCH-003 | Exclude Google live traffic from fixed Golden values; live comparison verifies invariants/ranges only. | Provider-mode rejection test |
 | FR-URG-005 | Order 41 uses minimum-change replanning first; a clearly labelled full-replan preview is allowed only after bounded minimal-change failure. | Move-count/scope/diff tests; GD-018 |
 | FR-EXP-001 | Explain assignments only from structured tool evidence. | Agent eval; reason schema tests |
+| FR-EXP-002 | Every assigned Plan stop exposes deterministic evidence for zone eligibility, weight, post-load/utilization, time legality, and matrix distance/order basis. | Plan API evidence acceptance test |
 | FR-MAP-001 | Return depot, stops, coordinates, route polyline, color, sequence, ETA, leg metrics. | Map-data response snapshot |
 | FR-URG-001 | Preview exactly one pre-dispatch urgent order as a new immutable version. | GD-006; lifecycle tests |
 | FR-URG-002 | Return before/after assignment, sequence, distance/time, load, conflict diff. | Preview contract tests |
+| FR-URG-006 | Urgent preview computes non-placeholder reassignment, sequence, load, and distance/time deltas and independently validates the candidate. | Demo flow and order-41 acceptance test |
 | FR-URG-003 | Require explicit human confirmation of exact plan/version. | Transition tests; AC-002 |
 | FR-URG-004 | Reject automatic insertion after `DISPATCHED`. | GD-007; AC-006 |
 | FR-STATE-001 | Persist and audit `DRAFT→VALIDATED→PROPOSED→CONFIRMED→DISPATCHED`. | State-machine tests |
@@ -83,6 +86,17 @@ This document decomposes the approved product prompt into traceable requirements
 | REST/OpenAPI/CORS | Contract-first API | 13-route contract tests plus OpenAPI hash snapshot | `api-contract.md`, `openapi-snapshot.sha256` |
 | Observability/cost | Structured logs, tracing, limits | schema/limit tests | `observability.config` |
 | Golden/red team | Concrete algorithm, provider, Agent, injection, and API contract cases | Eval runner | `golden-dataset.json` |
+
+## Competition Acceptance Matrix
+
+| Case | Required evidence |
+|---|---|
+| Z4 concentration (112 kg) | Baseline never overloads 100 kg VEH-002; at least one Z4 order is legally assigned to VEH-003; Validator passes |
+| Missing workbook cells | Separate order/package/field paths and manual-review flags |
+| Time-window conflict | Stable `TIME_WINDOW_CONFLICT` reason and a validator-safe partial plan |
+| Capacity exhaustion | Stable `UNASSIGNABLE` reason, explicit order ID, no silent drop |
+| Order 41 preview | Non-empty sequence/load/reassignment data where applicable and computed metric deltas |
+| Chinese demo | `scripts/run_p0_demo.py` prints all evidence and an approval checkpoint without Dispatch/deploy |
 
 ## P0 vs P1
 

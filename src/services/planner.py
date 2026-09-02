@@ -192,7 +192,7 @@ def build_baseline(dataset: Dataset, matrix: MatrixResult) -> PlanResult:
                 selected = vehicle
                 break
         if selected is None:
-            unassigned[order.order_id] = "UNASSIGNABLE_NO_ELIGIBLE_CAPACITY"
+            unassigned[order.order_id] = "UNASSIGNABLE"
         else:
             assignments[selected.vehicle_id].append(order.order_id)
     routes: list[VehicleRoute] = []
@@ -258,7 +258,7 @@ def build_ortools(
             and vehicle.max_load_kg - vehicle.current_load_kg >= order.total_weight_kg
         ]
         if not eligible:
-            pre_unassigned[order.order_id] = "UNASSIGNABLE_NO_ELIGIBLE_CAPACITY"
+            pre_unassigned[order.order_id] = "UNASSIGNABLE"
         else:
             eligible_by_order[order.order_id] = eligible
     manager = pywrapcp.RoutingIndexManager(len(node_ids), len(vehicles), 0)

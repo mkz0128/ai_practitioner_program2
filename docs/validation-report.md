@@ -4,7 +4,7 @@
 
 ```yaml
 validated_on: 2026-09-02
-scope: specification_harness_algorithm_benchmark_contracts_feature_code_agent_e2e_api_contract_demo_flow
+scope: specification_harness_algorithm_benchmark_contracts_feature_code_agent_e2e_api_contract_demo_flow_competition_acceptance
 feature_code_present: true
 implementation_gate: APPROVE_IMPLEMENTATION
 implementation_status: phase_2_feature_implementation
@@ -34,13 +34,17 @@ git_repository: true
 | Algorithm specification coverage | Baseline, CVRPTW dimensions, strategies, limits, partial/failure policy | Passed |
 | Fair Benchmark contract | identical fixture/matrix identity, 12 metrics, formulas, reproducibility controls | Passed |
 | API Key test layers | always-on keyless, conditional live, missing-key skip/fallback, secret redaction | Passed |
-| Golden Dataset extension | JSON parse and GD-013–GD-025 traceability | Passed — 25 total cases |
+| Golden Dataset extension | JSON parse and GD-013–GD-030 traceability | Passed — 30 total cases |
 | Responses API parameter diagnostic | `gpt-5-mini` direct text and strict function request; malformed Chat envelope regression | Passed — correct requests PASS; historical HTTP 400 `missing_required_parameter` explained without secret output |
 | OpenAI Agents SDK E2E | `Runner.run` + strict deterministic tools + independent Validator + evidence-only final answer | Passed — live opt-in daily dispatch PASS; seven provider-neutral SDK scenarios PASS |
 | API contract coverage | Documented method/path pairs vs FastAPI routes and safe response exercise | Passed — 13 defined / 13 implemented / 13 exercised |
 | 40-order demo flow | import → validation → plan → provider fallback → explanation → confirm → order 41 preview/diff; no dispatch | Passed — base version remained unchanged |
 | Observability and cost guard | Redacted JSONL trajectory events, correlation IDs, fail-closed Agent limits, and regression tests | Passed — `src/observability`, 3 boundary/redaction tests |
 | OpenAPI snapshot | Stable hash and exact 13-path set | Passed — `docs/openapi-snapshot.sha256` and snapshot test |
+| Competition field errors | Missing address/time/weight cells identify order/package/field and require manual review | Passed — executable acceptance fixture |
+| Plan evidence reasons | Every assigned stop contains deterministic zone/weight/load/time/distance evidence | Passed — Plan API acceptance test |
+| Urgent preview diff | Reassignment, sequence, load, and metric deltas are calculated from before/after plans | Passed — order-41 demo assertion and diff builder |
+| Chinese P0 demo | One command prints 40/4 routes, redistribution, exception, full preview diff, and human checkpoint | Passed — `scripts/run_p0_demo.py` exits 0; no Dispatch/deploy |
 
 ## Dependency Resolution Evidence
 
@@ -81,12 +85,19 @@ git_repository: true
 
 - FastAPI import/health/readiness, Excel upload, plan creation, map payload, confirmation, dispatch lifecycle, urgent preview, and structured explanation tests passed.
 - Deterministic parser, package aggregation, Baseline, OR-Tools CVRPTW, shared simulated matrix, independent Validator, Benchmark, SQLite repository, urgent preview, structured evidence, and provider fallback tests passed.
-- Keyless suite: `28 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests`: passed; `mypy src`: passed across 24 source files.
+- Keyless suite: `33 passed, 3 skipped (conditional Agent/Responses/Google live tests)`; `ruff check src tests scripts`: passed; `mypy src`: passed across 26 source files.
 - Agents SDK scenario suite: `7 passed`; explicit live `Runner.run` with `gpt-5-mini`, strict `plan_dispatch`, and Validator: `1 passed`.
 - Explicit direct Responses smoke: `1 passed` (text plus strict function call, `gpt-5-mini`; bounded caps 256/512).
 - API contract: `13 / 13 / 13` (defined / implemented / exercised); demo flow: `1 passed`, deliberately stopped before dispatch.
 - OpenAPI snapshot: exact 13-path set and SHA-256 snapshot matched; redacted observability and `RunBudget` limit tests passed.
-- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time `4,982.385ms` (reported only, not exact cross-machine criterion).
+- Competition acceptance: Z4's 112 kg is split legally beyond 100 kg VEH-002 (including VEH-003);
+  missing `location_label`/`time_slot`/`weight_kg` cells return entity/field paths with manual
+  review flags; explicit `TIME_WINDOW_CONFLICT` and `UNASSIGNABLE` cases reconcile through the
+  independent Validator; order 41 produces non-empty sequence/load changes and computed deltas.
+- Demo command: `.venv\\Scripts\\python.exe scripts/run_p0_demo.py` completed successfully and
+  printed Chinese per-vehicle order/weight/utilization/reason evidence, redistribution, exception,
+  full preview diff, and a human-confirmation prompt; Dispatch and deployment were not invoked.
+- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time is reported only, not as an exact cross-machine criterion.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
 - Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.
 

@@ -169,6 +169,24 @@ Default policy is **minimum-change replanning**, not an unrestricted full reshuf
 4. Only if that fails, create a separately labelled `FULL_REPLAN` fallback preview. It must expose scope, moved orders, before/after metrics, and the reason escalation was needed.
 5. No preview mutates the base plan; exact plan/version confirmation remains mandatory.
 
+### P0 Competition Acceptance Controls
+
+The importer emits one `MISSING_REQUIRED_FIELD` error per missing required cell. Paths are
+stable and entity-addressable (`orders.<order_id>.location_label`,
+`orders.<order_id>.time_slot`, and `packages.<package_id>.weight_kg`), and each such error sets
+`requires_manual_review: true`; the validation report carries the aggregate flag as well.
+
+Plan stop `reason` is produced by `src/services/evidence.py` from the validated order, vehicle,
+route stop, fixed matrix leg, and independent Validator result. Its evidence includes zone
+eligibility, order weight, post-assignment load/utilization, legal time slot, previous node,
+distance/duration, and the deterministic sequence basis. The Agent may quote this object only;
+it is never a source of numeric values.
+
+Urgent previews use a deterministic plan diff builder. `reassigned_orders`, `sequence_changes`,
+and per-vehicle `vehicle_load_changes` are calculated from before/after assignments and route
+positions, while distance/time deltas are computed from plan totals. The inserted order itself is
+reported as a sequence change when it enters a route, and the base version remains immutable.
+
 ## ADR-005 — Fair Benchmark Contract
 
 Baseline and Optimized runs consume the same canonical input snapshot: the same 40 orders, four vehicles, five zones, stable row/entity ordering, `DEPOT-001`, and the same versioned fixed simulated distance/duration matrix. Google live traffic is excluded from fixed Benchmark values; live runs report only invariants and observed ranges and cannot replace the canonical result.
