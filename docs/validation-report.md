@@ -97,7 +97,7 @@ git_repository: true
 - Demo command: `.venv\\Scripts\\python.exe scripts/run_p0_demo.py` completed successfully and
   printed Chinese per-vehicle order/weight/utilization/reason evidence, redistribution, exception,
   full preview diff, and a human-confirmation prompt; Dispatch and deployment were not invoked.
-- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; measured OR-Tools solve time is reported only, not as an exact cross-machine criterion.
+- Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; latest measured solve times were Baseline `0.584ms` and OR-Tools `5,985.454ms`, reported only and not as exact cross-machine criteria.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
 - Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.
 

@@ -71,7 +71,7 @@
 - Live smoke: OpenAI Chat text/strict tool `PASS`; initial malformed Responses request returned `BadRequestError` and is retained as a regression case; corrected Responses text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED`.
 - Dependencies: locked install `PASS`; latest keyless `pytest` 33 passed, 3 conditional tests skipped (3 upstream OR-Tools deprecation warnings); `ruff` `PASS`; `mypy src` `PASS` across 26 source files.
 - Canonical simulated Benchmark: Baseline distance/time `183,955m/23,023s`, 2 unassigned; OR-Tools `161,257m/20,185s`, 0 unassigned; distance improvement `12.339%`, driving-time improvement `12.327%`, utilization-gap improvement `23.909%`.
-- Latest canonical Benchmark run (10-second solver cap): both plans valid with zero overload/cross-zone/duplicate/time-window violations; OR-Tools solve time `4,982.385ms` (wall-clock metric only, not a cross-machine Golden value).
+- Latest canonical Benchmark run (10-second solver cap): both plans valid with zero overload/cross-zone/duplicate/time-window violations; OR-Tools solve time `5,985.454ms` (wall-clock metric only, not a cross-machine Golden value).
 - Security: `.env`, plaintext source, and `.venv` ignored; tracked checks `NO`; secret pattern scan `PASS`; GitHub Actions directory `NONE`.
 - Git finalization: `origin/main` matches local `HEAD` after the implementation and status pushes; tracked working tree is clean.
 - Phase gate: `feature_code_allowed: true` because exact approval was received; no deployment, Actions, force push, or production access performed.
