@@ -8,6 +8,10 @@ scope: specification_harness_algorithm_benchmark_contracts_feature_code_agent_e2
 feature_code_present: true
 implementation_gate: APPROVE_IMPLEMENTATION
 implementation_status: phase_2_feature_implementation
+backend_p0_status: done
+openai_agent_status: done
+frontend_integration_status: pending
+overall_project_status: in_progress
 git_repository: true
 ```
 
@@ -105,8 +109,25 @@ git_repository: true
   Base and preview algorithm are both ORTOOLS; their dataset hashes are explicitly returned.
 - Canonical simulated run (10-second cap): Baseline `183,955m / 23,023s`, 2 unassigned; OR-Tools `161,257m / 20,185s`, 0 unassigned; no validator violations; latest measured solve times were Baseline `0.584ms` and OR-Tools `5,985.454ms`, reported only and not as exact cross-machine criteria.
 - Live preflight: OpenAI Chat text/strict tool `PASS`; Google Routes matrix `PASS`; TDX `SKIPPED` (P1). A deliberately malformed Responses tool envelope reproduced HTTP 400 `missing_required_parameter`; correct `input`, top-level `tools`, `strict`, and `max_output_tokens` requests now pass with `gpt-5-mini`. No key, header, or full request was emitted.
-- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Remaining work is human review of the evidence and any frontend acceptance; no claim is made that P0 or the OpenAI Agent is complete.
+- Browser key remains a frontend concern and is missing; Google server fallback remains explicit. Frontend acceptance remains pending; this does not reopen the accepted Backend P0 or OpenAI Agent status.
+
+## Human Acceptance Decision
+
+| Area | Status | Accepted evidence |
+|---|---|---|
+| Backend P0 | `DONE` | Legal overload redistribution; 40-order OR-Tools plan with zero violations; field-level errors; computed urgent diff; independent Validator pass. |
+| OpenAI Agent | `DONE` | Agents SDK end-to-end tool invocation, strict deterministic planning/evidence tools, evidence-only response, and regression coverage were human-accepted. |
+| Frontend Integration | `PENDING` | UI still needs to consume the documented API and display the evidence/demo flow. |
+| Overall Project | `IN_PROGRESS` | Backend and Agent gates are complete, but frontend integration is not complete. |
+
+### Preserved urgent-insert evidence
+
+- Initial OR-Tools plan: 40 assigned orders, 365 kg total, vehicle loads `93/97/152/23 kg`, zero unassigned.
+- `ORD-041` preview mode: `MINIMAL_CHANGE`; existing order vehicle changes `0`; only `VEH-003` is affected.
+- Before/after: `365 kg → 367 kg`, `0 → 0` unassigned, distance `+137 m`, duration `+17 s`.
+- Independent Validator: `PASS` for both before and after plans.
+- No Dispatch, deployment, or formal-environment operation was executed.
 
 ## Final Result
 
-Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. All currently actionable P0 engineering checks pass. P0 and the OpenAI Agent remain **READY_FOR_HUMAN_REVIEW / not DONE** pending explicit status sign-off and frontend acceptance; no dispatch or deployment was performed.
+Specification/Harness readiness: **PASS**. Implementation gate is open by the explicit `APPROVE_IMPLEMENTATION`; deterministic core and FastAPI first slice are implemented with `feature_code_allowed: true`. Backend P0 and the OpenAI Agent are **DONE** by explicit human acceptance. Frontend Integration remains **PENDING**, so Overall Project remains **IN_PROGRESS**. No dispatch or deployment was performed.

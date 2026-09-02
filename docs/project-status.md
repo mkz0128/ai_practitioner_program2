@@ -5,17 +5,19 @@
 - Phase: `PHASE_2_FEATURE_IMPLEMENTATION`
 - Feature code allowed: `true`
 - Required implementation command: `APPROVE_IMPLEMENTATION`
-- P0 status: `READY_FOR_HUMAN_REVIEW — not DONE`
-- OpenAI Agent status: `READY_FOR_HUMAN_REVIEW — not DONE`
+- Backend P0 status: `DONE`
+- OpenAI Agent status: `DONE`
+- Frontend Integration status: `PENDING`
+- Overall Project status: `IN_PROGRESS`
 
 ## NOW
 
-- Correct urgent-preview baseline identity and validate minimum-change insertion; do not dispatch, deploy, or touch production.
+- Frontend integration and acceptance against the documented local API; do not dispatch, deploy, or touch production.
 
 ## NEXT
 
-1. Human review of P0 and OpenAI Agent evidence before changing either status to DONE.
-2. Frontend integration against the documented local API and OpenAPI snapshot.
+1. Frontend integration against the documented local API and OpenAPI snapshot.
+2. Frontend acceptance of the Chinese demo flow and evidence display.
 3. Optional P1 TDX mapping and Google Browser-key work; neither blocks backend P0.
 
 ## BLOCKED
@@ -28,10 +30,10 @@
 - `EXT-002 — External Provider Issue`: TDX credentials are not configured in the local environment. Core planning remains available.
 - `ENV-001 — Environment Issue`: The dependency lock is verified for Windows CPython 3.12; Linux wheel/lock verification is required before any future Linux deployment.
 - `SCOPE-001 — Deferred P1`: Google live geometry/traffic and TDX mapping remain optional; the canonical Benchmark uses simulated data.
-- `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass, but P0/Agent remains open until the regression evidence is reviewed.
+- `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass. Retained as regression evidence; OpenAI Agent is DONE by human acceptance.
 - `API-001 — Acceptance`: all 13 contract routes and the 40-order preview flow pass automated checks; dispatch was intentionally not executed in the demo gate.
-- `P0-AC-001 — Competition Acceptance`: field-level import errors, evidence-grounded Plan reasons, and computed order-41 diff are executable; human review is still required before status changes.
-- `P0-URG-002 — Regression`: prior Demo compared OR-Tools initial output with a Baseline preview; correction is implemented and the aligned OR-Tools regression now passes.
+- `P0-AC-001 — Competition Acceptance`: field-level import errors, evidence-grounded Plan reasons, computed order-41 diff, overload redistribution, and independent Validator evidence are executable and human-accepted; Backend P0 is DONE.
+- `P0-URG-002 — Regression`: prior Demo compared OR-Tools initial output with a Baseline preview; correction is implemented, the aligned OR-Tools regression passes, and ORD-041 uses `MINIMAL_CHANGE`.
 
 ## DONE THIS ROUND
 
@@ -67,6 +69,7 @@
 - Corrected the Demo to create one OR-Tools initial `plan_id/version/dataset` and use that exact identity for urgent preview.
 - Implemented deterministic `MINIMAL_CHANGE` insertion that preserves unaffected vehicle assignments and relative order; full replan now exposes explicit mode/reason/scope metadata.
 - Added before/after algorithm, dataset hash, assigned weight, unassigned IDs, and per-vehicle load evidence, plus a regression test preventing Baseline/OR-Tools cross-comparison.
+- Recorded human acceptance: Backend P0 and OpenAI Agent are `DONE`; Frontend Integration remains `PENDING` and Overall Project remains `IN_PROGRESS`.
 
 ## LAST VALIDATION
 
@@ -84,6 +87,7 @@
 - Skipped tests are intentionally conditional: `test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool` requires `RUN_LIVE_AGENT_E2E=1`; `test_live_google_requires_explicit_environment_key` requires an exported Google Routes credential; `test_responses_gpt5_mini_text_and_strict_tool_smoke` requires `RUN_LIVE_RESPONSES_SMOKE=1`.
 - Latest quality gates: `ruff check src tests scripts` `PASS`; `mypy src` `PASS` (26 files); secret scan `PASS`; no Actions/deploy workflow; working tree will be clean after this round's commit.
 - Responses diagnostic: historical malformed tool envelope → `BadRequestError` / HTTP 400 / `missing_required_parameter`; corrected top-level `input`, `tools[].name`, `tools[].parameters`, `tools[].strict`, and `max_output_tokens` with `gpt-5-mini` → direct text and strict tool `PASS`. No model upgrade permitted or used.
-- P0 engineering checklist: deterministic core, API contract, Agent SDK E2E, observability/cost guard, OpenAPI snapshot, and demo flow all have passing automated evidence; only human status sign-off remains.
-- Competition P0 checklist: all requested executable cases and one-command demo pass; P0 and OpenAI Agent remain `READY_FOR_HUMAN_REVIEW — not DONE` pending explicit human status sign-off.
-- Urgent preview correction: aligned OR-Tools before/after is 365 kg → 367 kg, 0 → 0 unassigned, one affected vehicle, and a 2 kg load delta; P0 remains not DONE pending human review.
+- P0 engineering checklist: deterministic core, API contract, Agent SDK E2E, observability/cost guard, OpenAPI snapshot, and demo flow all have passing automated evidence; human acceptance is recorded and Backend P0 plus OpenAI Agent are DONE.
+- Competition P0 checklist: all requested executable cases and one-command demo pass; Backend P0 and OpenAI Agent are `DONE` by explicit human acceptance. Frontend Integration remains `PENDING`; Overall Project remains `IN_PROGRESS`.
+- Urgent preview correction and accepted evidence: aligned OR-Tools before/after is 365 kg → 367 kg, 0 → 0 unassigned; `MINIMAL_CHANGE` affects only `VEH-003`, existing order vehicle changes are `0`, distance is `+137 m`, time is `+17 s`, and the independent Validator passes.
+- No Dispatch, deployment, or production operation was executed.

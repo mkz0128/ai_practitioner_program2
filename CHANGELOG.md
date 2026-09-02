@@ -12,7 +12,9 @@
 
 ### Safety
 
-- P0 remains `READY_FOR_HUMAN_REVIEW — not DONE`; the demo never Dispatches or deploys.
+- Human acceptance promoted Backend P0 and OpenAI Agent to `DONE`; Frontend Integration remains `PENDING` and Overall Project remains `IN_PROGRESS`.
+- Accepted evidence is preserved: legal overload redistribution, 40-order OR-Tools zero-violation plan, `ORD-041` `MINIMAL_CHANGE`, zero existing-order vehicle moves, only `VEH-003` affected, `+137 m` and `+17 s`, and independent Validator `PASS`.
+- The demo never Dispatches, deploys, or touches the formal environment.
 - Urgent insertion now compares the exact OR-Tools base plan and defaults to validated `MINIMAL_CHANGE`; full replan requires explicit mode, reason, and movement scope.
 
 ## 0.1.0-spec — 2026-09-01
