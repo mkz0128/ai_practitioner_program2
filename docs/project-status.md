@@ -121,12 +121,12 @@
 - Canonical simulated Benchmark：Baseline distance/time `183,955m/23,023s`、2 unassigned；OR-Tools `161,257m/20,185s`、0 unassigned；distance improvement `12.339%`、driving-time improvement `12.327%`、utilization-gap improvement `23.909%`。
 - 最新 canonical Benchmark run（10-second solver cap）：兩個方案均有效，overload/cross-zone/duplicate/time-window violations 為零；OR-Tools solve time `5,985.454ms`（僅 wall-clock 指標，不是跨機器 Golden value）。
 - Security：`.env`、plaintext source 與 `.venv` 均被忽略；tracked checks `NO`；secret pattern scan `PASS`；GitHub Actions directory `NONE`。
-- Git finalization：前一輪實作與 status pushes 後，`origin/main` 與 local `HEAD` 相符；本輪文件變更尚未提交。
+- Git finalization：前一輪實作與 status pushes 後，`origin/main` 與 local `HEAD` 相符；本輪文件提交 `624b748` 已推送至 `origin/main`，目前工作樹乾淨。
 - Phase gate：因已取得精確核准，`feature_code_allowed: true`；未執行 deployment、Actions、force push 或 production access。
 - Plaintext credential source：已由 Git exclusion 保護並標記可由使用者刪除；從未加入 Git。
 - 最新 keyless validation：`33 passed, 3 skipped`；Agents SDK scenarios `7 passed`；explicit live Agent E2E `1 passed`；direct Responses smoke `1 passed`；API contract `13 defined / 13 implemented / 13 exercised`；OpenAPI snapshot `PASS`；Demo flow 加 competition acceptance `6 passed`，並在 dispatch 前停止。
 - Skipped tests 為刻意的條件測試：`test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool` 需要 `RUN_LIVE_AGENT_E2E=1`；`test_live_google_requires_explicit_environment_key` 需要匯出的 Google Routes credential；`test_responses_gpt5_mini_text_and_strict_tool_smoke` 需要 `RUN_LIVE_RESPONSES_SMOKE=1`。
-- 最新品質閘門：`ruff check src tests scripts` `PASS`；`mypy src` `PASS`（27 files）；secret scan `PASS`；無 Actions/deploy workflow；提交後 working tree 應維持 clean。
+- 最新品質閘門：`ruff check src tests scripts` `PASS`；`mypy src` `PASS`（27 files）；secret scan `PASS`；無 Actions/deploy workflow；本輪提交後 working tree `CLEAN`。
 - Responses 診斷：歷史 malformed tool envelope → `BadRequestError`／HTTP 400／`missing_required_parameter`；以 `gpt-5-mini` 修正 top-level `input`、`tools[].name`、`tools[].parameters`、`tools[].strict` 與 `max_output_tokens` 後，direct text 與 strict tool `PASS`；未升級 model。
 - 核心功能工程清單：deterministic core、API contract、Agent SDK E2E、observability/cost guard、OpenAPI snapshot 與 Demo flow 均有通過的 automated evidence；人工驗收已記錄，Backend P0 與 OpenAI Agent 為 DONE。
 - 競賽核心功能清單：所有 requested executable cases 與一鍵 Demo 均通過；Backend P0 與 OpenAI Agent 依人工驗收為 `DONE`。Frontend Integration 維持 `PENDING`；Overall Project 維持 `IN_PROGRESS`。
