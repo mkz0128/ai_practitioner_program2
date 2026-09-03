@@ -126,7 +126,7 @@
 - Canonical simulated Benchmark：Baseline distance/time `183,955m/23,023s`、2 unassigned；OR-Tools `161,257m/20,185s`、0 unassigned；distance improvement `12.339%`、driving-time improvement `12.327%`、utilization-gap improvement `23.909%`。
 - 最新 canonical Benchmark run（10-second solver cap）：兩個方案均有效，overload/cross-zone/duplicate/time-window violations 為零；OR-Tools solve time `5,985.454ms`（僅 wall-clock 指標，不是跨機器 Golden value）。
 - Security：`.env`、plaintext source 與 `.venv` 均被忽略；tracked checks `NO`；secret pattern scan `PASS`；GitHub Actions directory `NONE`。
-- Git finalization：`feat/frontend-control-tower` 已建立並推送；最新 baseline commit 為 `e7a0bb4`，不自動合併 `main`，工作樹待本輪 status 記錄更新後保持乾淨。
+- Git finalization：`feat/frontend-control-tower` 已建立並推送；最新 status commit 為 `9188dcf`，不自動合併 `main`，工作樹乾淨。
 - Phase gate：因已取得精確核准，`feature_code_allowed: true`；未執行 deployment、Actions、force push 或 production access。
 - Plaintext credential source：已由 Git exclusion 保護並標記可由使用者刪除；從未加入 Git。
 - 最新 keyless validation：`36 passed, 3 skipped`；Agents SDK scenarios、API contract `13 defined / 13 implemented / 13 exercised`、OpenAPI snapshot、Demo flow 與 provider wiring 均通過；Playwright local flow `2 passed`，並在 dispatch 前停止。
