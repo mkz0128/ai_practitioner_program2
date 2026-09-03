@@ -40,13 +40,13 @@
 
 ## NOW
 
-- 取得 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 與 TDX credentials 後，完成瀏覽器地圖與路況 Live gate。
+- 完成新版前端三個工作區的視覺驗收、品質閘門與交付紀錄；不新增後端能力或企業級功能。
 
 ## NEXT
 
 1. 在具備 Browser key 的環境執行 Google Maps JavaScript 地圖、Marker 與路線驗收。
 2. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
-3. 執行包含 Browser／TDX 的前後端完整 Live E2E。
+3. 由前端團隊依 `docs/frontend-handoff.md` 串接既有 REST API。
 
 ## BLOCKED
 
@@ -118,6 +118,11 @@
 - 以 `tests/test_live_provider_wiring.py` 驗證 provider mode、matrix hash/version consistency、strict error 與 TDX redaction；本輪另完成真實 Google／OpenAI Live flow，未輸出任何 credential。
 - 修正 `/api/v1/agent/chat` 使用 `Runner.run` 與 strict `explain_assignment` evidence，並以 bounded Google Matrix cache／incremental extension 避免 ORD-041 重複取得完整矩陣。
 - 修正 Browser key 缺少時的地圖標示，並將 Playwright Agent 等待時間調整為符合真實 Runner latency。
+- 依附件 A／B 的企業物流產品視覺方向完成前端 UX 重整：新增窄版圖示導覽、精簡工具列、淺灰背景、白色面板、KPI 卡片、狀態標籤與黑色主要操作按鈕。
+- 建立三個可切換的前端工作區：AI 調度（聊天＋地圖）、配送任務（搜尋表格＋訂單詳情）與路線追蹤（大面積地圖＋右側任務清單）。所有資料仍來自既有 API，未新增後端或企業級功能。
+- 將 Agent 證據與插單差異改為白話摘要與比較卡片，移除主要畫面的 Raw JSON 與 provider 技術代碼；保留必要的 `MINIMAL_CHANGE` 驗收文字與人工確認邊界。
+- 建立 `Sidebar`、`TaskTable`、`OrderDetailPanel` 與 `RouteTaskList` 元件，並讓地圖、車輛、訂單選取可同步高亮。
+- 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
 
@@ -149,4 +154,7 @@
 - 本輪現況查證：TDX 已具備 OAuth／事件 projection／route-risk correlation adapter 與 mock evidence；本環境無 credentials，因此標示 `CREDENTIALS_MISSING`，不等於 Live 完成。
 - 本輪現況查證：`frontend/` 控制塔已通過 typecheck、lint、unit tests、production build；Browser key 缺少時顯示 simulated map fallback，完整 browser-to-live-provider E2E 仍未完成。
 - 本輪限制：未讀取或輸出任何憑證、未執行 Dispatch／部署／正式環境操作；Browser／TDX 因缺少憑證維持 `BLOCKED`。frontend dependency、provider wiring 與 Live quality gates 已重新執行。
-- 本輪 Commit：`7185ba97ef66c449ce6eed81d8225207dd7673b0`，已推送至 `origin/feat/frontend-control-tower`；工作樹乾淨。
+- 前一輪 Commit：`7185ba97ef66c449ce6eed81d8225207dd7673b0`，已推送至 `origin/feat/frontend-control-tower`；本輪視覺重整另建立新 Commit。
+- 本輪前端視覺重整品質閘門：TypeScript typecheck `PASS`；ESLint `PASS`；Vitest `2 passed`；Vite production build `PASS`；Playwright Chromium `2 passed`（local simulated，未執行 Dispatch）。
+- 本輪視覺驗收：1440×900 截圖已檢查，版面已改為附件 A／B 的淺色企業物流風格；Google Maps Browser key 缺少，真實道路地圖閘門維持 `BLOCKED`，不可視為 Live 完成。
+- 本輪安全檢查：未輸出或提交任何 API Key，未修改 API／演算法／測試邏輯，未執行 Dispatch、部署或正式環境操作。
