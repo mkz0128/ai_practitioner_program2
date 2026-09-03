@@ -8,12 +8,13 @@ from threading import RLock
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
+from agents import InputGuardrailTripwireTriggered
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.agent.tools import explain_assignment
+from src.agent.runtime import run_dispatch_agent
 from src.config import get_settings
 from src.domain.models import Dataset, Order, Package, Priority, Vehicle, VehicleStatus, Zone
 from src.providers.google_routes import GoogleRoutesProvider, GoogleRoutesProviderError
@@ -140,6 +141,14 @@ def _build_matrix(dataset: Dataset, *, prefer_live: bool) -> MatrixResult:
     return GoogleRoutesProvider(settings.google_routes_server_api_key).build(
         dataset, allow_fallback=False
     )
+
+
+def _dataset_matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
+    orders = tuple(sorted(dataset.orders, key=lambda order: order.order_id))
+    return [
+        (SimulatedRouteProvider.depot_latitude, SimulatedRouteProvider.depot_longitude),
+        *[(order.latitude, order.longitude) for order in orders],
+    ]
 
 
 store = InMemoryStore()
@@ -727,8 +736,19 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
     preview_dataset_id = f"DS-{uuid4().hex[:12].upper()}"
     try:
         preview_matrix = (
-            GoogleRoutesProvider(settings.google_routes_server_api_key).build(
-                new_dataset, allow_fallback=False
+            GoogleRoutesProvider(settings.google_routes_server_api_key).extend_matrix(
+                base_record.matrix,
+                base_record.matrix.node_ids,
+                _dataset_matrix_coordinates(dataset_record.dataset),
+                (
+                    "DEPOT-001",
+                    *(
+                        order.order_id
+                        for order in sorted(new_dataset.orders, key=lambda item: item.order_id)
+                    ),
+                ),
+                _dataset_matrix_coordinates(new_dataset),
+                allow_fallback=False,
             )
             if base_record.matrix.provider_mode == "GOOGLE"
             else SimulatedRouteProvider().build(new_dataset)
@@ -927,49 +947,103 @@ def provider_status(request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/v1/agent/chat")
-def agent_chat(payload: ChatRequest, request: Request) -> Any:
+async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     if not settings.openai_api_key:
         return _error(
             request, 503, "AGENT_UNAVAILABLE", "OpenAI 憑證未設定; 確定性 REST 功能仍可使用."
         )
     context_plan_id = payload.context.get("plan_id")
     context_order_id = payload.context.get("order_id")
-    if isinstance(context_plan_id, str) and isinstance(context_order_id, str):
-        record = store.get_plan(context_plan_id, payload.context.get("plan_version"))
+    record: PlanRecord | None = None
+    dataset_record: DatasetRecord | None = None
+    if isinstance(context_plan_id, str):
+        plan_version = payload.context.get("plan_version")
+        if not isinstance(plan_version, int):
+            plan_version = None
+        record = store.get_plan(context_plan_id, plan_version)
         if record is None:
             return _error(request, 404, "PLAN_NOT_FOUND", "找不到說明所需的規劃版本。")
         dataset_record = store.get_dataset(record.dataset_id)
         if dataset_record is None:
             return _error(request, 404, "DATASET_NOT_FOUND", "找不到說明所需的資料集。")
-        try:
-            evidence = explain_assignment(
-                dataset_record.dataset,
-                record.plan,
-                context_order_id,
-                record.matrix.provider_mode,
-            )
-        except ValueError:
-            return _error(request, 404, "ORDER_NOT_FOUND", "找不到說明所需的訂單。")
-        summary = (
-            f"{context_order_id} 的結構化分配證據已產生。"
-            if evidence.assigned
-            else f"{context_order_id} 尚未安排, 原因為 {evidence.reason}."
+    if record is None or dataset_record is None:
+        return _error(
+            request,
+            422,
+            "AGENT_CONTEXT_REQUIRED",
+            "Agent 查詢需要已驗證的 plan_id 與 plan_version。",
         )
-        return {
-            "session_id": payload.session_id,
-            "agent_run_id": f"RUN-{uuid4().hex[:12].upper()}",
-            "message": summary,
-            "evidence": [{"tool": "explain_assignment", "data": evidence.model_dump()}],
-            "requires_human_confirmation": False,
-            "usage": {"total_tokens": 0},
-            "request_id": _request_id(request),
-        }
+
+    # Context identifiers are application-controlled data. Include only the
+    # selected order identifier as a hint so the model must still invoke the
+    # allowlisted deterministic tool instead of receiving precomputed facts.
+    agent_message = payload.message
+    if isinstance(context_order_id, str):
+        agent_message = (
+            f"{payload.message}\n\nApplication context: call the explain_assignment tool "
+            f"exactly once with order_id={context_order_id} before answering. "
+            "Use only that tool's evidence; do not call explain_unassigned or calculate values."
+        )
+    else:
+        agent_message = (
+            f"{payload.message}\n\nApplication context: current validated plan uses "
+            f"algorithm={record.plan.algorithm} and provider_mode={record.matrix.provider_mode}. "
+            "For a new planning request, call plan_dispatch with ORTOOLS unless the user "
+            "explicitly asks for BASELINE. Use only tool evidence."
+        )
+    try:
+        final_output, context, result = await run_dispatch_agent(
+            agent_message,
+            dataset_record.dataset,
+            record.matrix,
+            plan=record.plan,
+            request_id=_request_id(request),
+            dataset_id=record.dataset_id,
+            plan_id=record.plan_id,
+            plan_version=record.version,
+        )
+    except InputGuardrailTripwireTriggered:
+        return _error(
+            request,
+            400,
+            "PROMPT_INJECTION_BLOCKED",
+            "訊息包含不可執行的規則繞過要求。",
+        )
+    except Exception:
+        # Do not serialize provider requests, headers, keys, or SDK internals.
+        return _error(
+            request,
+            502,
+            "AGENT_RUN_FAILED",
+            "OpenAI Agent 執行失敗, 請查看 provider status 與 request_id。",
+            provider="OPENAI",
+            fallback_used=False,
+        )
+
+    evidence = []
+    for item in context.evidence:
+        evidence.append(
+            {
+                "tool": item.get("tool", "unknown"),
+                "data": {key: value for key, value in item.items() if key != "tool"},
+            }
+        )
+    requires_confirmation = record.state in {"DRAFT", "VALIDATED", "PROPOSED"}
+    usage = {
+        "total_tokens": context.budget.total_tokens,
+        "tool_calls": context.budget.tool_calls,
+        "agent_run_id": context.agent_run_id,
+    }
     return {
         "session_id": payload.session_id,
-        "agent_run_id": f"RUN-{uuid4().hex[:12].upper()}",
-        "message": "已收到請求; 請使用計畫與驗證 API 取得可追溯結果.",
-        "evidence": [],
-        "requires_human_confirmation": False,
-        "usage": {"total_tokens": 0},
+        "agent_run_id": context.agent_run_id,
+        "message": final_output,
+        "evidence": evidence,
+        "requires_human_confirmation": requires_confirmation,
+        "usage": usage,
+        "provider_mode": record.matrix.provider_mode,
+        "plan_id": record.plan_id,
+        "plan_version": record.version,
+        "runner_result_type": type(result).__name__,
         "request_id": _request_id(request),
     }

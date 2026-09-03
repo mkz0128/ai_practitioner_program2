@@ -6,10 +6,10 @@
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
-- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`DONE`；HTTP integration：`PARTIAL`
+- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`DONE`；HTTP integration：`LIVE_PASS`
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE；LIFECYCLE_PARTIAL`
-- Live Provider Integration：`PARTIAL`
-- Frontend Integration status：`PARTIAL；LOCAL_CONTROL_TOWER_READY`
+- Live Provider Integration：`PARTIAL；GOOGLE_LIVE，BROWSER／TDX_BLOCKED`
+- Frontend Integration status：`PARTIAL；LOCAL_CONTROL_TOWER_READY；BROWSER_LIVE_BLOCKED`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -23,15 +23,15 @@
 | Excel 匯入與欄位驗證 | 原始必要 | 完成 | `src/services/importer.py`、`tests/test_import_validation.py`、`tests/test_competition_acceptance.py` | 無核心缺口 |
 | 包裹件數與單件重量加總 | 原始必要 | 完成 | `Order.total_weight_kg`、import／planning tests | 無核心缺口 |
 | 車輛載重與服務區域 | 原始必要 | 完成 | `src/services/planner.py`、`src/services/validator.py`、競賽驗收 | 無核心缺口 |
-| OR-Tools 分車與順序 | 原始必要 | 完成（simulated；provider wiring 已具備） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`、Demo | 尚缺 Google live E2E |
+| OR-Tools 分車與順序 | 原始必要 | 完成（Google live Matrix 已接入） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`、本輪 Live flow | Browser／TDX 尚未完成 |
 | 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成（simulated） | planner／validator time-window tests | 尚未以 live duration 驗證 |
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
-| 超重重新分配 | 原始必要 | 完成（固定 Demo） | Z4 112 kg acceptance、Validator evidence | 尚未接入 live provider |
-| 臨時插單 Preview 與差異 | 原始必要 | 完成（simulated） | `try_minimal_insert`、`compute_plan_diff`、urgent regression | live route matrix 需 credentials 才能驗證 |
+| 超重重新分配 | 原始必要 | 完成（Google live Matrix） | Z4 112 kg acceptance、Validator evidence、本輪 Live plan | 無核心缺口 |
+| 臨時插單 Preview 與差異 | 原始必要 | 完成（Google live Matrix；Browser／TDX 待補） | `try_minimal_insert`、`compute_plan_diff`、本輪 ORD-041 Live preview | Browser／TDX 顯示仍待憑證 |
 | 人工確認與方案版本管理 | 原始必要 | 部分完成 | API lifecycle tests、SQLite immutable version tests | state mutation 尚未回寫既有 row；缺 restart lifecycle regression |
-| OpenAI Agent 真正呼叫 Tool | 原始必要 | 部分完成 | `src/agent/runtime.py`、`tests/test_agent_sdk_scenarios.py`、條件式 live E2E | `/api/v1/agent/chat` 尚未接入 `Runner.run` |
-| Google Routes 真實距離／時間 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/google_routes.py`、strict plan/map wiring、`tests/test_live_provider_wiring.py` | 缺 server key，無 LIVE PASS |
-| Google Matrix 進入 OR-Tools | 原始必要 | 部分完成（wiring verified） | `_build_matrix`、matrix hash/version consistency test | 缺實際 Google Matrix live E2E |
+| OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Live PASS） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 無核心缺口 |
+| Google Routes 真實距離／時間 | 原始必要 | 完成（Live PASS） | `src/providers/google_routes.py`、本輪 `provider_mode=GOOGLE` Matrix／geometry | Browser key 另屬前端缺口 |
+| Google Matrix 進入 OR-Tools | 原始必要 | 完成（Live PASS） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator | 無核心缺口 |
 | Google Maps Browser 地圖 | 原始必要 | 部分完成（Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx`、RTL/build；無 key 時 simulated fallback | Browser key 與瀏覽器驗收 |
 | TDX OAuth／真實路況查詢 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth/event models、mock test | TDX credentials 與 live response |
 | TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
@@ -40,13 +40,13 @@
 
 ## NOW
 
-- 在安全且具備相應 credentials 的環境執行 Google／TDX／OpenAI／Browser Live E2E，確認 provider evidence 與前端畫面一致。
+- 取得 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 與 TDX credentials 後，完成瀏覽器地圖與路況 Live gate。
 
 ## NEXT
 
-1. 在具備 Google server／Browser keys 的環境執行 Live matrix、geometry 與瀏覽器地圖驗收。
+1. 在具備 Browser key 的環境執行 Google Maps JavaScript 地圖、Marker 與路線驗收。
 2. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
-3. 執行前後端完整 Live E2E，並確認 HTTP Agent 與 provider evidence。
+3. 執行包含 Browser／TDX 的前後端完整 Live E2E。
 
 ## BLOCKED
 
@@ -58,11 +58,11 @@
 - `EXT-001 — External Provider Issue`：Google Browser key 尚未設定；server key 已設定，而 P0 Benchmark 維持 simulated 與 deterministic。
 - `EXT-002 — External Provider Issue`：local environment 尚未設定 TDX credentials；core planning 仍可使用。
 - `ENV-001 — Environment Issue`：dependency lock 已在 Windows CPython 3.12 驗證；未來 Linux deployment 前仍需進行 Linux wheel／lock verification。
-- `REQ-ORIG-001／002 — External Provider Issue`：Google strict wiring 與 matrix identity tests 已通過，但本環境缺 server key；`provider_mode=SIMULATED` 不等於完整 Live Integration。
+- `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix、geometry 與 OR-Tools 同次求解為 Live PASS；後續仍需保留 quota／錯誤監控。
 - `REQ-ORIG-003／006／007 — Frontend Integration`：local control tower 已建立並通過 typecheck／lint／unit build；Browser key 與真實 provider E2E 尚未完成，這些是原始必要功能，不是 P1。
 - `REQ-ORIG-005 — External Provider Issue`：TDX correlation/risk model 已建立，但尚無 live event evidence。
 - `CORE-STATE-001 — Code Bug／Persistence`：confirm／dispatch 目前只更新 process 內 state，尚未回寫既有 SQLite plan row；需要可重現的 restart regression 後才能宣稱 durable lifecycle 完成。
-- `AGENT-API-001 — Integration`：`/api/v1/agent/chat` 目前使用 evidence-grounded deterministic explanation；`Runner.run` strict-tool runtime 由 provider-neutral／opt-in live gate 驗證，HTTP live Agent E2E 仍待 credentials。
+- `AGENT-API-001 — Integration`：`/api/v1/agent/chat` 已使用 `Runner.run` 與 strict tools；本輪 HTTP Live Agent 回傳 `RunResult`、`explain_assignment` evidence。後續僅需持續維護模型／配額監控。
 - `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass. Retained as regression evidence; OpenAI Agent is DONE by human acceptance.
 - `API-001 — Acceptance`：全部 13 條 contract routes 與 40-order preview flow 通過 automated checks；Demo gate 刻意不執行 dispatch。
 - `P0-AC-001 — Competition Acceptance`：field-level import errors、evidence-grounded Plan reasons、計算後的 order-41 diff、overload redistribution 與 independent Validator evidence 均可執行且已人工驗收；Backend P0 為 DONE。
@@ -139,7 +139,11 @@
 - 未執行 Dispatch、deployment 或 production operation。
 - 最新前端交付驗證：clean-install/startup `PASS`；Swagger `/docs` `200`；`/openapi.json` `200` 且有 13 paths；CORS preflight `PASS`（`http://localhost:5173`）；Demo workbook path 存在於 `data/samples/demo-delivery-40-orders.xlsx`。
 - 最新前端控制塔驗證：`pnpm install --frozen-lockfile`、TypeScript typecheck、ESLint、Vitest `2 passed`、Vite production build 與 Playwright Chromium `2 passed`；已保存 6 張無 secrets 的 local simulated screenshots 於 `docs/screenshots/`。
-- 本輪現況查證：Google `AUTO` plan 已具備 strict Matrix → OR-Tools wiring 與 identity regression；本環境無 server key，因此未產生 LIVE PASS，`SIMULATED` 不等於完整 Live Integration。
+- 本輪 Live flow：40 單 Excel 匯入 → 驗證 → Google Routes 41×41 Matrix → OR-Tools → Validator → Google geometry → OpenAI `Runner.run`／strict tool → ORD-041 incremental Matrix preview → `MINIMAL_CHANGE` → 人工確認；全程未執行 Dispatch／部署。計畫與 preview 均未使用 simulated fallback。
+- 本輪 Google evidence：`provider_mode=GOOGLE`、`matrix_version=google-routes-v1`、40/40 assigned、365 kg、Validator `valid=true`；Map data 四條路線均為非 simulated geometry。插單前後 365 kg → 367 kg、0 → 0 unassigned，僅影響單一車輛，距離與時間差異由真實 Matrix 計算。
+- 本輪 OpenAI evidence：`/api/v1/agent/chat` 回傳 `runner_result_type=RunResult`、tool `explain_assignment`、`tool_calls=1`；回答只引用工具證據。
+- 本輪 Browser／TDX：`VITE_GOOGLE_MAPS_BROWSER_API_KEY`、`TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 均為 `MISSING`，因此 Browser Maps 與 TDX 為 `BLOCKED`，不以 fallback／mock／skipped 宣稱 LIVE PASS。
+- 本輪 screenshot：已擷取控制塔即時畫面與 ORD-041 差異畫面；Browser key 缺少時地圖標示 `SIMULATED · 非即時道路`，避免誤導為 Google Maps Live。
 - 本輪現況查證：TDX 已具備 OAuth／事件 projection／route-risk correlation adapter 與 mock evidence；本環境無 credentials，因此標示 `CREDENTIALS_MISSING`，不等於 Live 完成。
 - 本輪現況查證：`frontend/` 控制塔已通過 typecheck、lint、unit tests、production build；Browser key 缺少時顯示 simulated map fallback，完整 browser-to-live-provider E2E 仍未完成。
 - 本輪限制：未呼叫付費外部 API、未讀取或輸出任何憑證、未執行 Dispatch／部署／正式環境操作；frontend dependency 與 provider wiring 品質閘門已重新執行。

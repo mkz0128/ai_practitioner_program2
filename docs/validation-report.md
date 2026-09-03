@@ -17,7 +17,7 @@ git_repository: true
 
 ## 本輪檢查
 
-本輪新增前端控制塔與 provider wiring；未讀取 `.env` 或任何 credential value。Live provider 結果只能依 process environment 判定，當前環境五項相關變數均未設定，因此以下 live gate 皆為 `BLOCKED`／`SKIPPED`，不得以 mock 或 simulated 取代。
+本輪以不輸出 credential 的方式執行真實整合驗證；OpenAI 與 Google Routes 使用已設定的開發憑證，Browser Maps 與 TDX 憑證缺少，因此後兩者維持 `BLOCKED`。任何 mock、simulated 或 skipped 結果均未列為 Live PASS。
 
 | 檢查 | 預期證據 | 狀態 |
 |---|---|---|
@@ -58,6 +58,20 @@ git_repository: true
 | Minimum-change insertion | 合法既有路線插入保留未受影響路線，ORD-041 僅影響一台車 | 通過 — `MINIMAL_CHANGE`、Validator valid |
 | 對外內容清理 | 已追蹤 Markdown／JSON／YAML／TOML 移除私人交付時程與個人工作安排 | 通過 — 僅保留技術識別字與程式碼既有字串 |
 | 文件中文化與格式 | 說明文字使用繁體中文；Markdown links、code fences 與結構可解析 | 通過 |
+
+## 最新 Live Integration 驗證（2026-09-03）
+
+| 閘門 | 狀態 | 真實證據 |
+|---|---|---|
+| OpenAI Agent | `LIVE PASS` | `/api/v1/agent/chat` 實際回傳 `runner_result_type=RunResult`；strict `explain_assignment` tool 呼叫 1 次；回答僅引用 tool evidence。 |
+| Google Routes Matrix → OR-Tools | `LIVE PASS` | 40 單匯入後取得 41×41 `provider_mode=GOOGLE`、`matrix_version=google-routes-v1`；同一 Matrix 建立 OR-Tools plan，40/40 assigned、Validator `valid=true`。 |
+| Google route geometry | `LIVE PASS` | `/map-data` 回傳 4 條非 simulated geometry，provider 為 `GOOGLE`。 |
+| ORD-041 urgent preview | `LIVE PASS` | 以同一 plan version／dataset 基準，incremental Matrix 延伸成功；`MINIMAL_CHANGE`、40 → 41 assigned、365 → 367 kg、0 → 0 unassigned、單一車輛受影響；preview Validator 通過；未 Dispatch。 |
+| Google Maps Browser | `BLOCKED` | `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 缺少；前端正確顯示 `SIMULATED · 非即時道路`，不得宣稱 Browser Live。 |
+| TDX OAuth／路況／route risk | `BLOCKED` | `TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 缺少；API 回傳 `CREDENTIALS_MISSING`，未以 mock 代替。 |
+| 完整 Playwright Live E2E | `BLOCKED` | 現有 Playwright 流程為 keyless／simulated regression；Browser 與 TDX Live gate 尚缺必要憑證。 |
+
+本輪完整後端 keyless suite 為 `36 passed, 3 skipped`；另外以條件環境執行 OpenAI／Responses／Google live gate 為 `5 passed`。前端 typecheck、lint、Vitest `2 passed`、build 與 Playwright regression `2 passed`。Ruff、mypy 與 tracked-file secret scan 均通過。未輸出或提交任何 credential，未執行 Dispatch、部署或正式環境操作。
 
 ## 相依套件解析證據
 

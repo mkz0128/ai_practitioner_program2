@@ -101,7 +101,7 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle }: MapPanelProps
         {liveMap && <div className="map-canvas" ref={mapElement} />}
         {!liveMap && <div className="map-fallback"><div className="map-grid" />{data && visibleRoutes.map((route) => { const svg = routeToSvg(route, data.depot); return <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" key={route.vehicle_id}><polyline points={svg.points} stroke={route.color} />{svg.dots.map((dot, index) => <circle key={`${route.vehicle_id}-${index}`} cx={dot.x} cy={dot.y} r={index === 0 ? 1.8 : 1.1} fill={index === 0 ? '#fff' : route.color} onClick={() => dot.orderId && onSelectVehicle(route.vehicle_id)} />)}</svg>})}</div>}
         <div className="map-label">新北市 · 青年局配送中心 · DEPOT-001</div>
-        <div className="map-status">{data?.provider_mode === 'GOOGLE' && !mapError ? 'GOOGLE LIVE' : 'SIMULATED · 非即時道路'}</div>
+        <div className="map-status">{liveMap && data?.provider_mode === 'GOOGLE' && !mapError ? 'GOOGLE LIVE' : 'SIMULATED · 非即時道路'}</div>
         {mapError && <div className="warning-box" style={{ position: 'absolute', left: 16, right: 16, top: 58 }}>{mapError}</div>}
         {!data && <div className="loading">等待配送方案</div>}
         {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ TDX 路況事件</span>}</div>}

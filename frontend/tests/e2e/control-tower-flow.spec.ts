@@ -20,7 +20,7 @@ test('控制塔 local simulated flow 可展示主要交付畫面', async ({ page
   await page.screenshot({ path: path.join(screenshotDir, '03-map-and-vehicles.png'), fullPage: true })
 
   await page.getByRole('button', { name: '今天的配送方案怎麼分配？' }).click()
-  await expect(page.locator('.chat-bubble.agent, [role="alert"]').first()).toBeVisible()
+  await expect(page.locator('.chat-bubble.agent, [role="alert"]').first()).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: path.join(screenshotDir, '04-agent-blocked.png'), fullPage: true })
 
   await page.getByRole('button', { name: 'ORD-041 插單差異' }).click()
