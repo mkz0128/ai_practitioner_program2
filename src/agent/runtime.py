@@ -157,6 +157,7 @@ def plan_dispatch(
         "total_distance_m": plan.total_distance_m,
         "total_driving_time_s": plan.total_driving_time_s,
         "assigned_order_count": sum(len(route.order_ids) for route in plan.routes),
+        "vehicle_count": len(plan.routes),
         "unassigned_orders": plan.unassigned_orders,
         "unassigned_reasons": plan.unassigned_reasons,
         "validator": validation.model_dump(mode="json"),

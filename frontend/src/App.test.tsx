@@ -29,15 +29,22 @@ describe('控制塔主流程', () => {
     api.getValidation.mockResolvedValue({ dataset_id: 'DS-001', validation: { is_valid: true, error_count: 0, warning_count: 0, requires_manual_review: false, errors: [], warnings: [] } })
     api.createPlan.mockResolvedValue(plan)
     api.getMapData.mockResolvedValue({ plan_id: 'PLAN-001', version: 1, provider_mode: 'SIMULATED', depot: { depot_id: 'DEPOT-001', latitude: 25, longitude: 121 }, routes: [], traffic: { mode: 'UNAVAILABLE', data_status: 'CREDENTIALS_MISSING', events: [], route_risks: [] }, warnings: [] })
+    api.chat.mockResolvedValue({ session_id: 'TEST', agent_run_id: 'RUN', message: '已完成配送規劃。', evidence: [], requires_human_confirmation: true })
   })
 
-  it('可從 Excel 匯入到方案與 Validator 顯示', async () => {
+  it('附件與需求可在同一次送出後匯入並建立方案', async () => {
     render(<App />)
     const input = screen.getByLabelText('上傳 Excel')
     fireEvent.change(input, { target: { files: [new File(['xlsx'], 'demo.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })] } })
+    expect(api.importWorkbook).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('demo.xlsx')
+    fireEvent.change(screen.getByRole('textbox', { name: '輸入訊息' }), { target: { value: '請用這份訂單建立今天的配送方案' } })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '輸入訊息' }), { key: 'Enter', code: 'Enter' })
     await waitFor(() => expect(screen.getByText(/已匯入 40 張訂單/)).toBeInTheDocument())
-    expect(api.createPlan).toHaveBeenCalledWith('DS-001')
+    expect(api.createPlan).toHaveBeenCalledWith('DS-001', expect.anything())
     expect(screen.getByText('Validator 通過')).toBeInTheDocument()
+    expect(api.chat).toHaveBeenCalledTimes(1)
+    expect(api.chat.mock.calls[0][1]).toBe('請用這份訂單建立今天的配送方案')
   })
 
   it('明確顯示不能自動 Dispatch 的人工確認邊界', () => {

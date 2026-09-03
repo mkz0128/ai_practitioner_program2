@@ -39,20 +39,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-export async function importWorkbook(file: File): Promise<DatasetImportResponse> {
+export async function importWorkbook(file: File, signal?: AbortSignal): Promise<DatasetImportResponse> {
   const form = new FormData()
   form.append('file', file)
   return request<DatasetImportResponse>('/api/v1/datasets/import-excel', {
     method: 'POST',
     body: form,
+    signal,
   })
 }
 
-export function getValidation(datasetId: string): Promise<{ dataset_id: string; validation: ValidationPayload }> {
-  return request(`/api/v1/datasets/${encodeURIComponent(datasetId)}/validation`)
+export function getValidation(datasetId: string, signal?: AbortSignal): Promise<{ dataset_id: string; validation: ValidationPayload }> {
+  return request(`/api/v1/datasets/${encodeURIComponent(datasetId)}/validation`, { signal })
 }
 
-export function createPlan(datasetId: string): Promise<Plan> {
+export function createPlan(datasetId: string, signal?: AbortSignal): Promise<Plan> {
   return request<Plan>('/api/v1/plans', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -62,6 +63,7 @@ export function createPlan(datasetId: string): Promise<Plan> {
       route_provider_preference: 'AUTO',
       traffic_mode: 'AUTO',
     }),
+    signal,
   })
 }
 
@@ -70,9 +72,9 @@ export function getPlan(planId: string, version?: number): Promise<Plan> {
   return request<Plan>(`/api/v1/plans/${encodeURIComponent(planId)}${query}`)
 }
 
-export function getMapData(planId: string, version?: number): Promise<MapData> {
+export function getMapData(planId: string, version?: number, signal?: AbortSignal): Promise<MapData> {
   const query = version ? `?version=${version}` : ''
-  return request<MapData>(`/api/v1/plans/${encodeURIComponent(planId)}/map-data${query}`)
+  return request<MapData>(`/api/v1/plans/${encodeURIComponent(planId)}/map-data${query}`, { signal })
 }
 
 export function getProviderStatus(): Promise<ProviderResponse> {
@@ -83,15 +85,17 @@ export function chat(
   sessionId: string,
   message: string,
   context: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
   return request<ChatResponse>('/api/v1/agent/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, message, context }),
+    signal,
   })
 }
 
-export function previewUrgent(planId: string, baseVersion: number): Promise<UrgentPreview> {
+export function previewUrgent(planId: string, baseVersion: number, signal?: AbortSignal): Promise<UrgentPreview> {
   return request<UrgentPreview>(`/api/v1/plans/${encodeURIComponent(planId)}/urgent-insert/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -112,6 +116,7 @@ export function previewUrgent(planId: string, baseVersion: number): Promise<Urge
       },
       packages: [{ package_id: 'PKG-041-01', order_id: 'ORD-041', weight_kg: 2 }],
     }),
+    signal,
   })
 }
 

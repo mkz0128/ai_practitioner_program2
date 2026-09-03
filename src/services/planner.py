@@ -174,6 +174,64 @@ def _route_metrics(
     )
 
 
+def _route_metrics_preserving_order(
+    order_ids: list[str], vehicle: Vehicle, orders: dict[str, Order], matrix: MatrixResult
+) -> VehicleRoute | None:
+    """Evaluate an urgent-insertion sequence without reordering existing stops."""
+    index = {node_id: position for position, node_id in enumerate(matrix.node_ids)}
+    current_node = "DEPOT-001"
+    current_s = 0
+    total_distance = 0
+    total_duration = 0
+    stops: list[Stop] = []
+    for order_id in order_ids:
+        order = orders[order_id]
+        from_index, to_index = index[current_node], index[order_id]
+        travel_s = matrix.duration_s[from_index][to_index]
+        candidate = _arrival(current_s, travel_s, order.time_slot)
+        if candidate is None:
+            return None
+        start_s, finish_s = candidate
+        total_distance += matrix.distance_m[from_index][to_index]
+        total_duration += travel_s
+        stops.append(
+            Stop(
+                sequence=len(stops) + 1,
+                order_id=order_id,
+                time_slot=order.time_slot,
+                eta=(BASE_TIME + timedelta(seconds=start_s)).isoformat(),
+                order_weight_kg=order.total_weight_kg,
+                latitude=order.latitude,
+                longitude=order.longitude,
+                leg_distance_m=matrix.distance_m[from_index][to_index],
+                leg_duration_s=travel_s,
+            )
+        )
+        current_node, current_s = order_id, finish_s
+    if current_node != "DEPOT-001":
+        depot_index, last_index = index["DEPOT-001"], index[current_node]
+        return_s = current_s + matrix.duration_s[last_index][depot_index]
+        total_distance += matrix.distance_m[last_index][depot_index]
+        total_duration += matrix.duration_s[last_index][depot_index]
+    else:
+        return_s = 0
+    if return_s > PM_END:
+        return None
+    load = round(
+        vehicle.current_load_kg + sum(orders[order_id].total_weight_kg for order_id in order_ids), 3
+    )
+    return VehicleRoute(
+        vehicle_id=vehicle.vehicle_id,
+        order_ids=[stop.order_id for stop in stops],
+        planned_load_kg=load,
+        max_load_kg=vehicle.max_load_kg,
+        load_utilization=round(load / vehicle.max_load_kg, 6),
+        total_distance_m=total_distance,
+        total_duration_s=total_duration,
+        stops=stops,
+    )
+
+
 def build_baseline(dataset: Dataset, matrix: MatrixResult) -> PlanResult:
     vehicles = sorted(dataset.vehicles, key=lambda vehicle: vehicle.vehicle_id)
     orders = {order.order_id: order for order in dataset.orders}
@@ -265,7 +323,9 @@ def try_minimal_insert(
         for position in range(len(base_route.order_ids) + 1):
             candidate_ids = [*base_route.order_ids]
             candidate_ids.insert(position, pending_order.order_id)
-            candidate_route = _route_metrics(candidate_ids, vehicle, orders, matrix)
+            candidate_route = _route_metrics_preserving_order(
+                candidate_ids, vehicle, orders, matrix
+            )
             if candidate_route is None:
                 continue
             routes = [

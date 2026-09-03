@@ -56,7 +56,7 @@ export function StatusBar({ plan, providers, activeView, onViewChange }: StatusB
           </div>
         ))}
       </div>
-      <div className="provider-strip" aria-label="外部服務狀態">{providersSummary.map(([label, state]) => <span key={label} className="provider-badge"><span className={`source-dot ${state.tone}`} />{label}<b className={`provider-text ${state.tone}`}>{state.label}</b></span>)}</div>
+      {activeView !== 'assistant' && <div className="provider-strip" aria-label="外部服務狀態">{providersSummary.map(([label, state]) => <span key={label} className="provider-badge"><span className={`source-dot ${state.tone}`} />{label}<b className={`provider-text ${state.tone}`}>{state.label}</b></span>)}</div>}
     </header>
   )
 }

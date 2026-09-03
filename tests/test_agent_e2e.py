@@ -33,7 +33,7 @@ async def test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool() -> 
     assert context.evidence[0]["tool"] == "plan_dispatch"
     assert context.evidence[0]["validator"]["valid"] is True
     assert context.evidence[0]["provider_mode"] == "SIMULATED"
-    # Agent 可使用人類可讀的千分位格式；驗證仍比對同一個 evidence 數值。
+    # Agent 可使用人類可讀的千分位格式; 驗證仍比對同一個 evidence 數值。
     normalized_output = final_output.replace(",", "")
     assert str(context.evidence[0]["total_distance_m"]) in normalized_output
     assert any(type(item).__name__ == "ToolCallItem" for item in result.new_items)

@@ -1,26 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChatResponse, Plan } from '../types'
+import type { ChatResponse } from '../types'
+
+type ChatProgress = (step: string) => void
+type ChatSubmitResult = { response: ChatResponse | null; error?: string }
+
+interface AttachmentMeta {
+  name: string
+  type: string
+  size: number
+}
 
 interface Message {
   role: 'user' | 'agent'
   text: string
+  attachment?: AttachmentMeta
   evidence?: ChatResponse['evidence']
+  progress?: string[]
 }
 
 interface AgentPanelProps {
-  plan: Plan | null
-  sessionId: string
-  datasetId?: string | null
-  onChat: (message: string) => Promise<ChatResponse | null>
-  onImport: (file: File) => Promise<void>
-  onUseExample?: () => Promise<void>
+  onChat: (message: string, attachment?: File, onProgress?: ChatProgress) => Promise<ChatSubmitResult>
+  onUseExample?: () => Promise<File>
+  onStop: () => void
   busy: boolean
 }
 
-const examples = ['今天的配送方案怎麼分配？', '哪台車的載重最高？', '為什麼有訂單未安排？', '預覽 ORD-041 插單']
+const suggestions = ['你可以做什麼？', 'Excel 需要哪些欄位？', '你如何避免超載？']
 
-function friendlyText(text: string): string {
-  return text.replace(/ORTOOLS/g, '最佳化排程').replace(/SIMULATED/g, '示意資料').replace(/GOOGLE_LIVE/g, 'Google 即時資料')
+function friendlyText(text: string, evidence: ChatResponse['evidence'] = []): string {
+  const normalized = text
+    .replace(/ORTOOLS/g, '最佳化排程')
+    .replace(/SIMULATED/g, '示範資料')
+    .replace(/GOOGLE_LIVE/g, 'Google 即時資料')
+    .replace(/FEASIBLE/g, '可行')
+  const planEvidence = evidence.find((item) => item.tool === 'plan_dispatch')?.data
+  const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間/i.test(normalized)
+  if (!containsEngineeringFields) return normalized
+  if (planEvidence) {
+    const assigned = typeof planEvidence.assigned_order_count === 'number' ? planEvidence.assigned_order_count : null
+    const unassigned = Array.isArray(planEvidence.unassigned_orders) ? planEvidence.unassigned_orders : []
+    const validator = planEvidence.validator && typeof planEvidence.validator === 'object' ? planEvidence.validator as Record<string, unknown> : undefined
+    const vehicleCount = typeof planEvidence.vehicle_count === 'number' ? planEvidence.vehicle_count : null
+    const summary = [`已完成配送規劃${assigned === null ? '' : `，安排 ${assigned} 張訂單`}${vehicleCount === null ? '' : `，使用 ${vehicleCount} 台車`}。`]
+    if (unassigned.length === 0 && validator?.valid === true) summary.push('所有訂單均已安排，未發現超載、重複、跨區或時段違規。')
+    else if (unassigned.length > 0) summary.push(`有 ${unassigned.length} 張訂單需要人工處理。`)
+    if (typeof planEvidence.total_distance_m === 'number') summary.push(`總行駛距離約 ${planEvidence.total_distance_m.toLocaleString()} 公尺。`)
+    return summary.join(' ')
+  }
+  return '已完成處理；詳細的計算依據已收合，請展開查看。'
 }
 
 function evidenceSummary(tool: string, data: Record<string, unknown>): string {
@@ -37,50 +64,115 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   return '已取得後端工具證據。'
 }
 
-export function AgentPanel({ plan, sessionId, datasetId, onChat, onImport, onUseExample, busy }: AgentPanelProps) {
+function fileType(file: File): string {
+  return file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+
+export function AgentPanel({ onChat, onUseExample, onStop, busy }: AgentPanelProps) {
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
+  const [attachment, setAttachment] = useState<File | null>(null)
+  const [attachmentMenu, setAttachmentMenu] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const cancelledRef = useRef(false)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatLogRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { if (chatEndRef.current && typeof chatEndRef.current.scrollIntoView === 'function') chatEndRef.current.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
+  useEffect(() => {
+    if (chatLogRef.current) chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight
+  }, [messages, busy])
+
+  const showFileError = (text: string) => {
+    setAttachment(null)
+    setAttachmentMenu(false)
+    setMessages((items) => [...items, { role: 'agent', text }])
+  }
+
+  const selectFile = (file?: File) => {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      showFileError('目前只接受 .xlsx Excel 檔案，請重新選擇。')
+      return
+    }
+    if (file.size === 0) {
+      showFileError('這個 Excel 檔案是空的，請重新選擇。')
+      return
+    }
+    setAttachment(file)
+    setAttachmentMenu(false)
+  }
 
   const send = async (text = message) => {
-    const value = text.trim()
-    if (!value || busy || cancelledRef.current) return
+    const value = text.trim() || (attachment ? '請匯入並檢查這份配送資料' : '')
+    if ((!value && !attachment) || busy) return
+    const submittedAttachment = attachment
+    const attachmentInfo = submittedAttachment ? { name: submittedAttachment.name, type: fileType(submittedAttachment), size: submittedAttachment.size } : undefined
     setMessage('')
+    setAttachment(null)
+    setAttachmentMenu(false)
     cancelledRef.current = false
-    setMessages((items) => [...items, { role: 'user', text: value }])
-    const result = await onChat(value)
-    if (result && !cancelledRef.current) setMessages((items) => [...items, { role: 'agent', text: friendlyText(result.message), evidence: result.evidence }])
+    setMessages((items) => [...items, { role: 'user', text: value, attachment: attachmentInfo }])
+    const progressSteps: string[] = []
+    const progressMessageIndex = messages.length + 1
+    setMessages((items) => [...items, { role: 'agent', text: '', progress: progressSteps }])
+    const reportProgress: ChatProgress = (step) => {
+      if (!progressSteps.includes(step)) progressSteps.push(step)
+      setMessages((items) => items.map((item, index) => index === progressMessageIndex ? { ...item, progress: [...progressSteps] } : item))
+    }
+    const result = await onChat(value, submittedAttachment || undefined, reportProgress)
+    setMessages((items) => items.map((item, index) => index === progressMessageIndex
+      ? { ...item, text: result.response && !cancelledRef.current ? friendlyText(result.response.message, result.response.evidence) : (result.error || '已停止這次處理。'), evidence: result.response && !cancelledRef.current ? result.response.evidence : undefined, progress: progressSteps }
+      : item))
   }
 
   const chooseExample = async () => {
     if (!onUseExample || busy) return
-    cancelledRef.current = false
-    await onUseExample()
+    try {
+      selectFile(await onUseExample())
+    } catch (error) {
+      showFileError(error instanceof Error ? error.message : '範例資料載入失敗。')
+    }
   }
 
   return (
-    <section className="panel agent-panel" aria-label="AI 調度助理">
+    <section
+      className={`panel agent-panel ${dragActive ? 'drag-active' : ''}`}
+      aria-label="AI 調度助理"
+      onDragEnter={(event) => { event.preventDefault(); if (!busy) setDragActive(true) }}
+      onDragOver={(event) => { event.preventDefault(); if (!busy) setDragActive(true) }}
+      onDragLeave={(event) => { event.preventDefault(); if (event.currentTarget === event.target) setDragActive(false) }}
+      onDrop={(event) => { event.preventDefault(); setDragActive(false); if (!busy) selectFile(event.dataTransfer.files?.[0]) }}
+    >
       <div className="panel-heading">
-        <div><div className="eyebrow">調度 Copilot</div><h2>AI 調度助理</h2><p>直接說出需求，我會用已驗證資料協助你</p></div>
+        <div><div className="eyebrow">調度 Copilot</div><h2>AI 調度</h2><p>直接說出需求，或附加今天的訂單</p></div>
         <span className="status-chip neutral"><span className="online-dot" />在線</span>
       </div>
       <div className="panel-body agent-body">
-        <div className="conversation-intro"><div className="agent-avatar">AI</div><div><strong>你好，我是 AI 配送調度助理。</strong><p>我可以協助整理訂單、檢查資料、安排車輛、規劃路線及模擬臨時插單。你可以直接問問題、上傳今天的訂單，或使用範例資料開始。</p></div></div>
-        <div className="onboarding-actions"><label className="action-tile"><span className="tile-icon">↑</span><span><strong>上傳今日訂單</strong><small>Excel .xlsx</small></span><input aria-label="上傳 Excel" type="file" accept=".xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onImport(file) }} /></label><button type="button" className="action-tile" onClick={() => void chooseExample()} disabled={busy}><span className="tile-icon">▦</span><span><strong>使用 40 張範例訂單</strong><small>快速開始示範</small></span></button><button type="button" className="action-tile" onClick={() => void send('你可以做什麼？')} disabled={busy}><span className="tile-icon">?</span><span><strong>看看你可以做什麼</strong><small>查看助理能力</small></span></button></div>
-        <div className="context-strip"><span>Conversation ID <b>{sessionId}</b></span><span>Active Dataset <b>{datasetId ? '已載入' : '尚未選擇'}</b></span><span>Active Plan <b>{plan ? '已建立' : '尚未建立'}</b></span><span>版本 <b>{plan ? `v${plan.version}` : '—'}</b></span></div>
-        <div className="example-buttons"><span className="quick-label">快捷提問</span>{examples.map((example) => <button className="example-button" key={example} onClick={() => void send(example)} disabled={busy}>{example}</button>)}</div>
-        <div className="chat-log" aria-live="polite">
-          {!messages.length && <div className="empty-chat">沒有資料也可以先問我：Excel 需要哪些欄位？我如何避免超載？臨時插單怎麼處理？</div>}
-          {messages.map((item, index) => <div className={`chat-bubble ${item.role}`} key={`${item.role}-${index}`}><div className="bubble-role">{item.role === 'agent' ? 'AI 助理' : '你'}</div>{item.text}{item.evidence?.map((evidence, evidenceIndex) => <div className="evidence-card" key={`${evidence.tool}-${evidenceIndex}`}><span className="evidence-check">✓</span><span>{evidenceSummary(evidence.tool, evidence.data)}</span></div>)}</div>)}
+        <div ref={chatLogRef} className="chat-log" aria-live="polite">
+          {!messages.length && <div className="empty-chat"><strong>今天想先處理什麼？</strong><div className="empty-suggestions">{suggestions.map((item) => <button type="button" key={item} className="example-button" onClick={() => void send(item)} disabled={busy}>{item}</button>)}</div></div>}
+          {messages.map((item, index) => <div className={`chat-bubble ${item.role}`} key={`${item.role}-${index}`}>
+            <div className="bubble-head"><span className={`bubble-avatar ${item.role}`}>{item.role === 'agent' ? 'AI' : '你'}</span><span className="bubble-role">{item.role === 'agent' ? 'AI 助理' : '你'}</span></div>
+            {item.attachment && <div className="message-attachment"><span>📎</span><span><strong>{item.attachment.name}</strong><small>Excel · XLSX</small></span></div>}
+            {item.text && <div>{item.text}</div>}
+            {item.progress && item.progress.length > 0 && <div className="agent-progress">{item.progress.map((step, stepIndex) => <div className="progress-step" key={step}><span className={stepIndex < item.progress!.length - 1 || Boolean(item.text) ? 'done' : 'active'}>{stepIndex < item.progress!.length - 1 || Boolean(item.text) ? '✓' : '•'}</span>{step}</div>)}</div>}
+            {item.evidence?.length ? <details className="evidence-disclosure"><summary>查看計算依據</summary>{item.evidence.map((evidence, evidenceIndex) => <div className="evidence-card" key={`${evidence.tool}-${evidenceIndex}`}><span className="evidence-check">✓</span><span>{evidenceSummary(evidence.tool, evidence.data)}</span></div>)}</details> : null}
+          </div>)}
           {busy && <div className="chat-bubble agent processing-bubble"><span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" /><span>正在整理已驗證資料…</span></div>}
-          <div ref={chatEndRef} />
         </div>
-        <form className="chat-form" onSubmit={(event) => { event.preventDefault(); void send() }}><button type="button" className="attachment-button" aria-label="附加訂單檔案" onClick={() => document.querySelector<HTMLInputElement>('input[aria-label="上傳 Excel"]')?.click()} disabled={busy}>＋</button><textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }} placeholder="輸入你的配送需求…（Enter 送出，Shift＋Enter 換行）" disabled={busy} aria-label="輸入訊息" rows={1} /><button className="control-button" type="submit" disabled={busy || !message.trim()}>送出</button>{busy && <button type="button" className="control-button ghost stop-button" onClick={() => { cancelledRef.current = true }}>停止</button>}</form>
-        <div className="agent-footer"><span>此對話只引用確定性工具證據，不顯示模型私密推理。</span>{messages.length > 0 && <button type="button" className="retry-button" onClick={() => void send(messages[messages.length - 1]?.text || '')}>重試上一個問題</button>}</div>
+        {attachment && <div className="attachment-chip" role="status"><span>📎</span><span><strong>{attachment.name}</strong><small>Excel · XLSX</small></span><button type="button" aria-label={`移除附件 ${attachment.name}`} onClick={() => setAttachment(null)}>×</button></div>}
+        <form className="chat-form" onSubmit={(event) => { event.preventDefault(); void send() }}>
+          <div className="attachment-menu-wrap">
+            <button type="button" className="attachment-button" aria-label="附加訂單檔案" aria-expanded={attachmentMenu} onClick={() => setAttachmentMenu((open) => !open)} disabled={busy}>＋</button>
+            {attachmentMenu && <div className="attachment-menu"><button type="button" onClick={() => { fileInputRef.current?.click(); setAttachmentMenu(false) }}>上傳 Excel</button><button type="button" onClick={() => void chooseExample()}>使用 40 張範例訂單</button></div>}
+          </div>
+          <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }} placeholder="輸入你的配送需求…" disabled={busy} aria-label="輸入訊息" rows={1} />
+          <button className="control-button" type="submit" disabled={busy || (!message.trim() && !attachment)}>送出</button>
+          {busy && <button type="button" className="control-button ghost stop-button" onClick={() => { cancelledRef.current = true; onStop() }}>停止</button>}
+          <input ref={fileInputRef} aria-label="上傳 Excel" type="file" accept=".xlsx" hidden onChange={(event) => { selectFile(event.target.files?.[0]); event.currentTarget.value = '' }} />
+        </form>
+        <div className="agent-footer"><span>結果會以已驗證資料說明。</span>{messages.length > 0 && <button type="button" className="retry-button" onClick={() => void send(messages.filter((item) => item.role === 'user').at(-1)?.text || '')}>重試</button>}</div>
       </div>
+      {dragActive && <div className="drop-overlay" role="status"><strong>放開以上傳 Excel</strong><span>只接受 .xlsx 檔案</span></div>}
     </section>
   )
 }

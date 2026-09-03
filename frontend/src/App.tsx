@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, chat, confirmPlan, createPlan, getMapData, getProviderStatus, getValidation, importWorkbook, previewUrgent } from './api'
 import { AgentPanel } from './components/AgentPanel'
 import { DetailsPanel } from './components/DetailsPanel'
@@ -11,6 +11,9 @@ import { TaskTable } from './components/TaskTable'
 import { VehiclePanel } from './components/VehiclePanel'
 import type { ChatResponse, MapData, Plan, ProviderStatus, UrgentPreview, ValidationPayload } from './types'
 import './styles.css'
+
+type ChatProgress = (step: string) => void
+type ChatSubmitResult = { response: ChatResponse | null; error?: string }
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -33,6 +36,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const refreshProviders = useCallback(async () => {
     try { setProviders((await getProviderStatus()).providers) } catch { setProviders([]) }
@@ -40,45 +44,60 @@ export default function App() {
 
   useEffect(() => { void refreshProviders() }, [refreshProviders])
 
-  const handleImport = async (file: File) => {
-    setBusy(true); setError(null); setNotice(null); setPreview(null)
-    try {
-      const imported = await importWorkbook(file)
-      const report = await getValidation(imported.dataset_id)
-      setValidation(report.validation)
-      const nextPlan = await createPlan(imported.dataset_id)
-      setPlan(nextPlan)
-      setActiveOrderId(nextPlan.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
-      setMapData(await getMapData(nextPlan.plan_id, nextPlan.version))
-      await refreshProviders()
-      setNotice(`已匯入 ${imported.counts.orders} 張訂單、${imported.counts.vehicles} 台車；方案仍需人工確認。`)
-    } catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
+  const prepareAttachment = async (file: File, reportProgress: ChatProgress, signal: AbortSignal): Promise<Plan | null> => {
+    if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('只接受 .xlsx Excel 檔案，請選擇正確格式。')
+    if (file.size === 0) throw new Error('這個 Excel 檔案是空的，請重新選擇檔案。')
+    reportProgress('正在讀取訂單')
+    const imported = await importWorkbook(file, signal)
+    const report = await getValidation(imported.dataset_id, signal)
+    setValidation(report.validation)
+    reportProgress('資料驗證完成')
+    if (!report.validation.is_valid) {
+      const fields = report.validation.errors.map((item) => item.path).join('、')
+      throw new Error(`資料需要人工複核${fields ? `：${fields}` : '。'}`)
+    }
+    reportProgress('正在規劃配送')
+    const nextPlan = await createPlan(imported.dataset_id, signal)
+    setPlan(nextPlan)
+    setActiveOrderId(nextPlan.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
+    setMapData(await getMapData(nextPlan.plan_id, nextPlan.version, signal))
+    await refreshProviders()
+    reportProgress('方案已建立')
+    setNotice(`已匯入 ${imported.counts.orders} 張訂單、${imported.counts.vehicles} 台車；方案仍需人工確認。`)
+    return nextPlan
   }
 
-  const handleUseExample = async () => {
-    setBusy(true); setError(null); setNotice(null); setPreview(null)
-    try {
-      const response = await fetch('/demo-delivery-40-orders.xlsx')
-      if (!response.ok) throw new Error('範例資料載入失敗。')
-      await handleImport(new File([await response.blob()], 'demo-delivery-40-orders.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-    } catch (requestError) { setError(errorText(requestError)); setBusy(false) }
+  const handleUseExample = async (): Promise<File> => {
+    const response = await fetch('/demo-delivery-40-orders.xlsx')
+    if (!response.ok) throw new Error('範例資料載入失敗。')
+    return new File([await response.blob()], 'demo-delivery-40-orders.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   }
 
-  const handleChat = async (message: string): Promise<ChatResponse | null> => {
-    setBusy(true); setError(null)
+  const handleChat = async (message: string, attachment?: File, reportProgress?: ChatProgress): Promise<ChatSubmitResult> => {
+    setBusy(true); setError(null); setNotice(null)
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
-      const response = await chat(sessionId, message, plan ? { plan_id: plan.plan_id, plan_version: plan.version } : {})
+      let activePlan = plan
+      if (attachment) activePlan = await prepareAttachment(attachment, reportProgress || (() => undefined), controller.signal)
+      const response = await chat(sessionId, message, activePlan ? { plan_id: activePlan.plan_id, plan_version: activePlan.version } : {}, controller.signal)
       const previewEvidence = response.evidence.some((item) => item.tool === 'preview_urgent_insert' && item.data.status === 'PREVIEWED')
-      if (previewEvidence && plan) {
+      if (previewEvidence && activePlan && (!preview || preview.base_version !== activePlan.version)) {
         // The Agent tool remains evidence-only; this REST preview creates the
         // proposed immutable version used by the human confirmation button.
-        setPreview(await previewUrgent(plan.plan_id, plan.version))
+        setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, controller.signal))
       }
-      return response
-    } catch (requestError) { setError(errorText(requestError)); return null }
-    finally { setBusy(false) }
+      return { response }
+    } catch (requestError) {
+      const messageText = requestError instanceof DOMException && requestError.name === 'AbortError' ? '已停止這次處理。' : errorText(requestError)
+      return { response: null, error: messageText }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+      setBusy(false)
+    }
   }
+
+  const handleStop = () => { abortRef.current?.abort() }
 
   const handlePreview = async () => {
     if (!plan) return
@@ -106,9 +125,8 @@ export default function App() {
       <StatusBar plan={plan} providers={providers} activeView={activeView} onViewChange={setActiveView} />
       <main className="page-content">
         {activeView === 'assistant' && <>
-          <div className="page-title-row"><div><div className="eyebrow">工作區</div><h1>今天的配送協作</h1><p>先匯入訂單，再用自然語言和 AI 一起檢視方案。</p></div><div className="page-actions"><span className={`status-chip ${plan?.validation.valid ? 'live' : 'neutral'}`}>{plan ? (plan.validation.valid ? '方案已驗證' : '需要複核') : '等待匯入'}</span></div></div>
           <div className="assistant-layout">
-            <AgentPanel plan={plan} sessionId={sessionId} datasetId={plan?.dataset_id} onChat={handleChat} onImport={handleImport} onUseExample={handleUseExample} busy={busy} />
+            <AgentPanel onChat={handleChat} onUseExample={handleUseExample} onStop={handleStop} busy={busy} />
             <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} />
           </div>
           <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
@@ -126,7 +144,7 @@ export default function App() {
         </>}
       </main>
       <div className="app-feedback">
-      {busy && <div className="hint">正在向後端取得驗證、排程或 preview evidence…</div>}
+      {busy && <div className="hint">正在整理訂單與配送方案…</div>}
       {notice && <div className="success-box">{notice}</div>}
       {validation && !validation.is_valid && <div className="warning-box">資料驗證需要人工複核：{validation.errors.map((item) => item.path).join('、')}</div>}
       {error && <div className="error-box" role="alert">{error}</div>}

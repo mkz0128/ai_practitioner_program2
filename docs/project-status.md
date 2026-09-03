@@ -40,7 +40,7 @@
 
 ## NOW
 
-- 交付已通過 Live 驗收的前端控制塔與 Agent 對話流程，等待團隊後續決策；不執行 Dispatch／部署。
+- 完成 AI 調度單次附件＋文字對話流程的交付驗證；維持既有地圖、Provider 與排程核心，不執行 Dispatch／部署。
 
 ## NEXT
 
@@ -122,13 +122,13 @@
 - 修正 Browser key 缺少時的地圖標示，並將 Playwright Agent 等待時間調整為符合真實 Runner latency。
 - 依附件 A／B 的企業物流產品視覺方向完成前端 UX 重整：新增窄版圖示導覽、精簡工具列、淺灰背景、白色面板、KPI 卡片、狀態標籤與黑色主要操作按鈕。
 - 建立三個可切換的前端工作區：AI 調度（聊天＋地圖）、配送任務（搜尋表格＋訂單詳情）與路線追蹤（大面積地圖＋右側任務清單）。所有資料仍來自既有 API，未新增後端或企業級功能。
-- 將 Agent 證據與插單差異改為白話摘要與比較卡片，移除主要畫面的 Raw JSON 與 provider 技術代碼；保留必要的 `MINIMAL_CHANGE` 驗收文字與人工確認邊界。
+- 將 Agent 證據與插單差異改為白話摘要與比較卡片，移除主要畫面的 Raw JSON、provider 技術代碼與內部模式代碼；必要的模式值仍保留在收合證據與後端驗收資料中，並保留人工確認邊界。
 - 建立 `Sidebar`、`TaskTable`、`OrderDetailPanel` 與 `RouteTaskList` 元件，並讓地圖、車輛、訂單選取可同步高亮。
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
 
-- 日期：`2026-09-03 Asia/Taipei`
+- 日期：`2026-09-04 Asia/Taipei`
 - Credential preflight（早期 keyless process environment 歷史紀錄）：當時未匯出 OpenAI、Google Routes、Browser、TDX 變數；最新 Live process 已安全載入 OpenAI、Google Routes 與 Browser，TDX 仍為可選未設定，且未讀取或記錄任何值。
 - Live smoke（前次環境紀錄）：OpenAI Agent、Responses strict tool 與 Google Routes Matrix／geometry 為 `LIVE PASS`；Browser／TDX 當時因 credentials 缺少而 `BLOCKED`。本輪 Browser 已完成 Live，TDX 為可選未設定。
 - Dependencies：locked install `PASS`；最新 keyless `pytest` 為 36 passed、3 個 conditional tests skipped（3 個上游 OR-Tools deprecation warnings）；`ruff` `PASS`；`mypy src` `PASS`，涵蓋 27 個 source files。
@@ -156,6 +156,8 @@
 - 本輪現況查證：TDX 已具備 OAuth／事件 projection／route-risk correlation adapter 與 mock evidence；本環境無 credentials，因此標示 `CREDENTIALS_MISSING`，不等於 Live 完成。
 - 本輪現況查證：`frontend/` 控制塔已通過 typecheck、lint、unit tests、production build 與完整 browser-to-live-provider E2E；無 Browser key 的環境仍顯示明確 simulated fallback。
 - 本輪限制：未輸出或提交任何憑證、未執行 Dispatch／部署／正式環境操作；TDX 因缺少 credentials 維持 `OPTIONAL／NOT_CONFIGURED`。
+- 本輪最新測試：Frontend TypeScript `PASS`、ESLint `PASS`、Vitest `2 passed`、Vite build `PASS`；Backend `pytest 36 passed, 3 conditional skipped`、`ruff check . PASS`、`mypy src PASS`；Live Playwright `1 passed`（真實 OpenAI／Google、停止回覆與 console error gate）。
+- 本輪截圖：`docs/screenshots/chat-composer-empty.png`（簡潔初始對話）、`docs/screenshots/chat-composer-attached.png`（附件尚未送出）、`docs/screenshots/chat-composer-completed.png`（單次送出後的 Agent 回覆與真實地圖），均為 1440×900 且未含 secrets。
 - 前一輪 Commit：`7185ba97ef66c449ce6eed81d8225207dd7673b0`，已推送至 `origin/feat/frontend-control-tower`；本輪視覺重整另建立新 Commit。
 - 本輪前端視覺重整品質閘門：TypeScript typecheck `PASS`；ESLint `PASS`；Vitest `2 passed`；Vite production build `PASS`；Playwright Chromium `2 passed`（local simulated，未執行 Dispatch）。
 - 本輪視覺驗收：1440×900 Live 截圖已檢查，版面符合附件 A／B 的淺色企業物流風格；Google Maps 顯示真實臺北道路、控制項、Marker 與彩色 Polyline。
@@ -164,3 +166,7 @@
 - 本輪最新 Live 驗證：`OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 均為 `CONFIGURED`（只回報狀態，未輸出值）；OpenAI Agent、Google Routes → OR-Tools、Google Maps Browser、Excel、Agent 多輪、ORD-041、人工確認與完整 Chat＋Map Playwright 均 `LIVE PASS`。TDX 為 `OPTIONAL／NOT_CONFIGURED`。
 - 本輪新增 `frontend/tests/e2e/live-control-tower.spec.ts`，七張 1440×900 截圖位於 `docs/screenshots/live-*.png`；測試包含任務頁、路線頁、車輛篩選，並確認 Dispatch request 為 0。
 - 本輪程式修正：無資料 `/api/v1/agent/chat` 改為真正呼叫 strict `assistant_help`；ORD-041 Agent tool 改用同一基準 plan 的 deterministic `MINIMAL_CHANGE` 與完整 diff evidence；前端聊天 preview 以 Agent evidence 驅動後續 immutable preview；主畫面來源標籤改為白話文字。
+- 本輪前端對話體驗：AI 調度改為可直接輸入的 ChatGPT 風格訊息區；`.xlsx` 可由附件按鈕或整個對話區拖放，附件與文字在同一則使用者訊息一次送出，背景完成匯入、驗證、排程、地圖更新與 Agent 回覆。
+- 本輪對話安全與可讀性：加入附件檢查、附件移除／重選、附件-only 預設意圖、Enter／Shift+Enter、停止回覆、進度步驟與收合的「查看計算依據」；主畫面不再顯示 Raw JSON、provider code 或內部識別資訊，計算摘要改為繁體中文。
+- 本輪插單可靠性修正：urgent preview 的最小變動候選會精確保留既有路線相對順序，避免將合法插入誤判為不可行；Live ORD-041 preview、人工確認與 Dispatch request=0 均通過。
+- 本輪瀏覽器驗證：`frontend/tests/e2e/live-control-tower.spec.ts` 實際完成無資料聊天、無效格式恢復、拖放／單次送出、40 單 Live Google Matrix → OR-Tools、Validator、Google Maps、Agent 多輪、ORD-041 preview、人工確認與停止回覆，保存 `chat-composer-empty.png`、`chat-composer-attached.png`、`chat-composer-completed.png`。
