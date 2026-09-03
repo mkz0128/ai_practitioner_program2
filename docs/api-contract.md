@@ -13,6 +13,15 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 - 每個 response 都帶有 `X-Request-ID`；錯誤與重要 mutation 的 body 也包含 `request_id`。
 - Provider modes 為 `GOOGLE`、`TDX`、`SIMULATED`、`MIXED` 或 `UNAVAILABLE`，不得錯誤標示。
 
+## 整合現況與未來邊界
+
+這 13 組 REST method/path 是正式的系統整合介面。本輪不修改 route、request schema 或 response schema；以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
+
+- `POST /api/v1/datasets/import-excel` 與 `POST /api/v1/plans` 目前由 `SimulatedRouteProvider` 建立固定 matrix；即使 request 帶有 `route_provider_preference` 或 `traffic_mode`，現行 API 仍未將成功的 Google live matrix 注入 OR-Tools。
+- `GoogleRoutesProvider` 可獨立產生 `MatrixResult` 或在錯誤時 fallback，但尚無 API wiring 與 live Matrix→OR-Tools 的整合驗收證據。`provider_mode=SIMULATED` 必須清楚標示模擬資料。
+- `/api/v1/agent/chat` 目前走 deterministic `explain_assignment` evidence 路徑；`src/agent/runtime.py` 的 `Runner.run` strict-tool 情境測試獨立存在，HTTP endpoint 尚未接上該 runtime。
+- 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
+
 ## 錯誤封套
 
 ```json
@@ -225,7 +234,7 @@ Request:
 }
 ```
 
-`AUTO` 僅在 Google／TDX 啟用且健康時使用；否則明確 fallback 至 simulated。Response `201` 為 `state=PROPOSED` 的 Plan shape。若不存在完整可行方案，`409/422` 可回傳 partial plan reference 與 exceptions。
+現況中 `route_provider_preference` 與 `traffic_mode` 僅保留契約欄位，`POST /plans` 仍固定使用 deterministic simulated matrix；尚未接入 Google／TDX live provider。完成 provider wiring 後，`AUTO` 才能依健康狀態選用 live provider，失敗時必須明確 fallback 至 simulated。Response `201` 為 `state=PROPOSED` 的 Plan shape。若不存在完整可行方案，`409/422` 可回傳 partial plan reference 與 exceptions。
 
 ### `GET /api/v1/plans/{plan_id}`
 

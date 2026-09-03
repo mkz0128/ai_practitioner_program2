@@ -81,6 +81,8 @@ API gate 統計 13 組 documented method/path、13 組 FastAPI registrations 與
 
 Urgent insertion 先在 eligible existing routes 的合法位置執行 deterministic minimum-change search；preview 保留 base plan algorithm／identity，回傳 before／after dataset hashes 與 assigned weights，並標示 `MINIMAL_CHANGE`。只有 candidate 無法通過 independent Validator 時，才產生帶有 scope／moved-order metadata 的 `FULL_REPLAN`。
 
+上述核心能力的「完成」僅適用於固定 simulated matrix 與本機 deterministic scope。實際查證發現：confirm／dispatch 的 state mutation 尚未回寫既有 SQLite plan row；`/api/v1/agent/chat` 尚未接入 `Runner.run`；Google Routes adapter 尚未接入 API／OR-Tools；TDX 仍為 status-only；Repository 沒有 frontend application。因此不得將核心測試通過解讀為完整 Live Provider、前端或全生命週期整合完成。
+
 ## 驗證標準
 
 - OpenAI-off test 證明 deterministic REST continuity。
@@ -91,12 +93,57 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 - 完整 `pytest`、`ruff`、`mypy`、OpenAPI／endpoint contract、secret scan、Benchmark 與 Golden suite 通過後，才能依人工驗收更新狀態。
 - Validation report 必須記錄 pytest pass／skip count、skip reasons、驗收案例、Demo status 與 Git status。
 
-## 後續擴充功能
+## 原始必要功能的整合工作（A 類）
 
-1. Google live traffic routing 與更精緻的 polyline integration。
-2. TDX live road congestion mapping 到 segments／zones。
-3. 可重現的 simulated congestion route-change scenario。
-4. 額外 animation time-axis data。
+下列工作是原始規劃的必要功能，不是 P1 或可選項目。本輪只完成程式、測試與文件的現況查證，不開始任何實作：
+
+1. 將 `GoogleRoutesProvider` 接入 import／`create_plan` 流程，取得真實 distance／duration。
+2. 確保同一份 Google Routes Matrix 真正傳入 OR-Tools，並由獨立 Validator 驗證。
+3. 建立可執行的 Google Maps Browser 前端，顯示地圖、Marker 與每台車路線。
+4. 完成 TDX OAuth、真實路況／道路事件查詢與錯誤處理。
+5. 將 TDX evidence 關聯至受影響路線，產生可追溯的配送風險判斷。
+6. 前端完整呈現訂單、車輛、載重、路線、例外、Agent 與 urgent preview／confirm。
+7. 執行 Google、TDX、OR-Tools、OpenAI Agent 與前端的完整 Live E2E；simulated、mock、fallback、skipped 不得替代。
+
+目前查證結果：第 1 項為部分完成（有 adapter，但 API 尚未使用）；第 2 至第 7 項尚未完成。詳細 Requirement ID、證據與驗收方式見 `docs/requirements.md` 與 `docs/project-status.md`。
+
+## 企業級擴充功能（B 類）
+
+下列功能來自企業 TMS 對照，與 A 類原始必要功能分開管理，現況均為 `PLANNED`：
+
+1. ERP／WMS／電商訂單整合層。
+2. 車輛出發後的路況與 ETA 持續監控。
+3. 路況改變後的動態重新試算。
+4. 例外控制塔。
+5. 準時優先、距離優先、最小變動等多方案比較。
+6. 完整 Why／What-if 排程診斷。
+7. 客戶 ETA 與延遲通知預覽。
+8. 計畫與實際結果比較。
+9. 成本、油耗與碳排儀表板。
+
+## 目前暫不處理（C 類）
+
+1. 正式 ERP／WMS 客製串接。
+2. 司機 App。
+3. GPS 硬體。
+4. 電子簽收。
+5. 3D 裝載。
+6. 多配送中心。
+7. 外包車隊與承運商計價。
+8. 正式簡訊發送。
+9. 正式環境部署。
+
+## 建議實作順序（本輪不執行）
+
+1. 查證並修正目前狀態。
+2. 完成 Google Routes 完整 Live 排程。
+3. 完成 TDX 真實路況與路線風險資料。
+4. 前端完成 Google 地圖、表格、Agent 與插單畫面。
+5. 執行完整前後端 Live E2E。
+6. 完成例外控制塔。
+7. 完成多方案比較及 Why／What-if。
+8. 增加通知預覽與商業 KPI。
+9. 最後才評估 ERP 整合端點與 MCP 工具。
 
 ## 檔案變更預期
 

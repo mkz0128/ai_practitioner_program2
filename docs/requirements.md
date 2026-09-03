@@ -8,6 +8,7 @@
 |---|---|---|
 | FR-IMP-001 | 匯入一個恰好包含四張具名工作表的 `.xlsx`。 | Workbook unit tests；import endpoint contract |
 | FR-IMP-002 | 缺少 `location_label`、`time_slot` 或 package `weight_kg` 時，回傳 entity／field-specific `MISSING_REQUIRED_FIELD` error 與 `requires_manual_review`。 | `tests/test_competition_acceptance.py` field-level fixture |
+| FR-IMP-003 | 彙總每張訂單的 package count 與 package weight，並保留可追溯的訂單總重量。 | `tests/test_import_validation.py`；`Order.total_weight_kg` |
 | FR-VAL-001 | 驗證 IDs、relationships、counts、weights、coordinates、zones、slots、vehicle status/load。 | Validation suite；GD-003/004/010/011/012 |
 | FR-PLAN-001 | 建立 deterministic initial 40-order dispatch plan。 | Optimizer／validator tests；GD-001 |
 | FR-PLAN-002 | 同一 order 的所有 packages 保留在同一台 vehicle。 | Invariant test；AC-001 |
@@ -62,6 +63,56 @@
 | NFR-TEST-002 | Live integration tests 僅在 provider-specific environment variables 存在時執行；否則 skip 或 fallback，不得失敗。 | Missing-key collection／execution test；GD-017 |
 | NFR-SEC-004 | Tests 與 providers 絕不將 secrets 讀入 output、assertions、logs、traces、snapshots、fixtures 或 Git。 | Output-capture redaction 與 repository scan |
 
+## 現況查證與範圍分類
+
+下表依目前 `src/`、`tests/` 與 API 實際行為判定狀態。A 類是原始必要功能，不能改列為 P1；B 類是企業級擴充；C 類是本階段明確暫不處理。
+
+| Requirement ID | 類別 | 工作內容 | 現況 | 實際證據 | 尚缺內容 | 負責角色 | 前置條件 | 驗收方式 | Fallback |
+|---|---|---|---|---|---|---|---|---|---|
+| FR-IMP-001／FR-IMP-002 | 原始必要 | Excel 四表匯入與 order／package／field 欄位驗證 | 完成 | `src/services/importer.py`；`tests/test_import_validation.py`、`tests/test_competition_acceptance.py` | 無核心缺口 | 後端 | `.xlsx` fixture | 40 orders／80 packages 可匯入；缺欄位回傳欄位級錯誤與 `requires_manual_review` | 無效資料拒絕，不猜測 |
+| FR-IMP-003 | 原始必要 | 包裹件數與每張訂單重量加總 | 完成 | `Order.total_weight_kg`；import／planning tests | 無核心缺口 | 後端 | 合法 packages | 件數、重量與 fixture 總重一致 | 欄位錯誤進入人工複核 |
+| FR-PLAN-004 | 原始必要 | 車輛載重、可用狀態與服務區域限制 | 完成 | `src/services/planner.py`、`src/services/validator.py`；競賽驗收 | 無核心缺口 | 後端 | vehicle／zone data | 零超載、零跨區、`UNASSIGNABLE` 明確列出 | 不合法訂單列入 `unassigned_orders` |
+| FR-PLAN-001／FR-OPT-001 | 原始必要 | OR-Tools 分車與配送順序 | 完成（僅 simulated matrix） | `build_ortools`；`tests/test_planning.py`、Demo flow | 尚未使用 Google live matrix | 後端 | 固定 `MatrixResult` | Capacity／Time Dimensions 與 Validator 通過 | simulated matrix |
+| FR-PLAN-005 | 原始必要 | AM／PM、午休、每站 3 分鐘與 `DEPOT-001` 往返 | 完成（僅 simulated matrix） | planner／validator；time-window acceptance | 尚未以 live travel duration 驗證 | 後端 | 固定矩陣與時段 | 零 time-window violations，路線回到 depot | `TIME_WINDOW_CONFLICT` |
+| FR-PLAN-007 | 原始必要 | 獨立 Validator | 完成 | `src/services/validator.py`；各 planning／competition tests | 無核心缺口 | 後端 | Plan 與 matrix | 每個可確認 plan 先通過 Validator | 失敗則不可確認 |
+| FR-BAS-001／FR-BAS-003 | 原始必要 | 超重重新分配與 unassigned reconciliation | 完成（固定 Demo） | Z4 112 kg acceptance；Baseline／OR-Tools evidence | 尚未接入 live provider | 後端 | 40-order fixture | `VEH-002` 不超過 100 kg，合法使用 `VEH-003` | `UNASSIGNABLE` |
+| FR-URG-001／FR-URG-006／FR-URG-007 | 原始必要 | 臨時插單 Preview、最小變動與前後差異 | 完成（固定 simulated matrix） | `try_minimal_insert`、`compute_plan_diff`；Demo regression | live route matrix 尚未接入 | 後端 | 未出發 plan、合法新訂單 | `MINIMAL_CHANGE`、before／after、Validator evidence | 無合法插入才 `FULL_REPLAN` |
+| FR-STATE-001 | 原始必要 | 人工確認與方案版本管理 | 部分完成 | API lifecycle tests、SQLite immutable version tests | confirm／dispatch state 尚未回寫既有 SQLite row；restart lifecycle regression 缺少 | 後端 | 精確 `plan_id`／version、人工確認 | restart 後 state／current version 與 audit 一致 | stale version 拒絕 |
+| FR-AGENT-002／FR-AGENT-003 | 原始必要 | OpenAI Agent 真正呼叫 deterministic Tool | 部分完成 | `src/agent/runtime.py`、`tests/test_agent_sdk_scenarios.py`、條件式 live E2E | `/api/v1/agent/chat` 尚未接入 `Runner.run`；未在本輪重跑付費 live E2E | 後端／共同 | OpenAI credentials（僅 live gate） | Agent tool call trace、Validator evidence、不可自行計算 | 無 key 時 `/agent/chat` 降級 |
+| REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 部分完成 | `src/providers/google_routes.py` adapter；missing-key fallback test | API 未使用 `GoogleRoutesProvider`；本輪無 live call | 後端 | Google server key、terms／quota review | live matrix response 可追蹤且失敗明確 fallback | `SIMULATED` 並警告 |
+| REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 尚未開始 | `build_ortools` 可收 `MatrixResult`，但 API 固定建立 simulated matrix | provider wiring、matrix identity、live E2E | 後端 | REQ-ORIG-001 | 同一 live matrix 進入 solver 並由 Validator 通過 | 失敗回到 simulated，明確標示 |
+| REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 尚未開始 | Repository 無 frontend application；只有 `/map-data` | Browser app、Browser key、地圖與路線畫面 | 前端 | Browser key 與 frontend runtime | 瀏覽器實際顯示 map／Marker／polyline | 無 key 時顯示不可用，不造值 |
+| REQ-ORIG-004 | 原始必要 | TDX OAuth、真實路況與道路事件查詢 | 尚未開始 | `src/providers/tdx.py` 僅 credential presence status | OAuth flow、API query、錯誤與資料模型 | 後端 | TDX credentials、服務條款 | 真實 response 與授權錯誤可驗證 | status-only／停用 |
+| REQ-ORIG-005 | 原始必要 | TDX 指出受影響路線與配送風險 | 尚未開始 | 尚無 risk model、route correlation 或 tests | segment／zone 關聯、風險規則、evidence | 後端／共同 | REQ-ORIG-004、路線資料 | 風險可追溯至 TDX evidence，需人工確認 | 明確標示 unavailable |
+| REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 尚未開始（等待前端） | `docs/frontend-handoff.md`；無 frontend code | UI、地圖、表格、Agent chat、preview／confirm | 前端 | 13 支 REST API、Browser key | 依 handoff 完成三條操作流程 | REST 仍可獨立使用 |
+| REQ-ORIG-007 | 原始必要 | Google／TDX／OR-Tools／OpenAI Agent／前端整合驗證 | 尚未開始 | 現有為 keyless／後端 contract 或 provider-neutral tests | 前後端 live E2E 與真實 provider evidence | 共同 | 上述 A 類功能完成 | 瀏覽器到 provider 的完整流程通過 | 不得以 mock／skip 代替 |
+
+### 企業級擴充功能（B 類）
+
+下列 9 項為企業 TMS 對照後的擴充，與 A 類原始必要功能分開管理，現況均為 `PLANNED`：
+
+1. ERP／WMS／電商訂單整合層。
+2. 車輛出發後的路況與 ETA 持續監控。
+3. 路況改變後的動態重新試算。
+4. 例外控制塔。
+5. 準時優先、距離優先、最小變動等多方案比較。
+6. 完整 Why／What-if 排程診斷。
+7. 客戶 ETA 與延遲通知預覽。
+8. 計畫與實際結果比較。
+9. 成本、油耗與碳排儀表板。
+
+### 目前暫不處理（C 類）
+
+1. 正式 ERP／WMS 客製串接。
+2. 司機 App。
+3. GPS 硬體。
+4. 電子簽收。
+5. 3D 裝載。
+6. 多配送中心。
+7. 外包車隊與承運商計價。
+8. 正式簡訊發送。
+9. 正式環境部署。
+
 ## 已核准需求覆蓋
 
 | 正式主題 | 功能／決策 | Tests | 主要檔案 |
@@ -82,7 +133,7 @@
 | 40 orders／350–380 kg／concentration | Fixed-seed sample | sample audit | demo workbook |
 | Working hours／lunch／service time | Hard time dimensions | time tests | `ACTIVE_SPEC.md` §5 |
 | Google Routes | Provider interface、field mask、split keys、fallback | provider tests | `architecture.md` |
-| TDX | 核心 status／fallback，後續 mapping | provider tests | `implementation-plan.md` |
+| TDX | provider status／fallback 骨架；OAuth、真實路況、路線風險仍屬原始必要整合缺口 | provider tests；待補 live query／risk tests | `implementation-plan.md`、`architecture.md` |
 | SQLite | Versioned persistence／audit | repository tests | `architecture.md` |
 | REST／OpenAPI／CORS | Contract-first API | 13-route contract tests plus OpenAPI hash snapshot | `api-contract.md`、`openapi-snapshot.sha256` |
 | Observability／cost | Structured logs、tracing、limits | schema／limit tests | `observability.config` |
@@ -101,13 +152,23 @@
 
 ## 功能狀態分類
 
-### 已完成核心功能
+### 核心 deterministic 功能
 
-Import／validation、固定 Demo data、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／version／confirm／dispatch、SQLite、REST／OpenAPI、single Agent／tool layer、provider fallback／status、tests、README 與 frontend handoff。
+固定 simulated matrix 範圍內的 Import／validation、package weight aggregation、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／diff、REST／OpenAPI、single Agent runtime／tool layer、provider fallback／status、tests、README 與 frontend handoff 均已有實作或測試證據。`FR-STATE-001` 的 durable lifecycle persistence 與 `FR-AGENT-002` 的 REST Agent runtime wiring 仍為部分完成，詳見上方現況表。
 
-### 後續擴充功能
+### 原始必要功能的整合工作（A 類）
 
-Google live traffic／polylines、real TDX congestion mapping、congestion route-change showcase，以及額外 animation timeline detail。
+以下能力原本即屬產品必要範圍，不得改列為 P1 或可選功能；本輪只記錄缺口，不開始實作：
+
+1. Google Routes 提供真實 distance／duration。
+2. Google Routes Matrix 真正進入 OR-Tools 排程。
+3. Google Maps Browser API 在瀏覽器顯示地圖、Marker 與車輛路線。
+4. TDX 完成 OAuth、真實路況／道路事件查詢。
+5. TDX evidence 指出受影響路線或配送風險。
+6. 前端完整顯示訂單、車輛、載重、路線與 Agent。
+7. Google、TDX、OR-Tools、OpenAI Agent 與前端完成整合驗證及 Live E2E。
+
+第 1 項目前為部分完成（adapter 存在但尚未接入 API）；第 2 至第 7 項尚未完成。simulated、mock、fallback 或 skipped test 不能作為 A 類 Live Integration 完成證據。
 
 ## 需求變更規則
 

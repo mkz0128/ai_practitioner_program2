@@ -50,8 +50,8 @@ REST response 一律以 JSON arrays 暴露這些值；delimiter strings 不會�
 ## 外部 Provider 模式
 
 - 預設 Demo 模式：`SimulatedRouteProvider` 加上可重現的 simulated congestion。
-- Google Routes：選用的 server-side key、strict field mask、timeout、cache policy review 與 graceful fallback。
-- TDX：選用的 P0 health/status integration；實際 road-to-zone congestion mapping 屬於後續擴充功能。
+- Google Routes：已有 server-side adapter、strict field mask、timeout、cache policy review 與 graceful fallback；目前 import／plan API 仍使用 simulated matrix，live Matrix 尚未進入 OR-Tools。
+- TDX：目前為 credential health/status adapter 與 graceful fallback；OAuth、真實路況查詢及 road-to-zone risk mapping 屬原始必要整合缺口，尚未完成。
 - OpenAI 不可用時：REST import、validation、planning、confirmation 與 queries 仍可使用；只有 `/agent/chat` 降級。
 
 本機 `.env` 僅供已核准的開發環境使用，永不提交；`.env.example` 只保留空白變數與 `gpt-5-mini` 預設模型。
@@ -70,7 +70,7 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞後端核心功能。Backend P0 與 OpenAI Agent 已由人工驗收為 `DONE`；Frontend Integration 仍為 `PENDING`，整體專案仍為 `IN_PROGRESS`。
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞 deterministic backend core。Backend P0 與 OpenAI Agent runtime 已由人工驗收為 `DONE`；HTTP Agent wiring、Live Provider、Frontend Integration 仍待完成，整體專案仍為 `IN_PROGRESS`。
 
 ## 前端交付快速開始
 

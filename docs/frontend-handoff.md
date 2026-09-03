@@ -27,6 +27,14 @@ VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 
 Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps JavaScript API。Backend allowlist 為 `CORS_ALLOWED_ORIGINS`，請列出每個精確的 local frontend origin。絕不可將 `OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`TDX_CLIENT_ID` 或 `TDX_CLIENT_SECRET` 放入 frontend variables 或 bundles。
 
+## 實作現況與必要功能邊界
+
+Repository 目前沒有可執行的 frontend application；本文件是交接契約，不代表 Google Maps Browser 畫面已完成。`/api/v1/plans/{plan_id}/map-data` 現階段會回傳 `provider_mode=SIMULATED` 與 deterministic polyline，僅供本機展示，不能標示為 Google live traffic、live ETA 或 GPS 追蹤。
+
+`GoogleRoutesProvider` 雖已有 server-side adapter，但現行 import／`POST /api/v1/plans` 流程仍使用 `SimulatedRouteProvider`，尚未證明 live Matrix 進入 OR-Tools。TDX 目前只有 credential presence／health status adapter，尚未完成 OAuth、路況查詢或路線風險判斷。`/api/v1/agent/chat` 目前回傳 deterministic evidence explanation；`src/agent/runtime.py` 的 Agents SDK `Runner.run` 情境測試是另一條 provider-neutral runtime 路徑，HTTP endpoint 尚未接入該 runtime。
+
+因此 Google Routes 完整 Live Integration、Google Maps Browser 地圖、TDX 真實資料、前端操作介面及前後端 Live E2E 都仍待完成，屬原始必要功能的整合缺口，不是可略過的 P1。前端完成後，必須以實際瀏覽器畫面、provider identity、同一份 live Matrix、路線 evidence 與 end-to-end 測試證明完成；mock、fallback、simulated 或 skipped test 不得替代。
+
 ## Demo fixture（展示資料）
 
 使用 `data/samples/demo-delivery-40-orders.xlsx`（repository-root relative path）。這是虛構的四工作表 fixture，包含 40 orders、80 packages、4 vehicles、5 zones 與 365 kg。中文且不 dispatch 的 walkthrough：

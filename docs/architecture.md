@@ -21,10 +21,10 @@ One Agent     |             |
               +-- independent validator
               +-- evidence + diff builder
               +-- provider interfaces
-                    |-- SimulatedRouteProvider (P0 default)
-                    |-- GoogleRoutesProvider (optional)
+                    |-- SimulatedRouteProvider (目前可用預設)
+                    |-- GoogleRoutesProvider (adapter 已實作，尚未接入 plan API)
                     |-- SimulatedTrafficProvider
-                    |-- TDXTrafficProvider (P0 status; P1 mapping)
+                    |-- TDXTrafficProvider (目前僅 status adapter)
 ```
 
 相依方向一律朝內。Domain、validation、optimizer 與 plan validator 不得 import Agent 或 provider implementations。
@@ -209,11 +209,52 @@ TrafficProvider:
   output: status/multiplier/evidence, or unavailable warning
 ```
 
-`SimulatedRouteProvider` 是 deterministic 且為預設。Google missing／error／timeouts 會明確 fallback；TDX 僅作 traffic enrichment；OpenAI outage 只繞過 natural-language orchestration。
+`SimulatedRouteProvider` 是 deterministic 且為目前 API 預設。`GoogleRoutesProvider` 已具備 server-side adapter 與 narrow field mask，但目前 `import` 與 `create_plan` 仍建立 `SimulatedRouteProvider`，尚未把 Google matrix 交給 OR-Tools；因此 `provider_mode=SIMULATED` 不得宣稱為完整 Google live 整合。Google missing／error／timeout 仍須明確 fallback。TDX 目前只有 status adapter，尚未執行 OAuth、真實路況查詢或路線風險計算；OpenAI outage 只繞過 natural-language orchestration。
 
 Google Compute Route Matrix 需要 field mask。規劃的最小欄位為 `originIndex,destinationIndex,status,condition,distanceMeters,duration`；route geometry 僅要求 frontend 所需的 distance、duration、encoded polyline 與 leg fields。除 manual investigation 外禁止 wildcard masks。
 
 Google caching 採 transient 且可設定（預設 900 秒）。完成目前 service terms review 前停用 raw Google content 的 durable storage；derived plan records 僅保留 provider identity、timestamp 與法律允許的欄位。
+
+## 整合架構補充 — Canonical Schema 與企業資料整合邊界
+
+所有來源都必須先轉換為唯一的 Canonical Order Schema，再進入相同的 validation、weight aggregation、planning 與 independent Validator 流程。Excel 只是其中一種 input adapter，不是唯一資料來源。
+
+```text
+Excel／ERP／WMS／電商
+        → Adapter 或企業中介平台（MuleSoft、Boomi、ESB、ETL）
+        → FastAPI REST API
+        → Canonical Order Schema
+        → Validator
+        → Planner
+```
+
+FastAPI REST API 是正式的系統整合介面，負責 ERP、WMS、電商與配送系統之間的資料交換。企業可自行轉換欄位後呼叫 API、透過中介平台轉換，或委託建立特定企業 adapter。這些 adapter 必須重用既有 canonical schema 與 validator，不得繞過核心規則。
+
+MCP 不取代正式 REST API。本階段不實作 MCP；未來 MCP 僅作為 Agent 的工具層，透過既有 REST API 或配送核心提供 `get_unplanned_orders`、`import_orders`、`create_dispatch_plan`、`explain_unassigned_order` 等 allowlisted tools。
+
+正確的邊界為：
+
+```text
+企業系統 → REST API／Webhook → 配送核心
+AI Agent → MCP Tool → REST API 或配送核心
+```
+
+## 動態調度架構補充 — 安全邊界
+
+一次取得路況並產生方案，與車輛出發後的持續動態調度是兩個不同能力。後者屬於企業級擴充功能（B 類）；若未來實作，必須遵循下列流程：
+
+```text
+車輛出發
+  → 持續取得 GPS 與路況
+  → 重新計算 ETA
+  → 發現遲到風險
+  → 產生新方案 preview
+  → 顯示受影響範圍
+  → 調度員確認
+  → 更新方案
+```
+
+安全規則：已完成配送的訂單不得變更；正在配送的站點原則上固定；優先採用最小變動；不得因路況直接自動換車；必須先顯示受影響訂單、車輛、距離、時間與原因；只有調度員確認後才能套用新方案。本階段不實作 GPS、持續監控或自動重排。
 
 ## ADR-008 — Persistence 與 Versioning
 
@@ -232,6 +273,8 @@ Planned tables:
 | agent_sessions | session ID and non-sensitive usage metadata |
 
 SQLite transactions 保護 import 與 state changes。Confirmation 使用 `plan_id + version` 的 optimistic concurrency；stale requests 回傳 `PLAN_VERSION_CONFLICT`。
+
+現況限制：SQLite 會保存 plan rows 與 immutable preview rows，但 `confirm`／`dispatch` 目前只更新 process 內的 record state，尚未將 state mutation 回寫既有 plan row。重新啟動後可能重新載入舊的 `PROPOSED` state，因此「人工確認與方案版本管理」目前屬於部分完成；在修正 durable state persistence 並加入 restart regression test 前，不得宣稱完整持久化生命週期。
 
 ## State Machine
 
