@@ -73,7 +73,7 @@
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 將原始必要功能（A 類）、企業級擴充（B 類）與目前暫不處理（C 類）分開記錄，並保留每項工作的 Requirement ID、證據、缺口、前置條件與驗收方式。
 - 記錄 Canonical Order Schema、FastAPI／MCP 邊界，以及車輛出發後動態調度的最小變動與人工確認安全流程。
-- 校正歷史文件與程式不一致處；本輪後的現況為：Google strict Matrix wiring 已接入、TDX adapter 已擴充、`frontend/` control tower 已建立；HTTP Agent 仍採 evidence path，confirm／dispatch durable persistence 仍不完整。
+- 校正歷史文件與程式不一致處；本輪後的現況為：Google strict Matrix／geometry 已完成 Live wiring、`/api/v1/agent/chat` 已使用 `Runner.run`、TDX adapter 與 `frontend/` control tower 已保留；confirm／dispatch durable persistence 仍不完整。
 
 - 已接受明確的 `APPROVE_IMPLEMENTATION` 命令，僅開放 local Feature Code 工作。
 - 完成 credential preflight，未讀取或記錄任何值；OpenAI 與 Google Routes 已設定，Browser 與 TDX 未設定。
@@ -115,13 +115,15 @@
 - 建立 `feat/frontend-control-tower` 分支，新增 React／TypeScript／Vite／MUI 控制塔、API client、地圖 fallback、Agent 面板、車輛／例外／urgent diff 畫面與 keyless RTL tests。
 - 將 Google Routes strict Matrix 與 route geometry 接入 `AUTO` plan／map-data；已設定 key 但 provider failure 會回傳 `PROVIDER_UNAVAILABLE`，缺 key 才使用明確 `SIMULATED`。
 - 將 TDX OAuth、traffic event projection 與 deterministic route-risk correlation 接入 map-data，並以 mock tests 驗證不輸出 token 或 provider payload。
-- 以 `tests/test_live_provider_wiring.py` 驗證 provider mode、matrix hash/version consistency、strict error 與 TDX redaction；未呼叫付費 Live API。
+- 以 `tests/test_live_provider_wiring.py` 驗證 provider mode、matrix hash/version consistency、strict error 與 TDX redaction；本輪另完成真實 Google／OpenAI Live flow，未輸出任何 credential。
+- 修正 `/api/v1/agent/chat` 使用 `Runner.run` 與 strict `explain_assignment` evidence，並以 bounded Google Matrix cache／incremental extension 避免 ORD-041 重複取得完整矩陣。
+- 修正 Browser key 缺少時的地圖標示，並將 Playwright Agent 等待時間調整為符合真實 Runner latency。
 
 ## LAST VALIDATION
 
 - 日期：`2026-09-03 Asia/Taipei`
 - Credential preflight（本輪 process environment）：OpenAI、Google Routes、Browser、TDX 相關變數均為 `MISSING`；未讀取或記錄任何值。
-- Live smoke（歷史紀錄）：先前 OpenAI／Google smoke 結果保留於 regression evidence；本輪未呼叫付費 Live API，TDX／Browser／Google Live gates 維持 `BLOCKED`／`SKIPPED`。
+- Live smoke（本輪）：OpenAI Agent、Responses strict tool 與 Google Routes Matrix／geometry 均為 `LIVE PASS`；TDX／Browser 為 `BLOCKED`，不以 mock 或 skipped 取代。
 - Dependencies：locked install `PASS`；最新 keyless `pytest` 為 36 passed、3 個 conditional tests skipped（3 個上游 OR-Tools deprecation warnings）；`ruff` `PASS`；`mypy src` `PASS`，涵蓋 27 個 source files。
 - Canonical simulated Benchmark：Baseline distance/time `183,955m/23,023s`、2 unassigned；OR-Tools `161,257m/20,185s`、0 unassigned；distance improvement `12.339%`、driving-time improvement `12.327%`、utilization-gap improvement `23.909%`。
 - 最新 canonical Benchmark run（10-second solver cap）：兩個方案均有效，overload/cross-zone/duplicate/time-window violations 為零；OR-Tools solve time `5,985.454ms`（僅 wall-clock 指標，不是跨機器 Golden value）。
@@ -129,7 +131,7 @@
 - Git finalization：`feat/frontend-control-tower` 已建立並推送；本輪 status commits 均已同步至 origin，不自動合併 `main`，工作樹乾淨。
 - Phase gate：因已取得精確核准，`feature_code_allowed: true`；未執行 deployment、Actions、force push 或 production access。
 - Plaintext credential source：已由 Git exclusion 保護並標記可由使用者刪除；從未加入 Git。
-- 最新 keyless validation：`36 passed, 3 skipped`；Agents SDK scenarios、API contract `13 defined / 13 implemented / 13 exercised`、OpenAPI snapshot、Demo flow 與 provider wiring 均通過；Playwright local flow `2 passed`，並在 dispatch 前停止。
+- 最新 keyless validation：`36 passed, 3 skipped`；條件式 OpenAI／Responses／Google Live gate `5 passed`；Agents SDK scenarios、API contract `13 defined / 13 implemented / 13 exercised`、OpenAPI snapshot、Demo flow 與 provider wiring 均通過；Playwright regression `2 passed`，並在 dispatch 前停止。
 - Skipped tests 為刻意的條件測試：`test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool` 需要 `RUN_LIVE_AGENT_E2E=1`；`test_live_google_requires_explicit_environment_key` 需要匯出的 Google Routes credential；`test_responses_gpt5_mini_text_and_strict_tool_smoke` 需要 `RUN_LIVE_RESPONSES_SMOKE=1`。
 - 最新品質閘門：`ruff check src tests scripts` `PASS`；`mypy src` `PASS`（27 files）；secret scan `PASS`；無 Actions/deploy workflow；本輪提交後 working tree `CLEAN`。
 - Responses 診斷：歷史 malformed tool envelope → `BadRequestError`／HTTP 400／`missing_required_parameter`；以 `gpt-5-mini` 修正 top-level `input`、`tools[].name`、`tools[].parameters`、`tools[].strict` 與 `max_output_tokens` 後，direct text 與 strict tool `PASS`；未升級 model。
@@ -146,4 +148,5 @@
 - 本輪 screenshot：已擷取控制塔即時畫面與 ORD-041 差異畫面；Browser key 缺少時地圖標示 `SIMULATED · 非即時道路`，避免誤導為 Google Maps Live。
 - 本輪現況查證：TDX 已具備 OAuth／事件 projection／route-risk correlation adapter 與 mock evidence；本環境無 credentials，因此標示 `CREDENTIALS_MISSING`，不等於 Live 完成。
 - 本輪現況查證：`frontend/` 控制塔已通過 typecheck、lint、unit tests、production build；Browser key 缺少時顯示 simulated map fallback，完整 browser-to-live-provider E2E 仍未完成。
-- 本輪限制：未呼叫付費外部 API、未讀取或輸出任何憑證、未執行 Dispatch／部署／正式環境操作；frontend dependency 與 provider wiring 品質閘門已重新執行。
+- 本輪限制：未讀取或輸出任何憑證、未執行 Dispatch／部署／正式環境操作；Browser／TDX 因缺少憑證維持 `BLOCKED`。frontend dependency、provider wiring 與 Live quality gates 已重新執行。
+- 本輪 Commit：`7185ba97ef66c449ce6eed81d8225207dd7673b0`，已推送至 `origin/feat/frontend-control-tower`；工作樹乾淨。
