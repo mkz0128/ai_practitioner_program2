@@ -22,6 +22,7 @@ function errorText(error: unknown): string {
 
 export default function App() {
   const [activeView, setActiveView] = useState<'assistant' | 'tasks' | 'tracking'>('assistant')
+  const [sessionId] = useState(() => `CONVERSATION-${Math.random().toString(36).slice(2, 10).toUpperCase()}`)
   const [validation, setValidation] = useState<ValidationPayload | null>(null)
   const [plan, setPlan] = useState<Plan | null>(null)
   const [mapData, setMapData] = useState<MapData | null>(null)
@@ -55,12 +56,28 @@ export default function App() {
     finally { setBusy(false) }
   }
 
-  const handleChat = async (message: string): Promise<ChatResponse | null> => {
-    if (!plan) return null
-    setError(null)
+  const handleUseExample = async () => {
+    setBusy(true); setError(null); setNotice(null); setPreview(null)
     try {
-      return await chat('CONTROL-TOWER-SESSION', message, { plan_id: plan.plan_id, plan_version: plan.version })
+      const response = await fetch('/demo-delivery-40-orders.xlsx')
+      if (!response.ok) throw new Error('範例資料載入失敗。')
+      await handleImport(new File([await response.blob()], 'demo-delivery-40-orders.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    } catch (requestError) { setError(errorText(requestError)); setBusy(false) }
+  }
+
+  const handleChat = async (message: string): Promise<ChatResponse | null> => {
+    setBusy(true); setError(null)
+    try {
+      const response = await chat(sessionId, message, plan ? { plan_id: plan.plan_id, plan_version: plan.version } : {})
+      const previewEvidence = response.evidence.some((item) => item.tool === 'preview_urgent_insert' && item.data.status === 'PREVIEWED')
+      if (previewEvidence && plan) {
+        // The Agent tool remains evidence-only; this REST preview creates the
+        // proposed immutable version used by the human confirmation button.
+        setPreview(await previewUrgent(plan.plan_id, plan.version))
+      }
+      return response
     } catch (requestError) { setError(errorText(requestError)); return null }
+    finally { setBusy(false) }
   }
 
   const handlePreview = async () => {
@@ -91,7 +108,7 @@ export default function App() {
         {activeView === 'assistant' && <>
           <div className="page-title-row"><div><div className="eyebrow">工作區</div><h1>今天的配送協作</h1><p>先匯入訂單，再用自然語言和 AI 一起檢視方案。</p></div><div className="page-actions"><span className={`status-chip ${plan?.validation.valid ? 'live' : 'neutral'}`}>{plan ? (plan.validation.valid ? '方案已驗證' : '需要複核') : '等待匯入'}</span></div></div>
           <div className="assistant-layout">
-            <AgentPanel plan={plan} onChat={handleChat} onImport={handleImport} onPreview={handlePreview} busy={busy} />
+            <AgentPanel plan={plan} sessionId={sessionId} datasetId={plan?.dataset_id} onChat={handleChat} onImport={handleImport} onUseExample={handleUseExample} busy={busy} />
             <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} />
           </div>
           <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />

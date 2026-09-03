@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
@@ -101,6 +102,17 @@ class PlanRecord:
 
 
 @dataclass
+class AgentSession:
+    """Short-lived conversation context; secrets and workbook payloads are never retained."""
+
+    plan_id: str | None = None
+    plan_version: int | None = None
+    order_id: str | None = None
+    last_tool: str | None = None
+    history: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
 class InMemoryStore:
     datasets: dict[str, DatasetRecord] = field(default_factory=dict)
     plans: dict[str, dict[int, PlanRecord]] = field(default_factory=dict)
@@ -152,6 +164,7 @@ def _dataset_matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
 
 
 store = InMemoryStore()
+agent_sessions: dict[str, AgentSession] = {}
 app = FastAPI(title="AI Delivery Dispatch Agent", version="0.1.0")
 settings = get_settings()
 repository = SQLiteRepository(settings.database_url)
@@ -166,6 +179,30 @@ app.add_middleware(
 
 def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", f"REQ-{uuid4().hex[:12]}")
+
+
+def _empty_agent_dataset() -> tuple[Dataset, MatrixResult]:
+    dataset = Dataset(orders=(), packages=(), vehicles=(), zones=())
+    return dataset, SimulatedRouteProvider().build(dataset)
+
+
+def _demo_urgent_order() -> Order:
+    """Structured synthetic ORD-041 fixture used by conversational preview."""
+    package = Package(package_id="PKG-041-01", order_id="ORD-041", weight_kg=2.0)
+    return Order(
+        order_id="ORD-041",
+        zone_code="Z4",
+        city="臺北市",
+        district="信義",
+        location_label="臨時插單展示點",
+        latitude=25.033,
+        longitude=121.565,
+        time_slot="PM",
+        declared_package_count=1,
+        priority=Priority.HIGH,
+        note="結構化示範 fixture；不執行 Dispatch。",
+        packages=(package,),
+    )
 
 
 def _error(
@@ -257,9 +294,7 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             }
         )
     assigned = sum(len(route.order_ids) for route in record.plan.routes)
-    assigned_order_ids = {
-        order_id for route in record.plan.routes for order_id in route.order_ids
-    }
+    assigned_order_ids = {order_id for route in record.plan.routes for order_id in route.order_ids}
     total_packages = sum(packages.values())
     total_weight = sum(order.total_weight_kg for order in dataset.orders) if dataset else 0.0
     assigned_weight = (
@@ -544,9 +579,7 @@ def create_plan(payload: CreatePlanRequest, request: Request) -> Any:
     dataset_record = store.get_dataset(payload.dataset_id)
     if dataset_record is None:
         return _error(request, 404, "DATASET_NOT_FOUND", "找不到資料集。")
-    prefer_live = (
-        payload.route_provider_preference == "AUTO" and payload.traffic_mode == "AUTO"
-    )
+    prefer_live = payload.route_provider_preference == "AUTO" and payload.traffic_mode == "AUTO"
     try:
         matrix = _build_matrix(dataset_record.dataset, prefer_live=prefer_live)
     except GoogleRoutesProviderError as exc:
@@ -564,9 +597,7 @@ def create_plan(payload: CreatePlanRequest, request: Request) -> Any:
     if payload.algorithm == "BASELINE":
         plan = build_baseline(dataset_record.dataset, matrix)
     else:
-        plan = build_ortools(
-            dataset_record.dataset, matrix, settings.solver_time_limit_seconds
-        )
+        plan = build_ortools(dataset_record.dataset, matrix, settings.solver_time_limit_seconds)
     validation = validate_plan(dataset_record.dataset, plan, matrix)
     plan_id = f"PLAN-{uuid4().hex[:12].upper()}"
     record = PlanRecord(
@@ -765,9 +796,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             fallback_used=False,
             retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
         )
-    preview_plan = try_minimal_insert(
-        base_record.plan, new_dataset, preview_matrix, new_order
-    )
+    preview_plan = try_minimal_insert(base_record.plan, new_dataset, preview_matrix, new_order)
     mode = "MINIMAL_CHANGE"
     full_replan_reason: str | None = None
     if preview_plan is None:
@@ -952,7 +981,8 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         return _error(
             request, 503, "AGENT_UNAVAILABLE", "OpenAI 憑證未設定; 確定性 REST 功能仍可使用."
         )
-    context_plan_id = payload.context.get("plan_id")
+    session = agent_sessions.setdefault(payload.session_id, AgentSession())
+    context_plan_id = payload.context.get("plan_id") or session.plan_id
     context_order_id = payload.context.get("order_id")
     record: PlanRecord | None = None
     dataset_record: DatasetRecord | None = None
@@ -967,40 +997,95 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         if dataset_record is None:
             return _error(request, 404, "DATASET_NOT_FOUND", "找不到說明所需的資料集。")
     if record is None or dataset_record is None:
-        return _error(
-            request,
-            422,
-            "AGENT_CONTEXT_REQUIRED",
-            "Agent 查詢需要已驗證的 plan_id 與 plan_version。",
-        )
+        dataset, matrix = _empty_agent_dataset()
+    else:
+        dataset, matrix = dataset_record.dataset, record.matrix
+
+    order_match = re.search(r"ORD-\d+", payload.message.upper())
+    if order_match:
+        context_order_id = order_match.group(0)
+        session.order_id = context_order_id
+    if (
+        context_order_id is None
+        and session.order_id
+        and session.last_tool == "explain_assignment"
+        and any(marker in payload.message for marker in ("為什麼", "原因", "理由"))
+    ):
+        context_order_id = session.order_id
+    preview_request = any(
+        marker in payload.message for marker in ("預覽", "插單", "受影響", "差異")
+    )
+    if preview_request and (context_order_id == "ORD-041" or session.order_id == "ORD-041"):
+        context_order_id = None
+    highest_load_followup = (
+        context_order_id is None
+        and session.last_tool == "highest_load_vehicle"
+        and any(marker in payload.message for marker in ("為什麼", "原因", "理由"))
+    )
+    if record is not None:
+        session.plan_id = record.plan_id
+        session.plan_version = record.version
 
     # Context identifiers are application-controlled data. Include only the
     # selected order identifier as a hint so the model must still invoke the
     # allowlisted deterministic tool instead of receiving precomputed facts.
     agent_message = payload.message
-    if isinstance(context_order_id, str):
+    history_text = "\n".join(
+        f"{role}: {content}" for role, content in session.history[-6:]
+    )
+    if history_text:
+        agent_message = (
+            "Conversation history (use only as context):\n"
+            f"{history_text}\n\nCurrent user request:\n{agent_message}"
+        )
+    if preview_request and session.order_id == "ORD-041" and record is not None:
+        agent_message = (
+            f"{agent_message}\n\nApplication context: call preview_urgent_insert exactly once "
+            "with order_id=ORD-041. Use only its deterministic preview evidence and do not ask "
+            "for additional order fields."
+        )
+    elif isinstance(context_order_id, str):
         agent_message = (
             f"{payload.message}\n\nApplication context: call the explain_assignment tool "
             f"exactly once with order_id={context_order_id} before answering. "
             "Use only that tool's evidence; do not call explain_unassigned or calculate values."
         )
-    else:
+    elif highest_load_followup:
         agent_message = (
-            f"{payload.message}\n\nApplication context: current validated plan uses "
+            f"{payload.message}\n\nApplication context: this is a follow-up to the "
+            "highest-load vehicle result. Call highest_load_vehicle exactly once and "
+            "explain only values in its deterministic evidence."
+        )
+    elif record is not None:
+        agent_message = (
+            f"{agent_message}\n\nApplication context: current validated plan uses "
             f"algorithm={record.plan.algorithm} and provider_mode={record.matrix.provider_mode}. "
             "For a new planning request, call plan_dispatch with ORTOOLS unless the user "
             "explicitly asks for BASELINE. Use only tool evidence."
         )
+    else:
+        no_data_topic = "DATA_REQUIRED" if preview_request else "CAPABILITIES"
+        agent_message = (
+            f"{agent_message}\n\nApplication context: no validated dataset is loaded. "
+            f"Call assistant_help with topic={no_data_topic}. "
+            "Do not invent orders, metrics, or a plan."
+        )
+    pending_order = (
+        _demo_urgent_order()
+        if (preview_request and session.order_id == "ORD-041" and record is not None)
+        else None
+    )
     try:
         final_output, context, result = await run_dispatch_agent(
             agent_message,
-            dataset_record.dataset,
-            record.matrix,
-            plan=record.plan,
+            dataset,
+            matrix,
+            pending_order=pending_order,
+            plan=record.plan if record else None,
             request_id=_request_id(request),
-            dataset_id=record.dataset_id,
-            plan_id=record.plan_id,
-            plan_version=record.version,
+            dataset_id=record.dataset_id if record else None,
+            plan_id=record.plan_id if record else None,
+            plan_version=record.version if record else None,
         )
     except InputGuardrailTripwireTriggered:
         return _error(
@@ -1028,12 +1113,16 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                 "data": {key: value for key, value in item.items() if key != "tool"},
             }
         )
-    requires_confirmation = record.state in {"DRAFT", "VALIDATED", "PROPOSED"}
+    requires_confirmation = bool(record and record.state in {"DRAFT", "VALIDATED", "PROPOSED"})
     usage = {
         "total_tokens": context.budget.total_tokens,
         "tool_calls": context.budget.tool_calls,
         "agent_run_id": context.agent_run_id,
     }
+    session.history.extend([("user", payload.message), ("assistant", final_output)])
+    session.last_tool = context.evidence[-1].get("tool") if context.evidence else None
+    if len(session.history) > 12:
+        session.history = session.history[-12:]
     return {
         "session_id": payload.session_id,
         "agent_run_id": context.agent_run_id,
@@ -1041,9 +1130,9 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         "evidence": evidence,
         "requires_human_confirmation": requires_confirmation,
         "usage": usage,
-        "provider_mode": record.matrix.provider_mode,
-        "plan_id": record.plan_id,
-        "plan_version": record.version,
+        "provider_mode": record.matrix.provider_mode if record else "NONE",
+        "plan_id": record.plan_id if record else None,
+        "plan_version": record.version if record else None,
         "runner_result_type": type(result).__name__,
         "request_id": _request_id(request),
     }

@@ -24,7 +24,9 @@ async def test_responses_gpt5_mini_text_and_strict_tool_smoke() -> None:
     tool_response = await client.responses.create(
         model="gpt-5-mini",
         input="Call the echo tool exactly once.",
-        max_output_tokens=512,
+        # Reasoning tokens are included in this Responses budget; 512 can end
+        # before the forced function call even though the request is valid.
+        max_output_tokens=2048,
         tools=[
             {
                 "type": "function",

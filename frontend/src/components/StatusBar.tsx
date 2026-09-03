@@ -25,11 +25,11 @@ export function StatusBar({ plan, providers, activeView, onViewChange }: StatusB
   const tdx = providerLabel(providers, 'tdx')
   const openai = providerLabel(providers, 'openai')
   const source = plan?.provider_mode === 'GOOGLE'
-    ? { label: 'GOOGLE_LIVE', tone: 'live' as const }
+    ? { label: 'Google 即時資料', tone: 'live' as const }
     : plan?.provider_mode === 'TDX'
-      ? { label: 'TDX_LIVE', tone: 'live' as const }
+      ? { label: 'TDX 即時資料', tone: 'live' as const }
       : plan
-        ? { label: 'SIMULATED', tone: 'simulated' as const }
+        ? { label: '示範資料', tone: 'simulated' as const }
         : { label: '—', tone: 'neutral' as const }
   const metrics = [
     ['今日訂單', plan ? plan.summary.assigned_order_count + plan.summary.unassigned_order_count : '—', '筆'],

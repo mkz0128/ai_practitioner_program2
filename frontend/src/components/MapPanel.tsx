@@ -51,11 +51,12 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
   const mapElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const overlaysRef = useRef<Array<google.maps.Marker | google.maps.Polyline>>([])
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const browserKey = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY as string | undefined
-  const visibleRoutes = useMemo(() => data?.routes.filter((route) => !activeVehicle || route.vehicle_id === activeVehicle) || [], [activeVehicle, data])
-  const liveMap = Boolean(browserKey && data)
+  const visibleRoutes = useMemo(() => data?.routes || [], [data])
+  const liveMap = Boolean(browserKey && data?.provider_mode === 'GOOGLE' && data.routes.every((route) => !route.encoded_polyline.startsWith('simulated:')))
 
   useEffect(() => {
     if (!browserKey || !data || !mapElement.current) return
@@ -66,11 +67,13 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
       mapRef.current = new google.maps.Map(mapElement.current, {
         center: { lat: data.depot.latitude, lng: data.depot.longitude },
         zoom: 12,
-        mapTypeControl: false,
+        mapTypeControl: true,
         streetViewControl: false,
-        fullscreenControl: false,
+        fullscreenControl: true,
+        zoomControl: true,
       })
-      new google.maps.Marker({ map: mapRef.current, position: { lat: data.depot.latitude, lng: data.depot.longitude }, title: 'DEPOT-001 青年局配送中心' })
+      new google.maps.Marker({ map: mapRef.current, position: { lat: data.depot.latitude, lng: data.depot.longitude }, title: 'DEPOT-001 青年局配送中心', label: 'D' })
+      infoWindowRef.current = new google.maps.InfoWindow()
       setMapReady(true)
       setMapError(null)
     }).catch(() => setMapError('Google Maps 載入失敗，請檢查 Browser key 與 API 限制。'))
@@ -81,16 +84,30 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
     if (!mapReady || !mapRef.current || !data) return
     overlaysRef.current.forEach((overlay) => overlay.setMap(null))
     overlaysRef.current = []
+    const bounds = new google.maps.LatLngBounds()
+    bounds.extend({ lat: data.depot.latitude, lng: data.depot.longitude })
     visibleRoutes.forEach((route) => {
       const path = routeCoordinates(route, data.depot)
-      const polyline = new google.maps.Polyline({ map: mapRef.current, path, strokeColor: route.color, strokeOpacity: .9, strokeWeight: 4 })
+      const selected = !activeVehicle || activeVehicle === route.vehicle_id
+      path.forEach((point) => bounds.extend(point))
+      const polyline = new google.maps.Polyline({ map: mapRef.current, path, strokeColor: route.color, strokeOpacity: selected ? .95 : .2, strokeWeight: selected ? 4 : 2, zIndex: selected ? 2 : 1 })
       overlaysRef.current.push(polyline)
       route.stops.forEach((stop) => {
-        const marker = new google.maps.Marker({ map: mapRef.current, position: { lat: stop.latitude, lng: stop.longitude }, label: String(stop.sequence), title: `${stop.order_id} · ${stop.eta}` })
+        const position = { lat: stop.latitude, lng: stop.longitude }
+        bounds.extend(position)
+        const marker = new google.maps.Marker({ map: mapRef.current, position, label: String(stop.sequence), title: `${stop.order_id} · ${stop.eta}`, opacity: selected ? 1 : .35 })
+        marker.addListener('click', () => {
+          if (!infoWindowRef.current || !mapRef.current) return
+          infoWindowRef.current.setContent(`<strong>${stop.order_id}</strong><br/>第 ${stop.sequence} 站 · ${stop.eta}`)
+          infoWindowRef.current.open({ map: mapRef.current, anchor: marker })
+          onSelectVehicle(route.vehicle_id)
+          onSelectOrder?.(stop.order_id)
+        })
         overlaysRef.current.push(marker)
       })
     })
-  }, [data, mapReady, visibleRoutes])
+    if (!bounds.isEmpty()) mapRef.current.fitBounds(bounds, 32)
+  }, [activeVehicle, data, mapReady, onSelectOrder, onSelectVehicle, visibleRoutes])
 
   return (
     <section className="panel map-panel" aria-label="配送地圖">
@@ -100,9 +117,9 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
       </div>
       <div className="map-wrap">
         {liveMap && <div className="map-canvas" ref={mapElement} />}
-        {!liveMap && <div className="map-fallback"><div className="map-grid" />{data && visibleRoutes.map((route) => { const svg = routeToSvg(route, data.depot); return <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" key={route.vehicle_id}><polyline points={svg.points} stroke={route.color} />{svg.dots.map((dot, index) => <circle key={`${route.vehicle_id}-${index}`} cx={dot.x} cy={dot.y} r={index === 0 ? 2 : 1.4} fill={index === 0 ? '#fff' : route.color} onClick={() => { if (dot.orderId) { onSelectVehicle(route.vehicle_id); if (dot.orderId !== 'DEPOT-001') onSelectOrder?.(dot.orderId) } }} />)}</svg>})}</div>}
+        {!liveMap && <div className="map-fallback"><div className="map-grid" />{data && visibleRoutes.map((route) => { const svg = routeToSvg(route, data.depot); const selected = !activeVehicle || activeVehicle === route.vehicle_id; return <svg className="map-route" style={{ opacity: selected ? 1 : .2 }} viewBox="0 0 100 100" preserveAspectRatio="none" key={route.vehicle_id}><polyline points={svg.points} stroke={route.color} />{svg.dots.map((dot, index) => <circle key={`${route.vehicle_id}-${index}`} cx={dot.x} cy={dot.y} r={index === 0 ? 2 : 1.4} fill={index === 0 ? '#fff' : route.color} onClick={() => { if (dot.orderId) { onSelectVehicle(route.vehicle_id); if (dot.orderId !== 'DEPOT-001') onSelectOrder?.(dot.orderId) } }} />)}</svg>})}</div>}
         <div className="map-label"><strong>DEPOT-001</strong><span>新北市青年局配送中心</span></div>
-        <div className={`map-status ${liveMap && data?.provider_mode === 'GOOGLE' && !mapError ? 'is-live' : ''}`}>{liveMap && data?.provider_mode === 'GOOGLE' && !mapError ? 'Google Maps · 即時地圖' : '示意路線 · Browser key 未設定'}</div>
+        <div className={`map-status ${liveMap && !mapError ? 'is-live' : ''}`}>{liveMap && !mapError ? 'Google Maps · 即時道路' : browserKey ? '示意路線 · Google 路線資料不可用' : '示意路線 · Browser key 未設定'}</div>
         {mapError && <div className="warning-box" style={{ position: 'absolute', left: 16, right: 16, top: 58 }}>{mapError}</div>}
         {!data && <div className="loading">等待配送方案</div>}
         {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ TDX 路況事件</span>}</div>}

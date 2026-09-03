@@ -24,7 +24,7 @@ async def test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool() -> 
     matrix = SimulatedRouteProvider().build(dataset)
 
     final_output, context, result = await run_dispatch_agent(
-        "請建立今天的配送方案，使用 ORTOOLS；只能根據工具驗證結果回答。",  # noqa: RUF001
+        "請建立今天的配送方案，使用 ORTOOLS；只能根據工具驗證結果回答。",
         dataset,
         matrix,
     )
@@ -33,5 +33,7 @@ async def test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool() -> 
     assert context.evidence[0]["tool"] == "plan_dispatch"
     assert context.evidence[0]["validator"]["valid"] is True
     assert context.evidence[0]["provider_mode"] == "SIMULATED"
-    assert str(context.evidence[0]["total_distance_m"]) in final_output
+    # Agent 可使用人類可讀的千分位格式；驗證仍比對同一個 evidence 數值。
+    normalized_output = final_output.replace(",", "")
+    assert str(context.evidence[0]["total_distance_m"]) in normalized_output
     assert any(type(item).__name__ == "ToolCallItem" for item in result.new_items)

@@ -10,14 +10,14 @@ implementation_gate: APPROVE_IMPLEMENTATION
 implementation_status: phase_2_feature_implementation
 backend_p0_status: done
 openai_agent_status: done
-frontend_integration_status: partial_local_control_tower
+frontend_integration_status: live_control_tower_verified
 overall_project_status: in_progress
 git_repository: true
 ```
 
 ## 本輪檢查
 
-本輪以不輸出 credential 的方式執行真實整合驗證；OpenAI 與 Google Routes 使用已設定的開發憑證，Browser Maps 與 TDX 憑證缺少，因此後兩者維持 `BLOCKED`。任何 mock、simulated 或 skipped 結果均未列為 Live PASS。
+本輪以不輸出 credential 的方式執行真實整合驗證；OpenAI、Google Routes 與 Browser Maps 使用已設定的開發憑證，TDX 憑證未設定並標示為可選。任何 mock、simulated 或 skipped 結果均未列為 Live PASS。
 
 | 檢查 | 預期證據 | 狀態 |
 |---|---|---|
@@ -67,9 +67,9 @@ git_repository: true
 | Google Routes Matrix → OR-Tools | `LIVE PASS` | 40 單匯入後取得 41×41 `provider_mode=GOOGLE`、`matrix_version=google-routes-v1`；同一 Matrix 建立 OR-Tools plan，40/40 assigned、Validator `valid=true`。 |
 | Google route geometry | `LIVE PASS` | `/map-data` 回傳 4 條非 simulated geometry，provider 為 `GOOGLE`。 |
 | ORD-041 urgent preview | `LIVE PASS` | 以同一 plan version／dataset 基準，incremental Matrix 延伸成功；`MINIMAL_CHANGE`、40 → 41 assigned、365 → 367 kg、0 → 0 unassigned、單一車輛受影響；preview Validator 通過；未 Dispatch。 |
-| Google Maps Browser | `BLOCKED` | `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 缺少；前端正確顯示 `SIMULATED · 非即時道路`，不得宣稱 Browser Live。 |
-| TDX OAuth／路況／route risk | `BLOCKED` | `TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 缺少；API 回傳 `CREDENTIALS_MISSING`，未以 mock 代替。 |
-| 完整 Playwright Live E2E | `BLOCKED` | 現有 Playwright 流程為 keyless／simulated regression；Browser 與 TDX Live gate 尚缺必要憑證。 |
+| Google Maps Browser | `LIVE PASS` | 使用 Browser key 在瀏覽器載入臺北道路地圖、DEPOT-001、40 個編號 Marker 與 4 條 Google geometry 路線；Playwright 觀察到地圖控制項與 Google attribution。 |
+| TDX OAuth／路況／route risk | `OPTIONAL／NOT_CONFIGURED` | `TDX_CLIENT_ID` 與 `TDX_CLIENT_SECRET` 未設定；API 回傳 `CREDENTIALS_MISSING`，不以 mock 代替且不阻塞本輪。 |
+| 完整 Playwright Live E2E | `LIVE PASS` | `frontend/tests/e2e/live-control-tower.spec.ts` 以真實 OpenAI／Google 流程完成無資料對話、Excel、Live Matrix、地圖、Agent 多輪、ORD-041 preview、人工確認、任務頁與路線頁；監測 Dispatch request 為 0。 |
 
 本輪完整後端 keyless suite 為 `36 passed, 3 skipped`；另外以條件環境執行 OpenAI／Responses／Google live gate 為 `5 passed`。前端 typecheck、lint、Vitest `2 passed`、build 與 Playwright regression `2 passed`。Ruff、mypy 與 tracked-file secret scan 均通過。未輸出或提交任何 credential，未執行 Dispatch、部署或正式環境操作。
 
@@ -123,7 +123,7 @@ git_repository: true
 - 修正後 urgent Demo 證據：OR-Tools initial plan before = 40 assigned／365 kg，車輛載重 `93/97/152/23`；order 41 插入 `VEH-003`，既有訂單換車數為 0，該路線 4 筆 sequence records，載重 `152 -> 154 kg`，距離 `+137 m`、時間 `+17 s`。Base 與 preview algorithm 均為 ORTOOLS，並明確回傳 dataset hashes。
 - Canonical simulated run（10-second cap）：Baseline `183,955m / 23,023s`、2 unassigned；OR-Tools `161,257m / 20,185s`、0 unassigned；無 Validator violations；最近量測 solve times 為 Baseline `0.584ms`、OR-Tools `5,985.454ms`，僅供報告，不作跨機器 exact value。
 - Live preflight：OpenAI Chat text／strict tool `PASS`；Google Routes matrix `PASS`；TDX `SKIPPED`（後續擴充）。刻意錯誤的 Responses tool envelope 重現 HTTP 400 `missing_required_parameter`；修正 `input`、top-level `tools`、`strict` 與 `max_output_tokens` 後，`gpt-5-mini` requests 通過。未輸出 key、header 或完整 request。
-- Browser key 仍屬前端依賴且目前缺少；Google server fallback 明確。Frontend Integration 的歷史 snapshot 曾為 `PENDING`，本輪已建立 local control tower，現況為 `PARTIAL`；完整 Browser／Live E2E 仍待後續 provider gate。
+- Browser key 仍屬前端依賴；無 key 時保留明確 Google server fallback。Frontend Integration 的歷史 snapshot 曾為 `PENDING`，本輪已完成 Live control tower 與 browser E2E；TDX 仍為可選未設定。
 - 本輪僅進行文件中文化與對外內容清理；未修改程式、API、演算法、測試邏輯，亦未執行 Dispatch、deployment 或正式環境操作。
 
 ## 人工驗收決策
@@ -145,20 +145,30 @@ git_repository: true
 
 ## 最終結果
 
-Specification／Harness readiness：**PASS**。Implementation gate 因明確的 `APPROVE_IMPLEMENTATION` 而開啟；deterministic core 與 FastAPI 已實作，`feature_code_allowed: true`。Backend P0 與 OpenAI Agent 依人工驗收為 **DONE**。Frontend Integration 已達 local control tower `PARTIAL`，Live Browser／Provider E2E 仍待 credentials，因此 Overall Project 維持 **IN_PROGRESS**。未執行 dispatch 或 deployment。
+Specification／Harness readiness：**PASS**。Implementation gate 因明確的 `APPROVE_IMPLEMENTATION` 而開啟；deterministic core 與 FastAPI 已實作，`feature_code_allowed: true`。Backend P0、OpenAI Agent 與 Frontend Live control tower 均已通過本輪驗收；TDX 為 `OPTIONAL／NOT_CONFIGURED`，因此 Overall Project 維持 **IN_PROGRESS**。未執行 dispatch 或 deployment。
 
 ## 本輪前端控制塔與 Provider 驗證（2026-09-03）
 
 | 閘門 | 結果 | 證據 |
 |---|---|---|
-| Google Matrix wiring | `MOCK PASS`；Live `BLOCKED` | `tests/test_live_provider_wiring.py` 驗證 strict provider、matrix hash/version 與 OR-Tools 注入；process 未設定 server key |
-| Google route geometry | `IMPLEMENTED`；Live `BLOCKED` | `src/providers/google_routes.py` 與 `/map-data` strict path；未呼叫付費 API |
-| TDX OAuth／route risk | `MOCK PASS`；Live `BLOCKED` | `src/providers/tdx.py`、mock token/event projection/redaction test；process 未設定 credentials |
-| React control tower | `PASS` | `frontend/` API client、MUI panels、simulated map fallback、Agent／preview／confirm UI |
+| Google Matrix wiring | `LIVE PASS` | `tests/test_live_provider_wiring.py` 與 Live flow 證明 strict Google Matrix、matrix hash/version 與同次 OR-Tools 注入 |
+| Google route geometry | `LIVE PASS` | `src/providers/google_routes.py` 與 `/map-data` 回傳 4 條非 simulated geometry |
+| TDX OAuth／route risk | `OPTIONAL／NOT_CONFIGURED` | `src/providers/tdx.py` 已有 adapter；本環境未設定 credentials，不以 mock 代替 Live |
+| React control tower | `LIVE PASS` | `frontend/` API client、Google Maps、Agent／preview／confirm UI 與任務／路線工作區 |
 | Frontend quality gates | `PASS` | `pnpm install --frozen-lockfile`、`pnpm run typecheck`、`pnpm run lint`、`pnpm run test -- --run`（2 passed）、`pnpm run build`、Playwright Chromium（2 passed） |
 | Backend quality gates | `PASS` | `pytest` 36 passed／3 skipped、`ruff check src tests scripts`、`mypy src` 27 files |
 | Secret／deployment scan | `PASS` | tracked high-confidence secret patterns 0；`.github/workflows` 不存在；未執行 Dispatch／部署 |
 
-前端 Browser map 在 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 缺少時刻意顯示 `SIMULATED` fallback；不能標示為 Google live。完整 browser-to-live-provider E2E 仍未完成，Overall Project 維持 `IN_PROGRESS`。
+前端 Browser map 在 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 缺少時刻意顯示 `SIMULATED` fallback；本分支已在 Browser key 存在時完成 Google Maps Live 與完整 browser-to-live-provider E2E。TDX 仍為可選未設定項目，Overall Project 維持 `IN_PROGRESS`。
 
 Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported-plan.png`、`03-map-and-vehicles.png`、`04-agent-blocked.png`、`05-urgent-preview.png`、`06-human-confirmation.png`。測試以 REST endpoint 的 keyless simulated provider 執行；截圖不含 secrets。
+
+## 本輪最新 Live 交付證據（2026-09-03）
+
+- Credential preflight：`OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 均為 `CONFIGURED`；TDX 兩項憑證為 `OPTIONAL／NOT_CONFIGURED`。實際值未輸出、未記錄、未提交。
+- Agent 對話：無資料提問與同一 `Conversation ID` 的多輪流程均回傳 `runner_result_type=RunResult`；`plan_dispatch`、`highest_load_vehicle`、`explain_assignment`、`preview_urgent_insert`、`prepare_confirmation` 均由 strict tools 實際執行，回答只引用 evidence。
+- Google 路線與排程：40 張訂單匯入後，`provider_mode=GOOGLE` 的 41×41 Matrix 進入同一次 OR-Tools 求解；40/40 已安排、365 kg、獨立 Validator 通過。`map-data` 回傳 4 條非 simulated geometry。
+- Browser 地圖：Live Playwright 顯示臺北道路、Google attribution、DEPOT-001、40 個 Marker、4 色道路 Polyline，並可依車輛篩選；畫面不顯示 raw JSON 或 provider code。
+- ORD-041：Agent 自動使用結構化 fixture 呼叫 preview，REST 提案以同一 plan 基準建立 `MINIMAL_CHANGE`；40 → 41 張、365 → 367 kg、換車 0 張、僅一台車受影響，Validator 通過；前端顯示距離與時間差異並完成人工確認。
+- 瀏覽器流程：`frontend/tests/e2e/live-control-tower.spec.ts` 通過，涵蓋無資料聊天、Excel 匯入、Live Matrix、Map、Agent 多輪、插單差異、人工確認、配送任務與配送路線工作區；全程 Dispatch request `0`。
+- 最新截圖：`docs/screenshots/live-01-empty-chat.png`、`live-02-google-map-plan.png`、`live-03-agent-evidence.png`、`live-04-urgent-diff.png`、`live-05-human-confirmed.png`、`live-06-delivery-tasks.png`、`live-07-route-tracking.png`，均為 1440×900 且未含 secrets。

@@ -33,7 +33,7 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 `POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 
-`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 存在時，`MapPanel` 載入 Google Maps JavaScript API、depot／stop Markers 與 route polylines；沒有 key 時顯示 deterministic map preview 並標示 `SIMULATED`。完整 Browser live 與 Google／TDX／OpenAI 前後端 Live E2E 必須在具備相應 credentials 的環境另行執行；mock、fallback 或 skipped test 不得替代。
+`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 存在時，`MapPanel` 載入 Google Maps JavaScript API、depot／stop Markers 與 Google 路線 polylines；沒有 key 時顯示 deterministic map preview 並明確標示 `SIMULATED`。本分支已在具備 Browser key 的本機環境通過 Live 瀏覽器驗收；TDX 仍為可選外部依賴，mock、fallback 或 skipped test 不得替代 Live 證據。
 
 本輪分支為 `feat/frontend-control-tower`，完成後只推送該分支，不自動合併 `main`。
 
@@ -48,7 +48,7 @@ Copy-Item .env.example .env.local
 pnpm dev --host 127.0.0.1
 ```
 
-開啟 `http://127.0.0.1:5173`。`VITE_API_BASE_URL` 指向 FastAPI（預設 `http://127.0.0.1:8000`）；Browser key 留白時仍可使用 simulated map preview。前端不得設定或打包任何 server-side secret。
+開啟 `http://127.0.0.1:5173`。`VITE_API_BASE_URL` 指向 FastAPI（預設 `http://127.0.0.1:8000`）；Browser key 留白時仍可使用明確標示的 simulated map preview。前端不得設定或打包任何 server-side secret。
 
 品質檢查指令：
 
@@ -247,3 +247,9 @@ Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend �
 ## 目前整合狀態
 
 目前 local server 已實作所有文件化 routes。`api-contract.md` 中的 sample numeric values 僅示範 shape；產生的 solver outputs 來自固定 Demo fixture，並經獨立驗證。Frontend 應以 `tests/test_demo_flow.py` 作為 no-dispatch integration sequence，除非有明確的 dispatcher action，絕不可呼叫 `/dispatch`。
+
+## 本分支 Live 驗收
+
+`frontend/tests/e2e/live-control-tower.spec.ts` 已在本機使用真實 OpenAI／Google 憑證執行：無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、Validator、Google Maps、Agent 多輪對話、ORD-041 preview、人工確認、配送任務與配送路線工作區均通過，且測試確認沒有 Dispatch request。
+
+Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`，每張為 1440×900 且不含 credential。TDX 因未設定 OAuth 憑證標示 `OPTIONAL／NOT_CONFIGURED`，不影響本輪後端與前端驗收。

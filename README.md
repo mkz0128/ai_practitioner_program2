@@ -70,7 +70,7 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞 deterministic backend core。Backend P0 與 OpenAI Agent runtime 已由人工驗收為 `DONE`；本輪已加入前端控制塔與 provider wiring，但 Live Provider、Browser map 與完整前後端 Live E2E 仍依環境憑證驗證，整體專案仍為 `IN_PROGRESS`。
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。存在 credentials 時，live gate 使用 `gpt-5-mini`；缺少 Browser／TDX credentials 的環境會明確顯示 fallback 或 `OPTIONAL／NOT_CONFIGURED`，不以此冒充 Live PASS。Backend P0、OpenAI Agent runtime、Google Routes 與 Browser map 已通過本機 Live 驗收；TDX 仍為可選外部依賴，整體專案仍為 `IN_PROGRESS`。
 
 ## 前端交付快速開始
 
@@ -89,7 +89,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 `http://127.0.0.1:8000/ready`。
 
 前端控制塔位於 `frontend/`；在後端啟動後執行 `pnpm install --frozen-lockfile` 與
-`pnpm dev --host 127.0.0.1`，即可於 `http://127.0.0.1:5173` 操作。主要畫面截圖與其測試狀態保存在 `docs/screenshots/`；截圖使用 local simulated data，不代表外部 provider `LIVE PASS`。
+`pnpm dev --host 127.0.0.1`，即可於 `http://127.0.0.1:5173` 操作。主要畫面截圖與其測試狀態保存在 `docs/screenshots/`；`live-*.png` 為真實 Google Maps／Agent Live 流程，其他歷史截圖若標示 simulated 則不代表外部 provider `LIVE PASS`。
 
 ### 前端環境變數
 
