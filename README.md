@@ -50,8 +50,8 @@ REST response 一律以 JSON arrays 暴露這些值；delimiter strings 不會�
 ## 外部 Provider 模式
 
 - 預設 Demo 模式：`SimulatedRouteProvider` 加上可重現的 simulated congestion。
-- Google Routes：已有 server-side adapter、strict field mask、timeout、cache policy review 與 graceful fallback；目前 import／plan API 仍使用 simulated matrix，live Matrix 尚未進入 OR-Tools。
-- TDX：目前為 credential health/status adapter 與 graceful fallback；OAuth、真實路況查詢及 road-to-zone risk mapping 屬原始必要整合缺口，尚未完成。
+- Google Routes：`AUTO` plan 會在 `GOOGLE_ROUTES_SERVER_API_KEY` 存在時以 strict adapter 取得 Matrix，並將同一份 Matrix 傳入 OR-Tools；缺少 key 時明確使用 `SIMULATED`，已設定 key 但 provider 失敗時回傳 `PROVIDER_UNAVAILABLE`，不靜默 fallback。Map data 也會以 Google Routes 取得 route geometry。
+- TDX：後端已提供 OAuth、traffic event projection 與 route-risk correlation adapter；沒有 `TDX_CLIENT_ID`／`TDX_CLIENT_SECRET` 時回傳 `CREDENTIALS_MISSING`，不可將 simulated 或 status-only 結果標示為 live。
 - OpenAI 不可用時：REST import、validation、planning、confirmation 與 queries 仍可使用；只有 `/agent/chat` 降級。
 
 本機 `.env` 僅供已核准的開發環境使用，永不提交；`.env.example` 只保留空白變數與 `gpt-5-mini` 預設模型。
@@ -70,7 +70,7 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞 deterministic backend core。Backend P0 與 OpenAI Agent runtime 已由人工驗收為 `DONE`；HTTP Agent wiring、Live Provider、Frontend Integration 仍待完成，整體專案仍為 `IN_PROGRESS`。
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。只有存在 credentials 時，live gate 才使用 `gpt-5-mini`；缺少 Browser／TDX credentials 時會 skip 或 fallback，不阻塞 deterministic backend core。Backend P0 與 OpenAI Agent runtime 已由人工驗收為 `DONE`；本輪已加入前端控制塔與 provider wiring，但 Live Provider、Browser map 與完整前後端 Live E2E 仍依環境憑證驗證，整體專案仍為 `IN_PROGRESS`。
 
 ## 前端交付快速開始
 
@@ -87,6 +87,9 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 開啟 [Swagger UI](http://127.0.0.1:8000/docs)、原始 schema
 `http://127.0.0.1:8000/openapi.json`，或 readiness
 `http://127.0.0.1:8000/ready`。
+
+前端控制塔位於 `frontend/`；在後端啟動後執行 `pnpm install --frozen-lockfile` 與
+`pnpm dev --host 127.0.0.1`，即可於 `http://127.0.0.1:5173` 操作。主要畫面截圖與其測試狀態保存在 `docs/screenshots/`；截圖使用 local simulated data，不代表外部 provider `LIVE PASS`。
 
 ### 前端環境變數
 

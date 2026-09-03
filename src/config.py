@@ -24,11 +24,21 @@ class Settings(BaseSettings):
     )
     tdx_client_id: str | None = Field(default=None, validation_alias="TDX_CLIENT_ID")
     tdx_client_secret: str | None = Field(default=None, validation_alias="TDX_CLIENT_SECRET")
+    tdx_api_base_url: str = Field(
+        default="https://tdx.transportdata.tw", validation_alias="TDX_API_BASE_URL"
+    )
+    tdx_traffic_endpoint: str = Field(
+        default="/api/basic/v2/Road/Traffic/Live/City",
+        validation_alias="TDX_TRAFFIC_ENDPOINT",
+    )
+    tdx_timeout_seconds: float = Field(
+        default=10.0, gt=0, le=60, validation_alias="TDX_TIMEOUT_SECONDS"
+    )
     database_url: str = Field(
         default="sqlite:///./data/runtime/dispatch.db", validation_alias="DATABASE_URL"
     )
     cors_allowed_origins: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
         validation_alias="CORS_ALLOWED_ORIGINS",
     )
     solver_time_limit_seconds: int = Field(

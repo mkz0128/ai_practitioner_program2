@@ -64,10 +64,10 @@ application_agent_count: 1
 - Initial plan、map data、explanations、urgent order preview、confirmation 與 dispatch state。
 - 使用 strict tools 的 Single Agent，以及 graceful OpenAI degradation。
 - Simulated route matrix／polyline／congestion fallback。
-- Google／TDX provider interface、settings、health/status、timeout/fallback（僅 adapter／狀態能力；完整 live 整合仍待完成）。
+- Google／TDX provider interface、settings、health/status、timeout/fallback；Google strict Matrix／geometry wiring、TDX OAuth event projection 與 route-risk correlation 已實作，Live 狀態仍依 credentials 判定。
 - REST、OpenAPI/Swagger、sample payloads，以及由 environment 設定的 CORS。
 
-以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍。SQLite 的 confirm／dispatch durable state 仍有重啟後回寫缺口；`/api/v1/agent/chat` 尚未接入 `Runner.run`；Google live Matrix、TDX 真實資料、Browser map、frontend 與 full Live E2E 均不應由此清單推論為完成。
+以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍與已測試的 provider wiring。SQLite 的 confirm／dispatch durable state 仍有重啟後回寫缺口；HTTP `/api/v1/agent/chat` 維持 evidence explanation path，SDK `Runner.run` 由 runtime／E2E gate 驗證；Google／TDX 真實資料、Browser live map 與 full Live E2E 均不應由此清單推論為完成。`frontend/` 已提供 local control tower，但缺少 Browser key 時只顯示 simulated map preview。
 
 ### 原始必要功能的整合缺口
 
@@ -81,13 +81,13 @@ application_agent_count: 1
 
 | 原始必要能力 | 現況 | 實際證據與缺口 |
 |---|---|---|
-| Google Routes live distance／duration | 部分完成 | `src/providers/google_routes.py` 已有 adapter；`src/api/main.py` 的 import／plan 仍固定使用 `SimulatedRouteProvider`，尚無 live matrix→OR-Tools E2E。 |
-| Google Matrix 進入 OR-Tools | 尚未開始 | `build_ortools` 可接受 `MatrixResult`，但現行 API 尚未注入成功的 Google matrix。 |
-| Google Maps Browser 地圖 | 尚未開始 | Repository 沒有可執行的 browser frontend；目前只有 `/map-data` 的 simulated polyline。 |
-| TDX OAuth／真實路況／道路事件 | 尚未開始 | `src/providers/tdx.py` 僅依 credential presence 回傳 status，沒有 OAuth 或資料查詢。 |
-| TDX 受影響路線／配送風險 | 尚未開始 | 尚無風險計算、路線關聯或測試證據。 |
-| 前端完整操作與 Agent 顯示 | 尚未開始 | 目前只有 `docs/frontend-handoff.md`；沒有 frontend application。 |
-| 全整合前後端 Live E2E | 尚未開始 | 現有測試為 keyless／provider-neutral 或後端 contract；沒有 browser-to-live-provider E2E。 |
+| Google Routes live distance／duration | 部分完成（Live BLOCKED） | `src/providers/google_routes.py` strict adapter 與 `tests/test_live_provider_wiring.py`；本環境缺 server key，無 LIVE PASS。 |
+| Google Matrix 進入 OR-Tools | 部分完成（wiring verified） | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性 test；尚缺真實 provider E2E。 |
+| Google Maps Browser 地圖 | 部分完成（Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx` 可載入 Google Maps、Marker、polyline，無 key 時為 simulated fallback。 |
+| TDX OAuth／真實路況／道路事件 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth、事件 models、mock provider test；缺 TDX credentials。 |
+| TDX 受影響路線／配送風險 | 部分完成（deterministic） | `correlate_events_to_plan` 與 `map-data.traffic.route_risks`；尚缺 live event evidence。 |
+| 前端完整操作與 Agent 顯示 | 部分完成（local control tower） | `frontend/` React/Vite/MUI、API client、RTL tests；尚缺 Browser/live E2E。 |
+| 全整合前後端 Live E2E | 尚未完成 | keyless/provider-neutral/contract gates 通過；必須在有 Google、TDX、OpenAI、Browser credentials 的環境執行。 |
 
 ### 企業級擴充功能
 
@@ -285,17 +285,17 @@ Application dependencies 不得使用 `latest`、caret、tilde 或 open-ended de
 - 目標流程是由 Backend 使用 Compute Route Matrix 取得 distance/duration，並使用 Compute Routes 取得 route/polyline，再將同一份 live Matrix 傳入 OR-Tools。
 - 使用包含 status/condition（視情況）的 narrow field masks；production 絕不使用 wildcard。
 - Browser 與 Server keys 分開並受限制。
-- Missing key/error/timeout → `SimulatedRouteProvider`，並回傳 `provider_mode: SIMULATED` 與 warning。
+- Missing key → `SIMULATED` 與 warning；已設定 key 的 error/timeout → `PROVIDER_UNAVAILABLE`，不靜默 fallback。
 - 僅在完成 Google Maps Platform terms review 後進行 cache；預設 transient TTL 為 900 秒，raw provider data 不假設可永久儲存。
 
-目前實作狀態：`GoogleRoutesProvider` 已可單獨建立 matrix 或 fallback，但 `src/api/main.py` 的 import／plan 流程仍固定使用 `SimulatedRouteProvider`，因此 Google live Matrix 尚未真正進入 OR-Tools。
+目前實作狀態：`GoogleRoutesProvider` 已由 `src/api/main.py` 的 `AUTO` plan strict path 建立 Matrix，並將同一 identity 傳入 OR-Tools；`map-data` 另外取得 Google route geometry。Live 呼叫需 server key，沒有 key 時不得宣稱 live。
 
 Reference: https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix
 
 ### TDX
 
-- 目前僅完成 provider interface、Client ID/Secret settings、health/status 與 graceful fallback 的骨架。
-- OAuth、真實路況／道路事件查詢、road segments／zones mapping 與路線風險判斷尚未開始；這些仍屬原始必要功能的整合缺口。
+- 已完成 provider interface、Client ID/Secret settings、OAuth token exchange、traffic event projection、city／zone／coordinate correlation 與明確 fallback。
+- 真實 TDX response 仍需 credentials 與服務條款／配額確認；沒有 credentials 時回傳 `CREDENTIALS_MISSING`，不視為 Live 完成。
 - TDX 是 enrichment，不是 optimization；Auth/data failure 不得使 core planning 失敗。
 
 Reference: https://tdx.transportdata.tw/api-service/swagger/basic/
@@ -305,7 +305,7 @@ Reference: https://tdx.transportdata.tw/api-service/swagger/basic/
 - 使用 OpenAI Agents SDK single Agent 與 strict function tools。
 - Built-in tracing 可設定；sensitive trace payloads 預設停用。
 - 套用 token/tool/turn limits；OpenAI failure 只停用 `/agent/chat`。
-- `src/agent/runtime.py` 已具備 `Runner.run` 與 strict tools 的 provider-neutral E2E；但 `src/api/main.py` 的 `/api/v1/agent/chat` 目前直接呼叫 `explain_assignment`，尚未接入該 runtime，因此整體 Agent API 整合仍為部分完成。
+- `src/agent/runtime.py` 已具備 `Runner.run` 與 strict tools 的 provider-neutral E2E；HTTP `/api/v1/agent/chat` 提供 evidence-grounded explanation path，沒有 OpenAI credentials 時明確降級。完整 HTTP live Agent E2E 仍依環境 gate 判定。
 
 References: https://developers.openai.com/api/docs/guides/latest-model and https://platform.openai.com/docs/quickstart
 
@@ -438,7 +438,7 @@ And 不得捏造或執行禁止的 action
 
 ## 14. 整合前置條件與待辦事項
 
-- Google Maps Browser key 仍屬前端依賴；Server key 即使已設定，現行 API 仍使用 `SimulatedRouteProvider`，必須先完成 provider wiring 才能進行 live Matrix→OR-Tools 驗收。
+- Google Maps Browser key 仍屬前端依賴；Server key 若存在，`AUTO` plan 會 strict 取得 Matrix 並交給 OR-Tools；沒有 key 時維持 `SIMULATED` 並標示阻塞。
 - TDX Client ID／Secret 僅能在需要時放入 local `.env`；取得憑證不代表 OAuth、路況查詢或風險判斷已完成。
 - 啟用任何 durable cache 前，必須完成 Google content caching／persistence 的 terms review。
 - Git baseline publication 受獨立規範管理，不代表已授權 deployment、production access 或後續 pushes。

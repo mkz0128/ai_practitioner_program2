@@ -17,8 +17,8 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 
 這 13 組 REST method/path 是正式的系統整合介面。本輪不修改 route、request schema 或 response schema；以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
 
-- `POST /api/v1/datasets/import-excel` 與 `POST /api/v1/plans` 目前由 `SimulatedRouteProvider` 建立固定 matrix；即使 request 帶有 `route_provider_preference` 或 `traffic_mode`，現行 API 仍未將成功的 Google live matrix 注入 OR-Tools。
-- `GoogleRoutesProvider` 可獨立產生 `MatrixResult` 或在錯誤時 fallback，但尚無 API wiring 與 live Matrix→OR-Tools 的整合驗收證據。`provider_mode=SIMULATED` 必須清楚標示模擬資料。
+- `POST /api/v1/datasets/import-excel` 僅正規化資料；`POST /api/v1/plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 會由 `GoogleRoutesProvider` strict 取得 Matrix，並把同一 hash/version 的 `MatrixResult` 注入 OR-Tools。缺 key 時回傳 `provider_mode=SIMULATED` 與 warning；已設定 key 但呼叫失敗回傳 `502 PROVIDER_UNAVAILABLE`，不靜默 fallback。
+- `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
 - `/api/v1/agent/chat` 目前走 deterministic `explain_assignment` evidence 路徑；`src/agent/runtime.py` 的 `Runner.run` strict-tool 情境測試獨立存在，HTTP endpoint 尚未接上該 runtime。
 - 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
 
@@ -98,6 +98,8 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
   "state": "PROPOSED",
   "timezone": "Asia/Taipei",
   "provider_mode": "SIMULATED",
+  "matrix_hash": "sha256...",
+  "matrix_version": "sim-v1",
   "is_fully_feasible": true,
   "requires_human_confirmation": true,
   "summary": {
@@ -234,7 +236,7 @@ Request:
 }
 ```
 
-現況中 `route_provider_preference` 與 `traffic_mode` 僅保留契約欄位，`POST /plans` 仍固定使用 deterministic simulated matrix；尚未接入 Google／TDX live provider。完成 provider wiring 後，`AUTO` 才能依健康狀態選用 live provider，失敗時必須明確 fallback 至 simulated。Response `201` 為 `state=PROPOSED` 的 Plan shape。若不存在完整可行方案，`409/422` 可回傳 partial plan reference 與 exceptions。
+`route_provider_preference=AUTO` 與 `traffic_mode=AUTO` 會依 server key 決定 provider：有 key 時 strict 使用 Google Matrix；缺 key 時明確回傳 simulated warning；已設定 key 但 provider error 則以 `502 PROVIDER_UNAVAILABLE` 結束，避免把錯誤誤標成 simulated 成功。Plan response 會回傳 `matrix_hash`、`matrix_version` 與 `summary.matrix_hash`／`summary.matrix_version`，供 client 證明 solver 使用的 matrix identity。Response `201` 為 `state=PROPOSED` 的 Plan shape。若不存在完整可行方案，`409/422` 可回傳 partial plan reference 與 exceptions。
 
 ### `GET /api/v1/plans/{plan_id}`
 
@@ -249,6 +251,8 @@ Query `version` 為選用。Response：
   "plan_id": "PLAN-001",
   "version": 1,
   "provider_mode": "SIMULATED",
+  "matrix_hash": "sha256...",
+  "matrix_version": "sim-v1",
   "depot": {"depot_id":"DEPOT-001","latitude":25.0131533,"longitude":121.4599675},
   "routes": [
     {
@@ -260,9 +264,12 @@ Query `version` 為選用。Response：
       "legs": [{"from_sequence":0,"to_sequence":1,"distance_m":3500,"duration_s":720}]
     }
   ],
+  "traffic": {"mode":"UNAVAILABLE","data_status":"CREDENTIALS_MISSING","events":[],"route_risks":[]},
   "warnings": [{"code":"SIMULATED_ROUTE_DATA","message":"非 Google 即時資料"}]
 }
 ```
+
+Google route 的 `provider_mode` 為 `GOOGLE` 且 `matrix_hash`／`matrix_version` 必須與建立 plan 的 response 一致；沒有 Browser key 時前端仍可顯示 simulated preview，但不得標示為 Google live map。
 
 ### `POST /api/v1/plans/{plan_id}/urgent-insert/preview`
 
@@ -394,7 +401,7 @@ Response:
 }
 ```
 
-絕不暴露 credential values 或 raw auth failures。
+絕不暴露 credential values 或 raw auth failures。TDX status／map data 另包含 `data_status`（例如 `CREDENTIALS_MISSING`、`NO_EVENTS`、`EVENTS_FOUND`）；`traffic.route_risks` 只引用已投影且可關聯至 route/order 的事件 evidence。
 
 ## Status Code 政策
 

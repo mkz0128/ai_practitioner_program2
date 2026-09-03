@@ -29,11 +29,37 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 ## 實作現況與必要功能邊界
 
-Repository 目前沒有可執行的 frontend application；本文件是交接契約，不代表 Google Maps Browser 畫面已完成。`/api/v1/plans/{plan_id}/map-data` 現階段會回傳 `provider_mode=SIMULATED` 與 deterministic polyline，僅供本機展示，不能標示為 Google live traffic、live ETA 或 GPS 追蹤。
+`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫既有 13 組 REST routes，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff 與人工 confirm；不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
 
-`GoogleRoutesProvider` 雖已有 server-side adapter，但現行 import／`POST /api/v1/plans` 流程仍使用 `SimulatedRouteProvider`，尚未證明 live Matrix 進入 OR-Tools。TDX 目前只有 credential presence／health status adapter，尚未完成 OAuth、路況查詢或路線風險判斷。`/api/v1/agent/chat` 目前回傳 deterministic evidence explanation；`src/agent/runtime.py` 的 Agents SDK `Runner.run` 情境測試是另一條 provider-neutral runtime 路徑，HTTP endpoint 尚未接入該 runtime。
+`POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 
-因此 Google Routes 完整 Live Integration、Google Maps Browser 地圖、TDX 真實資料、前端操作介面及前後端 Live E2E 都仍待完成，屬原始必要功能的整合缺口，不是可略過的 P1。前端完成後，必須以實際瀏覽器畫面、provider identity、同一份 live Matrix、路線 evidence 與 end-to-end 測試證明完成；mock、fallback、simulated 或 skipped test 不得替代。
+`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 存在時，`MapPanel` 載入 Google Maps JavaScript API、depot／stop Markers 與 route polylines；沒有 key 時顯示 deterministic map preview 並標示 `SIMULATED`。完整 Browser live 與 Google／TDX／OpenAI 前後端 Live E2E 必須在具備相應 credentials 的環境另行執行；mock、fallback 或 skipped test 不得替代。
+
+本輪分支為 `feat/frontend-control-tower`，完成後只推送該分支，不自動合併 `main`。
+
+## 前端安裝與啟動
+
+在 repository root 啟動後端後，再於 `frontend/` 使用 bundled Node／`pnpm`（或團隊核准的 Node 24 + pnpm 11）：
+
+```powershell
+cd frontend
+pnpm install --frozen-lockfile
+Copy-Item .env.example .env.local
+pnpm dev --host 127.0.0.1
+```
+
+開啟 `http://127.0.0.1:5173`。`VITE_API_BASE_URL` 指向 FastAPI（預設 `http://127.0.0.1:8000`）；Browser key 留白時仍可使用 simulated map preview。前端不得設定或打包任何 server-side secret。
+
+品質檢查指令：
+
+```powershell
+pnpm run typecheck
+pnpm run lint
+pnpm run test -- --run
+pnpm run build
+```
+
+依賴版本固定於 `frontend/package.json` 與 `frontend/pnpm-lock.yaml`；`node_modules/` 與 `dist/` 不提交。
 
 ## Demo fixture（展示資料）
 
@@ -63,7 +89,7 @@ Repository 目前沒有可執行的 frontend application；本文件是交接契
 5. Render vehicles/stops/exceptions/provider badge
 6. 可選的 urgent-insert preview 並顯示 diff
 7. 人工針對精確 plan/version 按下 confirm
-8. Optional mark dispatched
+8. 本控制塔不呼叫 `/dispatch`；若未來另有核准的營運流程，才由具權限的系統執行。
 ```
 
 ## Endpoint request／response 範例
@@ -152,6 +178,19 @@ Fixture 的 Z4 demand 總重 112 kg，而 `VEH-002` 上限為 100 kg。UI 必須
 ```
 
 `provider_mode=SIMULATED` 必須顯示醒目的「模擬資料」badge。Polyline 是 deterministic preview，不是 GPS；client-side animation 不得暗示 live vehicle tracking。
+
+## 驗收截圖
+
+本機 simulated flow 的畫面證據保存在 `docs/screenshots/`：
+
+- `01-empty-control-tower.png`：空白控制塔與安全邊界。
+- `02-imported-plan.png`：40 單匯入、車輛載重與地圖。
+- `03-map-and-vehicles.png`：地圖、四台車與 route filter。
+- `04-agent-blocked.png`：Agent 請求在 provider 不可用時的安全降級。
+- `05-urgent-preview.png`：`ORD-041` before／after 與 computed diff。
+- `06-human-confirmation.png`：人工確認 checkpoint；沒有 Dispatch CTA。
+
+截圖由 Playwright local simulated flow 產生，不含 API key，也不代表 Google Maps／TDX／OpenAI 的 `LIVE PASS`。
 
 ## 例外狀態
 

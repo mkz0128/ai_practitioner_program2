@@ -1,0 +1,111 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader } from '@googlemaps/js-api-loader'
+import type { MapData, MapRoute } from '../types'
+
+interface MapPanelProps {
+  data: MapData | null
+  activeVehicle: string | null
+  onSelectVehicle: (vehicleId: string | null) => void
+}
+
+function decodePolyline(encoded: string): google.maps.LatLngLiteral[] {
+  const points: google.maps.LatLngLiteral[] = []
+  let index = 0
+  let latitude = 0
+  let longitude = 0
+  while (index < encoded.length) {
+    let shift = 0
+    let result = 0
+    let byte: number
+    do { byte = encoded.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5 } while (byte >= 0x20)
+    latitude += (result & 1) ? ~(result >> 1) : result >> 1
+    shift = 0
+    result = 0
+    do { byte = encoded.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5 } while (byte >= 0x20)
+    longitude += (result & 1) ? ~(result >> 1) : result >> 1
+    points.push({ lat: latitude / 1e5, lng: longitude / 1e5 })
+  }
+  return points
+}
+
+function routeCoordinates(route: MapRoute, depot: MapData['depot']): google.maps.LatLngLiteral[] {
+  if (!route.encoded_polyline.startsWith('simulated:')) return decodePolyline(route.encoded_polyline)
+  return [{ lat: depot.latitude, lng: depot.longitude }, ...route.stops.map((stop) => ({ lat: stop.latitude, lng: stop.longitude })), { lat: depot.latitude, lng: depot.longitude }]
+}
+
+function routeToSvg(route: MapRoute, depot: MapData['depot']): { points: string; dots: Array<{ x: number; y: number; orderId?: string }> } {
+  const stops = [{ latitude: depot.latitude, longitude: depot.longitude, order_id: 'DEPOT-001' }, ...route.stops]
+  const latitudes = stops.map((stop) => stop.latitude)
+  const longitudes = stops.map((stop) => stop.longitude)
+  const minLat = Math.min(...latitudes) - 0.002
+  const maxLat = Math.max(...latitudes) + 0.002
+  const minLon = Math.min(...longitudes) - 0.002
+  const maxLon = Math.max(...longitudes) + 0.002
+  const project = (latitude: number, longitude: number) => ({ x: ((longitude - minLon) / (maxLon - minLon || 1)) * 100, y: (1 - (latitude - minLat) / (maxLat - minLat || 1)) * 100 })
+  const dots = stops.map((stop) => ({ ...project(stop.latitude, stop.longitude), orderId: stop.order_id }))
+  return { points: dots.map((dot) => `${dot.x},${dot.y}`).join(' '), dots }
+}
+
+export function MapPanel({ data, activeVehicle, onSelectVehicle }: MapPanelProps) {
+  const mapElement = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<google.maps.Map | null>(null)
+  const overlaysRef = useRef<Array<google.maps.Marker | google.maps.Polyline>>([])
+  const [mapError, setMapError] = useState<string | null>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const browserKey = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY as string | undefined
+  const visibleRoutes = useMemo(() => data?.routes.filter((route) => !activeVehicle || route.vehicle_id === activeVehicle) || [], [activeVehicle, data])
+  const liveMap = Boolean(browserKey && data)
+
+  useEffect(() => {
+    if (!browserKey || !data || !mapElement.current) return
+    let cancelled = false
+    const loader = new Loader({ apiKey: browserKey, version: 'weekly' })
+    void loader.load().then(() => {
+      if (cancelled || !mapElement.current) return
+      mapRef.current = new google.maps.Map(mapElement.current, {
+        center: { lat: data.depot.latitude, lng: data.depot.longitude },
+        zoom: 12,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      })
+      new google.maps.Marker({ map: mapRef.current, position: { lat: data.depot.latitude, lng: data.depot.longitude }, title: 'DEPOT-001 青年局配送中心' })
+      setMapReady(true)
+      setMapError(null)
+    }).catch(() => setMapError('Google Maps 載入失敗，請檢查 Browser key 與 API 限制。'))
+    return () => { cancelled = true; setMapReady(false) }
+  }, [browserKey, data])
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !data) return
+    overlaysRef.current.forEach((overlay) => overlay.setMap(null))
+    overlaysRef.current = []
+    visibleRoutes.forEach((route) => {
+      const path = routeCoordinates(route, data.depot)
+      const polyline = new google.maps.Polyline({ map: mapRef.current, path, strokeColor: route.color, strokeOpacity: .9, strokeWeight: 4 })
+      overlaysRef.current.push(polyline)
+      route.stops.forEach((stop) => {
+        const marker = new google.maps.Marker({ map: mapRef.current, position: { lat: stop.latitude, lng: stop.longitude }, label: String(stop.sequence), title: `${stop.order_id} · ${stop.eta}` })
+        overlaysRef.current.push(marker)
+      })
+    })
+  }, [data, mapReady, visibleRoutes])
+
+  return (
+    <section className="panel map-panel" aria-label="配送地圖">
+      <div className="panel-heading">
+        <div><h2>配送地圖</h2><p>{data ? `矩陣 ${data.matrix_hash?.slice(0, 8) || '—'} · ${data.matrix_version || '—'}` : '請先匯入並建立方案'}</p></div>
+        {data && <div className="route-filter"><button className={`filter-pill ${!activeVehicle ? 'active' : ''}`} onClick={() => onSelectVehicle(null)}>全部</button>{data.routes.map((route) => <button className={`filter-pill ${activeVehicle === route.vehicle_id ? 'active' : ''}`} key={route.vehicle_id} onClick={() => onSelectVehicle(route.vehicle_id)}>{route.vehicle_id}</button>)}</div>}
+      </div>
+      <div className="map-wrap">
+        {liveMap && <div className="map-canvas" ref={mapElement} />}
+        {!liveMap && <div className="map-fallback"><div className="map-grid" />{data && visibleRoutes.map((route) => { const svg = routeToSvg(route, data.depot); return <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" key={route.vehicle_id}><polyline points={svg.points} stroke={route.color} />{svg.dots.map((dot, index) => <circle key={`${route.vehicle_id}-${index}`} cx={dot.x} cy={dot.y} r={index === 0 ? 1.8 : 1.1} fill={index === 0 ? '#fff' : route.color} onClick={() => dot.orderId && onSelectVehicle(route.vehicle_id)} />)}</svg>})}</div>}
+        <div className="map-label">新北市 · 青年局配送中心 · DEPOT-001</div>
+        <div className="map-status">{data?.provider_mode === 'GOOGLE' && !mapError ? 'GOOGLE LIVE' : 'SIMULATED · 非即時道路'}</div>
+        {mapError && <div className="warning-box" style={{ position: 'absolute', left: 16, right: 16, top: 58 }}>{mapError}</div>}
+        {!data && <div className="loading">等待配送方案</div>}
+        {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ TDX 路況事件</span>}</div>}
+      </div>
+    </section>
+  )
+}

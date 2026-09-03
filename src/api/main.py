@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
 from threading import RLock
@@ -16,11 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.agent.tools import explain_assignment
 from src.config import get_settings
 from src.domain.models import Dataset, Order, Package, Priority, Vehicle, VehicleStatus, Zone
-from src.providers.tdx import TDXProvider
+from src.providers.google_routes import GoogleRoutesProvider, GoogleRoutesProviderError
+from src.providers.tdx import TDXProvider, correlate_events_to_plan
 from src.repositories.sqlite import SQLiteRepository
 from src.services.errors import ValidationReport
 from src.services.evidence import recommendation_reason
-from src.services.fingerprint import dataset_hash
+from src.services.fingerprint import dataset_hash, matrix_hash
 from src.services.importer import parse_workbook, validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.plan_diff import compute_plan_diff
@@ -128,6 +129,17 @@ class InMemoryStore:
                 self.current_versions.get(plan_id, max(versions)) if version is None else version
             )
             return versions.get(selected)
+
+
+def _build_matrix(dataset: Dataset, *, prefer_live: bool) -> MatrixResult:
+    """Resolve the matrix once and make live failures explicit when requested."""
+    if not prefer_live:
+        return SimulatedRouteProvider().build(dataset)
+    if not settings.google_routes_server_api_key:
+        return replace(SimulatedRouteProvider().build(dataset), warning="GOOGLE_KEY_MISSING")
+    return GoogleRoutesProvider(settings.google_routes_server_api_key).build(
+        dataset, allow_fallback=False
+    )
 
 
 store = InMemoryStore()
@@ -251,6 +263,16 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         else 0.0
     )
     current_dataset_hash = dataset_hash(dataset) if dataset else None
+    warnings: list[dict[str, Any]] = []
+    if record.matrix.provider_mode == "SIMULATED":
+        warnings.append(
+            {
+                "code": record.matrix.warning or "SIMULATED_ROUTE_DATA",
+                "message": "目前使用可重現的模擬距離與路線資料, 非 Google 即時資料。",
+            }
+        )
+    elif record.matrix.warning:
+        warnings.append({"code": record.matrix.warning, "message": "路線 provider 回傳警告。"})
     return {
         "plan_id": record.plan_id,
         "version": record.version,
@@ -258,6 +280,8 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         "state": record.state,
         "timezone": "Asia/Taipei",
         "provider_mode": record.matrix.provider_mode,
+        "matrix_hash": matrix_hash(record.matrix),
+        "matrix_version": record.matrix.matrix_version,
         "algorithm": record.plan.algorithm,
         "dataset_hash": current_dataset_hash,
         "is_fully_feasible": record.plan.complete and record.validation.valid,
@@ -272,6 +296,8 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             "total_duration_s": record.plan.total_driving_time_s,
             "algorithm": record.plan.algorithm,
             "dataset_hash": current_dataset_hash,
+            "matrix_hash": matrix_hash(record.matrix),
+            "matrix_version": record.matrix.matrix_version,
             "unassigned_orders": list(record.plan.unassigned_orders),
             "vehicles": [
                 {
@@ -287,12 +313,7 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         "unassigned_orders": record.plan.unassigned_orders,
         "unassigned_reasons": record.plan.unassigned_reasons,
         "validation": record.validation.model_dump(),
-        "warnings": [
-            {
-                "code": "SIMULATED_ROUTE_DATA",
-                "message": "目前使用可重現的模擬距離與路線資料, 非 Google 即時資料.",
-            }
-        ],
+        "warnings": warnings,
         "created_at": record.created_at,
     }
 
@@ -514,13 +535,30 @@ def create_plan(payload: CreatePlanRequest, request: Request) -> Any:
     dataset_record = store.get_dataset(payload.dataset_id)
     if dataset_record is None:
         return _error(request, 404, "DATASET_NOT_FOUND", "找不到資料集。")
+    prefer_live = (
+        payload.route_provider_preference == "AUTO" and payload.traffic_mode == "AUTO"
+    )
+    try:
+        matrix = _build_matrix(dataset_record.dataset, prefer_live=prefer_live)
+    except GoogleRoutesProviderError as exc:
+        return _error(
+            request,
+            502,
+            "PROVIDER_UNAVAILABLE",
+            "Google Routes 即時矩陣無法取得。",
+            provider="GOOGLE",
+            operation="computeRouteMatrix",
+            provider_error=exc.code,
+            fallback_used=False,
+            retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
+        )
     if payload.algorithm == "BASELINE":
-        plan = build_baseline(dataset_record.dataset, dataset_record.matrix)
+        plan = build_baseline(dataset_record.dataset, matrix)
     else:
         plan = build_ortools(
-            dataset_record.dataset, dataset_record.matrix, settings.solver_time_limit_seconds
+            dataset_record.dataset, matrix, settings.solver_time_limit_seconds
         )
-    validation = validate_plan(dataset_record.dataset, plan, dataset_record.matrix)
+    validation = validate_plan(dataset_record.dataset, plan, matrix)
     plan_id = f"PLAN-{uuid4().hex[:12].upper()}"
     record = PlanRecord(
         plan_id=plan_id,
@@ -529,7 +567,7 @@ def create_plan(payload: CreatePlanRequest, request: Request) -> Any:
         state="PROPOSED",
         plan=plan,
         validation=validation,
-        matrix=dataset_record.matrix,
+        matrix=matrix,
         created_at=datetime.now(UTC).isoformat(),
     )
     store.add_plan(record)
@@ -556,19 +594,47 @@ def get_map_data(plan_id: str, request: Request, version: int | None = None) -> 
         return _error(request, 404, "PLAN_NOT_FOUND", "找不到規劃版本。")
     dataset_record = store.get_dataset(record.dataset_id)
     assert dataset_record is not None
-    routes = []
+    routes: list[dict[str, Any]] = []
+    google_provider = GoogleRoutesProvider(settings.google_routes_server_api_key)
     for index, route in enumerate(record.plan.routes):
         stops = [
             stop.model_dump(include={"sequence", "order_id", "latitude", "longitude", "eta"})
             for stop in route.stops
         ]
+        coordinates = [
+            (SimulatedRouteProvider.depot_latitude, SimulatedRouteProvider.depot_longitude),
+            *[(float(stop["latitude"]), float(stop["longitude"])) for stop in stops],
+            (SimulatedRouteProvider.depot_latitude, SimulatedRouteProvider.depot_longitude),
+        ]
+        if record.matrix.provider_mode == "GOOGLE":
+            try:
+                encoded_polyline = google_provider.build_route_geometry(
+                    coordinates, allow_fallback=False
+                )
+            except GoogleRoutesProviderError as exc:
+                return _error(
+                    request,
+                    502,
+                    "PROVIDER_UNAVAILABLE",
+                    "Google Routes 道路幾何無法取得。",
+                    provider="GOOGLE",
+                    operation="computeRoutes",
+                    provider_error=exc.code,
+                    fallback_used=False,
+                    retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
+                )
+            is_simplified = False
+        else:
+            encoded_polyline = "simulated:" + ";".join(
+                f"{latitude},{longitude}" for latitude, longitude in coordinates
+            )
+            is_simplified = True
         routes.append(
             {
                 "vehicle_id": route.vehicle_id,
                 "color": ["#2563EB", "#16A34A", "#EA580C", "#9333EA"][index % 4],
-                "encoded_polyline": "simulated:"
-                + ";".join(f"{stop['latitude']},{stop['longitude']}" for stop in stops),
-                "is_simplified": True,
+                "encoded_polyline": encoded_polyline,
+                "is_simplified": is_simplified,
                 "stops": stops,
                 "legs": [
                     {
@@ -581,17 +647,45 @@ def get_map_data(plan_id: str, request: Request, version: int | None = None) -> 
                 ],
             }
         )
+    tdx_provider = TDXProvider(
+        settings.tdx_client_id,
+        settings.tdx_client_secret,
+        api_base_url=settings.tdx_api_base_url,
+        traffic_endpoint=settings.tdx_traffic_endpoint,
+        timeout_seconds=settings.tdx_timeout_seconds,
+    )
+    traffic = tdx_provider.fetch_traffic()
+    warnings: list[dict[str, str]] = []
+    if record.matrix.provider_mode == "SIMULATED":
+        warnings.append({"code": "SIMULATED_ROUTE_DATA", "message": "非 Google 即時道路資料。"})
+    if traffic.warning:
+        warnings.append(
+            {
+                "code": traffic.warning,
+                "message": "TDX 路況資料目前不可用, 未以模擬事件替代。",
+            }
+        )
     return {
         "plan_id": plan_id,
         "version": record.version,
         "provider_mode": record.matrix.provider_mode,
+        "matrix_hash": matrix_hash(record.matrix),
+        "matrix_version": record.matrix.matrix_version,
         "depot": {
             "depot_id": "DEPOT-001",
             "latitude": SimulatedRouteProvider.depot_latitude,
             "longitude": SimulatedRouteProvider.depot_longitude,
         },
         "routes": routes,
-        "warnings": [{"code": "SIMULATED_ROUTE_DATA", "message": "非 Google 即時資料。"}],
+        "traffic": {
+            "mode": traffic.mode,
+            "data_status": traffic.data_status,
+            "events": [event.model_dump() for event in traffic.events],
+            "route_risks": correlate_events_to_plan(
+                dataset_record.dataset, record.plan, traffic.events
+            ),
+        },
+        "warnings": warnings,
         "request_id": _request_id(request),
     }
 
@@ -631,7 +725,26 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             field_errors=[error.model_dump() for error in validation_report.errors],
         )
     preview_dataset_id = f"DS-{uuid4().hex[:12].upper()}"
-    preview_matrix = SimulatedRouteProvider().build(new_dataset)
+    try:
+        preview_matrix = (
+            GoogleRoutesProvider(settings.google_routes_server_api_key).build(
+                new_dataset, allow_fallback=False
+            )
+            if base_record.matrix.provider_mode == "GOOGLE"
+            else SimulatedRouteProvider().build(new_dataset)
+        )
+    except GoogleRoutesProviderError as exc:
+        return _error(
+            request,
+            502,
+            "PROVIDER_UNAVAILABLE",
+            "Google Routes 即時矩陣無法取得, 無法產生插單預覽。",
+            provider="GOOGLE",
+            operation="computeRouteMatrix",
+            provider_error=exc.code,
+            fallback_used=False,
+            retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
+        )
     preview_plan = try_minimal_insert(
         base_record.plan, new_dataset, preview_matrix, new_order
     )
@@ -683,6 +796,18 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
     )
     repository.save_plan(preview_record, make_current=False)
     diff = compute_plan_diff(base_record.plan, preview_plan)
+    preview_warnings: list[dict[str, str]] = []
+    if preview_matrix.provider_mode == "SIMULATED":
+        preview_warnings.append(
+            {
+                "code": preview_matrix.warning or "SIMULATED_ROUTE_DATA",
+                "message": "目前使用可重現的模擬距離與路線資料, 非 Google 即時資料。",
+            }
+        )
+    elif preview_matrix.warning:
+        preview_warnings.append(
+            {"code": preview_matrix.warning, "message": "路線 provider 回傳警告。"}
+        )
     affected_vehicles = {
         change["vehicle_id"]
         for change in diff["vehicle_load_changes"]
@@ -717,7 +842,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             "preview_dataset_hash": dataset_hash(new_dataset),
         },
         "diff": {"inserted_order_id": new_order.order_id, **diff},
-        "warnings": [{"code": "SIMULATED_ROUTE_DATA", "message": "非 Google 即時資料."}],
+        "warnings": preview_warnings,
         "request_id": _request_id(request),
     }
 
@@ -769,7 +894,13 @@ def dispatch_plan(plan_id: str, payload: DispatchRequest, request: Request) -> A
 @app.get("/api/v1/providers/status")
 def provider_status(request: Request) -> dict[str, Any]:
     status_map = settings.credential_status()
-    tdx_status = TDXProvider(settings.tdx_client_id, settings.tdx_client_secret).status()
+    tdx_status = TDXProvider(
+        settings.tdx_client_id,
+        settings.tdx_client_secret,
+        api_base_url=settings.tdx_api_base_url,
+        traffic_endpoint=settings.tdx_traffic_endpoint,
+        timeout_seconds=settings.tdx_timeout_seconds,
+    ).status()
     return {
         "providers": [
             {"name": "simulated_routes", "enabled": True, "status": "healthy", "mode": "SIMULATED"},

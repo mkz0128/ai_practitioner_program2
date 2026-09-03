@@ -21,10 +21,10 @@ One Agent     |             |
               +-- independent validator
               +-- evidence + diff builder
               +-- provider interfaces
-                    |-- SimulatedRouteProvider (目前可用預設)
-                    |-- GoogleRoutesProvider (adapter 已實作，尚未接入 plan API)
+                    |-- SimulatedRouteProvider (keyless 預設)
+                    |-- GoogleRoutesProvider (AUTO plan／map-data strict wiring)
                     |-- SimulatedTrafficProvider
-                    |-- TDXTrafficProvider (目前僅 status adapter)
+                    |-- TDXTrafficProvider (OAuth、事件 projection、risk correlation)
 ```
 
 相依方向一律朝內。Domain、validation、optimizer 與 plan validator 不得 import Agent 或 provider implementations。
@@ -49,7 +49,7 @@ tests/
 └── evals/
 ```
 
-此配置是已核准的實作目標；deterministic core、FastAPI transport、SQLite repository、strict evidence tools、provider fallback adapters 與 restart hydration 均位於 `src/`。Observability hardening 與最終實作閘門仍須依進度管理追蹤。
+此配置是目前實作；deterministic core、FastAPI transport、SQLite repository、strict evidence tools、provider adapters、frontend control tower 與 restart hydration 均位於 repository。Live provider 與瀏覽器金鑰仍以實際環境驗證結果為準。
 
 ## ADR-001 — Single Agent
 
@@ -189,6 +189,12 @@ Reproducibility controls 包含：pinned OR-Tools／runtime versions；committed
 | Keyless tests | Simulated/mock Google、TDX 與 OpenAI adapters | 永遠可執行；不依賴 network 或 credentials；缺 key 使用 fallback 且必須通過 |
 | Live integration tests | 明確的 live adapter 與最小 real request | 僅在該 provider 所需 environment variables 存在時執行；否則 `skip`，不可失敗 |
 
+## ADR-007 — 前端控制塔與 Provider 邊界
+
+`frontend/` 是 React + TypeScript + Vite + MUI 的單一控制塔。畫面只透過既有 13 組 REST routes 取得 dataset、plan、map、provider status、Agent evidence 與 urgent preview；不在前端重算重量、路線或合法性，也不提供自動 Dispatch。Google Maps JavaScript API 只接受 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`，Server key、OpenAI 與 TDX credentials 永遠留在後端。
+
+後端 provider 狀態與每個 response 的 `provider_mode`／`traffic.data_status` 必須直接呈現。缺少 Browser key 時控制塔顯示可用的 deterministic map preview 並標記 `SIMULATED`；這不是 Google live map。缺少 Google Routes 或 TDX credentials 時顯示 `BLOCKED`／`CREDENTIALS_MISSING`，不把 fallback 當作 live 通過。
+
 Tests 只能檢查 required variable 是否存在。絕不可將 secret 讀入 assertions、output、serialization、exception text、logs、traces、snapshots、fixtures 或 Git。Provider clients 必須 redact authorization headers 與 query credentials。Missing／rejected key 依測試分層降級為穩定的 skip／fallback result，絕不破壞 keyless suite。
 
 ## Runtime 驗收閘門
@@ -209,7 +215,7 @@ TrafficProvider:
   output: status/multiplier/evidence, or unavailable warning
 ```
 
-`SimulatedRouteProvider` 是 deterministic 且為目前 API 預設。`GoogleRoutesProvider` 已具備 server-side adapter 與 narrow field mask，但目前 `import` 與 `create_plan` 仍建立 `SimulatedRouteProvider`，尚未把 Google matrix 交給 OR-Tools；因此 `provider_mode=SIMULATED` 不得宣稱為完整 Google live 整合。Google missing／error／timeout 仍須明確 fallback。TDX 目前只有 status adapter，尚未執行 OAuth、真實路況查詢或路線風險計算；OpenAI outage 只繞過 natural-language orchestration。
+`SimulatedRouteProvider` 是 deterministic 且在沒有 credentials 時的 API 預設。`GoogleRoutesProvider` 使用 narrow field mask 與 timeout；`POST /plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 便 strict 取得 Matrix 並把相同 `MatrixResult` 傳入 OR-Tools，若缺 key 則回傳 `SIMULATED` 並附 warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`，不靜默降級。`/map-data` 對 Google plan 另外取得 encoded route geometry。`provider_mode=SIMULATED` 仍不得宣稱為 Google live 整合。TDX adapter 會執行 OAuth、取得事件並以城市／區域／座標 evidence 關聯路線；缺少 credentials 時回傳 `CREDENTIALS_MISSING`。OpenAI outage 只繞過 natural-language orchestration。
 
 Google Compute Route Matrix 需要 field mask。規劃的最小欄位為 `originIndex,destinationIndex,status,condition,distanceMeters,duration`；route geometry 僅要求 frontend 所需的 distance、duration、encoded polyline 與 leg fields。除 manual investigation 外禁止 wildcard masks。
 

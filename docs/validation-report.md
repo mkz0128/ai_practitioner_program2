@@ -10,12 +10,14 @@ implementation_gate: APPROVE_IMPLEMENTATION
 implementation_status: phase_2_feature_implementation
 backend_p0_status: done
 openai_agent_status: done
-frontend_integration_status: pending
+frontend_integration_status: partial_local_control_tower
 overall_project_status: in_progress
 git_repository: true
 ```
 
 ## 本輪檢查
+
+本輪新增前端控制塔與 provider wiring；未讀取 `.env` 或任何 credential value。Live provider 結果只能依 process environment 判定，當前環境五項相關變數均未設定，因此以下 live gate 皆為 `BLOCKED`／`SKIPPED`，不得以 mock 或 simulated 取代。
 
 | 檢查 | 預期證據 | 狀態 |
 |---|---|---|
@@ -96,7 +98,7 @@ git_repository: true
 
 - FastAPI import／health／readiness、Excel upload、plan creation、map payload、confirmation、dispatch lifecycle、urgent preview 與 structured explanation tests 均通過。
 - Deterministic parser、package aggregation、Baseline、OR-Tools CVRPTW、shared simulated matrix、independent Validator、Benchmark、SQLite repository、urgent preview、structured evidence 與 provider fallback tests 均通過。
-- Keyless suite：`33 passed, 3 skipped (conditional Agent/Responses/Google live tests)`；`ruff check src tests scripts` 通過；`mypy src` 通過，共 26 個 source files。
+- Keyless suite：`36 passed, 3 skipped (conditional Agent/Responses/Google live tests)`；`ruff check src tests scripts` 通過；`mypy src` 通過，共 27 個 source files。
 - Agents SDK scenario suite：`7 passed`；使用 `gpt-5-mini` 的 explicit live `Runner.run`、strict `plan_dispatch` 與 Validator：`1 passed`。
 - Explicit direct Responses smoke：`1 passed`（text 加 strict function call、`gpt-5-mini`；bounded caps 256／512）。
 - API contract：`13 / 13 / 13`（defined／implemented／exercised）；Demo flow：`1 passed`，刻意在 dispatch 前停止。
@@ -107,7 +109,7 @@ git_repository: true
 - 修正後 urgent Demo 證據：OR-Tools initial plan before = 40 assigned／365 kg，車輛載重 `93/97/152/23`；order 41 插入 `VEH-003`，既有訂單換車數為 0，該路線 4 筆 sequence records，載重 `152 -> 154 kg`，距離 `+137 m`、時間 `+17 s`。Base 與 preview algorithm 均為 ORTOOLS，並明確回傳 dataset hashes。
 - Canonical simulated run（10-second cap）：Baseline `183,955m / 23,023s`、2 unassigned；OR-Tools `161,257m / 20,185s`、0 unassigned；無 Validator violations；最近量測 solve times 為 Baseline `0.584ms`、OR-Tools `5,985.454ms`，僅供報告，不作跨機器 exact value。
 - Live preflight：OpenAI Chat text／strict tool `PASS`；Google Routes matrix `PASS`；TDX `SKIPPED`（後續擴充）。刻意錯誤的 Responses tool envelope 重現 HTTP 400 `missing_required_parameter`；修正 `input`、top-level `tools`、`strict` 與 `max_output_tokens` 後，`gpt-5-mini` requests 通過。未輸出 key、header 或完整 request。
-- Browser key 仍屬前端工作且目前缺少；Google server fallback 明確。Frontend Integration 仍為 `PENDING`，範圍限於 client-side API／UI 工作；本輪未開始後續擴充功能。
+- Browser key 仍屬前端依賴且目前缺少；Google server fallback 明確。Frontend Integration 的歷史 snapshot 曾為 `PENDING`，本輪已建立 local control tower，現況為 `PARTIAL`；完整 Browser／Live E2E 仍待後續 provider gate。
 - 本輪僅進行文件中文化與對外內容清理；未修改程式、API、演算法、測試邏輯，亦未執行 Dispatch、deployment 或正式環境操作。
 
 ## 人工驗收決策
@@ -116,7 +118,7 @@ git_repository: true
 |---|---|---|
 | Backend P0 | `DONE` | 合法超重重新分配；40-order OR-Tools plan 零違規；欄位級錯誤；計算後 urgent diff；independent Validator 通過。 |
 | OpenAI Agent | `DONE` | Agents SDK end-to-end tool invocation、strict deterministic planning／evidence tools、evidence-only response 與 regression coverage 已由人工驗收。 |
-| Frontend Integration | `PENDING` | UI 仍需消費已文件化 API 並呈現 evidence／Demo flow。 |
+| Frontend Integration（歷史人工決策） | `PENDING` | 歷史記錄；本輪已提供 local control tower，現況請看下方最新驗證。 |
 | Overall Project | `IN_PROGRESS` | Backend 與 Agent gates 已完成，但前端整合尚未完成。 |
 
 ### 保留的 urgent-insert 證據
@@ -129,4 +131,20 @@ git_repository: true
 
 ## 最終結果
 
-Specification／Harness readiness：**PASS**。Implementation gate 因明確的 `APPROVE_IMPLEMENTATION` 而開啟；deterministic core 與 FastAPI first slice 已實作，`feature_code_allowed: true`。Backend P0 與 OpenAI Agent 依人工驗收為 **DONE**。Frontend Integration 仍為 **PENDING**，因此 Overall Project 維持 **IN_PROGRESS**。未執行 dispatch 或 deployment。
+Specification／Harness readiness：**PASS**。Implementation gate 因明確的 `APPROVE_IMPLEMENTATION` 而開啟；deterministic core 與 FastAPI 已實作，`feature_code_allowed: true`。Backend P0 與 OpenAI Agent 依人工驗收為 **DONE**。Frontend Integration 已達 local control tower `PARTIAL`，Live Browser／Provider E2E 仍待 credentials，因此 Overall Project 維持 **IN_PROGRESS**。未執行 dispatch 或 deployment。
+
+## 本輪前端控制塔與 Provider 驗證（2026-09-03）
+
+| 閘門 | 結果 | 證據 |
+|---|---|---|
+| Google Matrix wiring | `MOCK PASS`；Live `BLOCKED` | `tests/test_live_provider_wiring.py` 驗證 strict provider、matrix hash/version 與 OR-Tools 注入；process 未設定 server key |
+| Google route geometry | `IMPLEMENTED`；Live `BLOCKED` | `src/providers/google_routes.py` 與 `/map-data` strict path；未呼叫付費 API |
+| TDX OAuth／route risk | `MOCK PASS`；Live `BLOCKED` | `src/providers/tdx.py`、mock token/event projection/redaction test；process 未設定 credentials |
+| React control tower | `PASS` | `frontend/` API client、MUI panels、simulated map fallback、Agent／preview／confirm UI |
+| Frontend quality gates | `PASS` | `pnpm install --frozen-lockfile`、`pnpm run typecheck`、`pnpm run lint`、`pnpm run test -- --run`（2 passed）、`pnpm run build`、Playwright Chromium（2 passed） |
+| Backend quality gates | `PASS` | `pytest` 36 passed／3 skipped、`ruff check src tests scripts`、`mypy src` 27 files |
+| Secret／deployment scan | `PASS` | tracked high-confidence secret patterns 0；`.github/workflows` 不存在；未執行 Dispatch／部署 |
+
+前端 Browser map 在 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 缺少時刻意顯示 `SIMULATED` fallback；不能標示為 Google live。完整 browser-to-live-provider E2E 仍未完成，Overall Project 維持 `IN_PROGRESS`。
+
+Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported-plan.png`、`03-map-and-vehicles.png`、`04-agent-blocked.png`、`05-urgent-preview.png`、`06-human-confirmation.png`。測試以 REST endpoint 的 keyless simulated provider 執行；截圖不含 secrets。

@@ -80,13 +80,13 @@
 | FR-STATE-001 | 原始必要 | 人工確認與方案版本管理 | 部分完成 | API lifecycle tests、SQLite immutable version tests | confirm／dispatch state 尚未回寫既有 SQLite row；restart lifecycle regression 缺少 | 後端 | 精確 `plan_id`／version、人工確認 | restart 後 state／current version 與 audit 一致 | stale version 拒絕 |
 | FR-AGENT-001 | 原始必要 | 單一 Agent 支援 daily dispatch、載重、unassigned、urgent preview 與資料澄清五種 intent | 完成（runtime） | `src/agent/runtime.py`、`tests/test_agent_sdk_scenarios.py` | HTTP endpoint 尚未接入相同 runtime | 後端／共同 | Agents SDK runtime | 五種 intent 均完成 strict tool call 與 evidence 回覆 | 無 runtime 時維持 deterministic REST |
 | FR-AGENT-002／FR-AGENT-003 | 原始必要 | OpenAI Agent 真正呼叫 deterministic Tool | 部分完成 | `src/agent/runtime.py`、`tests/test_agent_sdk_scenarios.py`、條件式 live E2E | `/api/v1/agent/chat` 尚未接入 `Runner.run`；未在本輪重跑付費 live E2E | 後端／共同 | OpenAI credentials（僅 live gate） | Agent tool call trace、Validator evidence、不可自行計算 | 無 key 時 `/agent/chat` 降級 |
-| REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 部分完成 | `src/providers/google_routes.py` adapter；missing-key fallback test | API 未使用 `GoogleRoutesProvider`；本輪無 live call | 後端 | Google server key、terms／quota review | live matrix response 可追蹤且失敗明確 fallback | `SIMULATED` 並警告 |
-| REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 尚未開始 | `build_ortools` 可收 `MatrixResult`，但 API 固定建立 simulated matrix | provider wiring、matrix identity、live E2E | 後端 | REQ-ORIG-001 | 同一 live matrix 進入 solver 並由 Validator 通過 | 失敗回到 simulated，明確標示 |
-| REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 尚未開始 | Repository 無 frontend application；只有 `/map-data` | Browser app、Browser key、地圖與路線畫面 | 前端 | Browser key 與 frontend runtime | 瀏覽器實際顯示 map／Marker／polyline | 無 key 時顯示不可用，不造值 |
-| REQ-ORIG-004 | 原始必要 | TDX OAuth、真實路況與道路事件查詢 | 尚未開始 | `src/providers/tdx.py` 僅 credential presence status | OAuth flow、API query、錯誤與資料模型 | 後端 | TDX credentials、服務條款 | 真實 response 與授權錯誤可驗證 | status-only／停用 |
-| REQ-ORIG-005 | 原始必要 | TDX 指出受影響路線與配送風險 | 尚未開始 | 尚無 risk model、route correlation 或 tests | segment／zone 關聯、風險規則、evidence | 後端／共同 | REQ-ORIG-004、路線資料 | 風險可追溯至 TDX evidence，需人工確認 | 明確標示 unavailable |
-| REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 尚未開始（等待前端） | `docs/frontend-handoff.md`；無 frontend code | UI、地圖、表格、Agent chat、preview／confirm | 前端 | 13 支 REST API、Browser key | 依 handoff 完成三條操作流程 | REST 仍可獨立使用 |
-| REQ-ORIG-007 | 原始必要 | Google／TDX／OR-Tools／OpenAI Agent／前端整合驗證 | 尚未開始 | 現有為 keyless／後端 contract 或 provider-neutral tests | 前後端 live E2E 與真實 provider evidence | 共同 | 上述 A 類功能完成 | 瀏覽器到 provider 的完整流程通過 | 不得以 mock／skip 代替 |
+| REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 部分完成（strict wiring，Live BLOCKED） | `src/providers/google_routes.py`、`tests/test_live_provider_wiring.py`；有 key 時 strict request | 本環境未提供 server key，尚無 LIVE PASS | 後端 | Google server key、terms／quota review | real matrix response 可追蹤且失敗明確；不得以 simulated 宣稱 live | 缺 key 使用 `SIMULATED` 並警告；已設定 key 失敗回傳 provider error |
+| REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 部分完成（keyless wiring verified，Live BLOCKED） | `_build_matrix`、create-plan strict path、matrix hash/version consistency test | 尚缺實際 Google Matrix → OR-Tools Live E2E | 後端 | REQ-ORIG-001 | 同一 live matrix identity 進入 solver 並由 Validator 通過 | 只有無 key 時可明確 `SIMULATED` |
+| REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 部分完成（前端已建置，Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx`、MUI control tower、simulated map fallback | Browser key 與實際瀏覽器 Live 驗收 | 前端 | Browser key、frontend origin | 瀏覽器實際顯示 Google map／Marker／polyline | 無 key 顯示 `SIMULATED` preview |
+| REQ-ORIG-004 | 原始必要 | TDX OAuth、真實路況與道路事件查詢 | 部分完成（adapter + keyless mock，Live BLOCKED） | `src/providers/tdx.py` OAuth/status/event models、provider wiring tests | 尚缺 TDX credentials 與 real response evidence | 後端 | TDX credentials、服務條款 | 真實 response 與授權錯誤可驗證 | `CREDENTIALS_MISSING`／`UNAVAILABLE` |
+| REQ-ORIG-005 | 原始必要 | TDX 指出受影響路線與配送風險 | 部分完成（deterministic correlation） | `correlate_events_to_plan`、mock event projection test、`map-data.traffic.route_risks` | 尚缺 live TDX event-to-route evidence | 後端／共同 | REQ-ORIG-004、路線資料 | 風險可追溯至 TDX evidence，需人工確認 | 無 live data 時明確標示 unavailable |
+| REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 部分完成（local control tower） | `frontend/`、RTL tests、`docs/frontend-handoff.md` | 尚缺 Browser key 與前後端 live browser E2E | 前端 | 13 支 REST API、Browser key | 三條操作流程與 evidence 畫面可在瀏覽器完成 | REST／simulated map 仍可使用 |
+| REQ-ORIG-007 | 原始必要 | Google／TDX／OR-Tools／OpenAI Agent／前端整合驗證 | 尚未完成（Live E2E BLOCKED） | keyless backend/provider tests、frontend unit/build gates | 必須在有 keys 的環境跑全流程；mock／skip 不可替代 | 共同 | 上述 A 類功能與 credentials | 瀏覽器到真實 provider 的完整流程通過 | 僅可標示 BLOCKED／SKIPPED |
 
 ### 企業級擴充功能（B 類）
 
@@ -155,7 +155,7 @@
 
 ### 核心 deterministic 功能
 
-固定 simulated matrix 範圍內的 Import／validation、package weight aggregation、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／diff、REST／OpenAPI、single Agent runtime／tool layer、provider fallback／status、tests、README 與 frontend handoff 均已有實作或測試證據。`FR-STATE-001` 的 durable lifecycle persistence 與 `FR-AGENT-002` 的 REST Agent runtime wiring 仍為部分完成，詳見上方現況表。
+固定 simulated matrix 範圍內的 Import／validation、package weight aggregation、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／diff、REST／OpenAPI、single Agent runtime／tool layer、provider wiring／status、frontend control tower、tests、README 與 frontend handoff 均已有實作或測試證據。`FR-STATE-001` 的 durable lifecycle persistence、Live Provider E2E 與完整前後端 Live E2E 仍為部分完成或未完成，詳見上方現況表。
 
 ### 原始必要功能的整合工作（A 類）
 
@@ -169,7 +169,7 @@
 6. 前端完整顯示訂單、車輛、載重、路線與 Agent。
 7. Google、TDX、OR-Tools、OpenAI Agent 與前端完成整合驗證及 Live E2E。
 
-第 1 項目前為部分完成（adapter 存在但尚未接入 API）；第 2 至第 7 項尚未完成。simulated、mock、fallback 或 skipped test 不能作為 A 類 Live Integration 完成證據。
+第 1 至第 6 項已完成 keyless wiring 或 local UI 的部分範圍，但仍需相應 credentials 與瀏覽器證據；第 7 項尚未完成。simulated、mock、fallback 或 skipped test 不能作為 A 類 Live Integration 完成證據。
 
 ## 需求變更規則
 
