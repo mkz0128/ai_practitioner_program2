@@ -127,6 +127,76 @@ def test_urgent_insert_preview_keeps_current_version_immutable() -> None:
     assert client.get(f"/api/v1/plans/{plan_id}?version=2").json()["version"] == 2
 
 
+def test_urgent_insert_accepts_arbitrary_structured_order_and_sequential_versions() -> None:
+    store.datasets.clear()
+    store.plans.clear()
+    store.current_versions.clear()
+    with SAMPLE_WORKBOOK.open("rb") as workbook:
+        imported = client.post(
+            "/api/v1/datasets/import-excel",
+            files={
+                "file": (
+                    SAMPLE_WORKBOOK.name,
+                    workbook,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+    dataset_id = imported.json()["dataset_id"]
+    created = client.post(
+        "/api/v1/plans",
+        json={
+            "dataset_id": dataset_id,
+            "algorithm": "ORTOOLS",
+            "route_provider_preference": "SIMULATED",
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["plan_id"]
+
+    def preview(order_id: str, version: int, weight: float = 1.5):
+        return client.post(
+            f"/api/v1/plans/{plan_id}/urgent-insert/preview",
+            json={
+                "base_plan_version": version,
+                "order": {
+                    "order_id": order_id,
+                    "zone_code": "Z4",
+                    "city": "臺北市",
+                    "district": "信義",
+                    "location_label": f"合成臨時點 {order_id}",
+                    "latitude": 25.033,
+                    "longitude": 121.565,
+                    "time_slot": "PM",
+                    "declared_package_count": 1,
+                    "priority": "HIGH",
+                },
+                "packages": [
+                    {"package_id": f"PKG-{order_id}", "order_id": order_id, "weight_kg": weight}
+                ],
+            },
+        )
+
+    first = preview("RND-URGENT-901", 1)
+    assert first.status_code == 200, first.text
+    assert first.json()["comparison"]["base_algorithm"] == "ORTOOLS"
+    assert first.json()["diff"]["inserted_order_id"] == "RND-URGENT-901"
+    confirmed = client.post(
+        f"/api/v1/plans/{plan_id}/confirm",
+        json={
+            "version": first.json()["preview_version"],
+            "confirmation": "CONFIRM_PLAN",
+            "dispatcher_reference": "acceptance",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    second = preview("RND-URGENT-902", confirmed.json()["version"])
+    assert second.status_code == 200, second.text
+    assert second.json()["base_version"] == confirmed.json()["version"]
+    assert second.json()["comparison"]["base_algorithm"] == "ORTOOLS"
+    assert client.get(f"/api/v1/plans/{plan_id}").json()["version"] == confirmed.json()["version"]
+
+
 def test_agent_explanation_uses_structured_tool_evidence() -> None:
     plan = next(iter(store.plans.values()))[1]
     order_id = next(order_id for route in plan.plan.routes for order_id in route.order_ids)

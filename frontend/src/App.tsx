@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, chat, confirmPlan, createPlan, getMapData, getProviderStatus, getValidation, importWorkbook, previewUrgent } from './api'
+import { ApiError, chat, confirmPlan, createPlan, getMapData, getPlan, getProviderStatus, getValidation, importWorkbook, previewUrgent } from './api'
 import { AgentPanel } from './components/AgentPanel'
 import { DetailsPanel } from './components/DetailsPanel'
 import { MapPanel } from './components/MapPanel'
@@ -9,11 +9,12 @@ import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { TaskTable } from './components/TaskTable'
 import { VehiclePanel } from './components/VehiclePanel'
-import type { ChatResponse, MapData, Plan, ProviderStatus, UrgentPreview, ValidationPayload } from './types'
+import type { ChatResponse, MapData, Plan, ProviderStatus, UrgentOrderPayload, UrgentPackagePayload, UrgentPreview, ValidationPayload } from './types'
 import './styles.css'
 
 type ChatProgress = (step: string) => void
 type ChatSubmitResult = { response: ChatResponse | null; error?: string }
+const ACTIVE_PLAN_STORAGE_KEY = 'dispatch.active-plan'
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -21,6 +22,14 @@ function errorText(error: unknown): string {
     return fields ? `${error.message} ${fields}` : `${error.message}（${error.code}）`
   }
   return error instanceof Error ? error.message : '發生未預期錯誤。'
+}
+
+function previewPayload(data: Record<string, unknown>): { order: UrgentOrderPayload; packages: UrgentPackagePayload[] } | null {
+  const order = data.structured_order
+  const packages = data.structured_packages
+  if (!order || !Array.isArray(packages)) return null
+  if (typeof order !== 'object' || order === null) return null
+  return { order: order as UrgentOrderPayload, packages: packages as UrgentPackagePayload[] }
 }
 
 export default function App() {
@@ -44,6 +53,27 @@ export default function App() {
 
   useEffect(() => { void refreshProviders() }, [refreshProviders])
 
+  useEffect(() => {
+    let cancelled = false
+    const stored = window.localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY)
+    if (!stored) return () => { cancelled = true }
+    try {
+      const reference = JSON.parse(stored) as { plan_id?: unknown; version?: unknown }
+      if (typeof reference.plan_id !== 'string') throw new Error('INVALID_PLAN_REFERENCE')
+      void getPlan(reference.plan_id, typeof reference.version === 'number' ? reference.version : undefined)
+        .then(async (restored) => {
+          if (cancelled) return
+          setPlan(restored)
+          setMapData(await getMapData(restored.plan_id, restored.version))
+          setActiveOrderId(restored.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
+        })
+        .catch(() => window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY))
+    } catch {
+      window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
+    }
+    return () => { cancelled = true }
+  }, [])
+
   const prepareAttachment = async (file: File, reportProgress: ChatProgress, signal: AbortSignal): Promise<Plan | null> => {
     if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('只接受 .xlsx Excel 檔案，請選擇正確格式。')
     if (file.size === 0) throw new Error('這個 Excel 檔案是空的，請重新選擇檔案。')
@@ -59,6 +89,7 @@ export default function App() {
     reportProgress('正在規劃配送')
     const nextPlan = await createPlan(imported.dataset_id, signal)
     setPlan(nextPlan)
+    window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: nextPlan.plan_id, version: nextPlan.version }))
     setActiveOrderId(nextPlan.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
     setMapData(await getMapData(nextPlan.plan_id, nextPlan.version, signal))
     await refreshProviders()
@@ -81,11 +112,13 @@ export default function App() {
       let activePlan = plan
       if (attachment) activePlan = await prepareAttachment(attachment, reportProgress || (() => undefined), controller.signal)
       const response = await chat(sessionId, message, activePlan ? { plan_id: activePlan.plan_id, plan_version: activePlan.version } : {}, controller.signal)
-      const previewEvidence = response.evidence.some((item) => item.tool === 'preview_urgent_insert' && item.data.status === 'PREVIEWED')
-      if (previewEvidence && activePlan && (!preview || preview.base_version !== activePlan.version)) {
+      const previewEvidence = response.evidence.find((item) =>
+        (item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert') && item.data.status === 'PREVIEWED')
+      const structuredPreview = previewEvidence ? previewPayload(previewEvidence.data) : null
+      if (structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
         // The Agent tool remains evidence-only; this REST preview creates the
         // proposed immutable version used by the human confirmation button.
-        setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, controller.signal))
+        setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, structuredPreview.order, structuredPreview.packages, controller.signal))
       }
       return { response }
     } catch (requestError) {
@@ -99,20 +132,13 @@ export default function App() {
 
   const handleStop = () => { abortRef.current?.abort() }
 
-  const handlePreview = async () => {
-    if (!plan) return
-    setBusy(true); setError(null)
-    try { setPreview(await previewUrgent(plan.plan_id, plan.version)); setActiveView('assistant') }
-    catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
-
   const handleConfirm = async () => {
     if (!plan || !preview) return
     setBusy(true); setError(null)
     try {
       const confirmed = await confirmPlan(plan.plan_id, preview.preview_version)
       setPlan(confirmed)
+      window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: confirmed.plan_id, version: confirmed.version }))
       setMapData(await getMapData(confirmed.plan_id, confirmed.version))
       setNotice(`已確認方案版本 ${confirmed.version}；本控制塔未執行 Dispatch。`)
     } catch (requestError) { setError(errorText(requestError)) }
@@ -130,7 +156,7 @@ export default function App() {
             <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} />
           </div>
           <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
-          <DetailsPanel plan={plan} preview={preview} onPreview={handlePreview} onConfirm={handleConfirm} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} />
+          <DetailsPanel plan={plan} preview={preview} onConfirm={handleConfirm} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} />
         </>}
         {activeView === 'tasks' && <>
           <div className="page-title-row"><div><div className="eyebrow">工作區</div><h1>配送任務</h1><p>搜尋訂單、查看配送狀態與 AI 提供的證據摘要。</p></div><button type="button" className="control-button" onClick={() => setActiveView('assistant')}>＋ 匯入新資料</button></div>

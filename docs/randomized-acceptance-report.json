@@ -1,0 +1,472 @@
+{
+  "generated_at": "2026-09-04",
+  "provider_policy": "All stress and chained insert checks use SIMULATED deterministic data; no paid provider call.",
+  "base": {
+    "seed": 260904,
+    "file": "data/samples/random-dispatch-seed-260904.xlsx",
+    "sha256": "44d81b9ac0112e1c147bf40ccbbfb2aa72997cee55f42a449c04f32e9cf35544",
+    "orders": 40,
+    "packages": 79,
+    "total_weight_kg": 322.8,
+    "provider_mode": "SIMULATED",
+    "algorithm": "ORTOOLS",
+    "assigned_orders": 40,
+    "unassigned_orders": [],
+    "vehicle_loads": {
+      "VEH-001": 104.7,
+      "VEH-002": 0.0,
+      "VEH-003": 115.7,
+      "VEH-004": 102.4
+    },
+    "validator_valid": true,
+    "matrix_hash": "31ea2a61d0c55d4f3f9d694e2721b4bf2a4c4621f96b8d8dc44f66751cb50446"
+  },
+  "chained_inserts": [
+    {
+      "status": "PREVIEWED",
+      "order_id": "TMP-260904-01",
+      "mode": "MINIMAL_CHANGE",
+      "affected_vehicle_count": 1,
+      "moved_order_count": 0,
+      "sequence_change_count": 1,
+      "distance_delta_m": 12,
+      "duration_delta_s": 1,
+      "assigned_weight_kg": 323.8,
+      "before_vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 104.7,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.8725
+        },
+        "VEH-002": {
+          "planned_load_kg": 0.0,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.0
+        },
+        "VEH-003": {
+          "planned_load_kg": 115.7,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.723125
+        },
+        "VEH-004": {
+          "planned_load_kg": 102.4,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.930909
+        }
+      },
+      "vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 104.7,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.8725
+        },
+        "VEH-002": {
+          "planned_load_kg": 0.0,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.0
+        },
+        "VEH-003": {
+          "planned_load_kg": 116.7,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.729375
+        },
+        "VEH-004": {
+          "planned_load_kg": 102.4,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.930909
+        }
+      },
+      "unassigned_orders": [],
+      "unassigned_reasons": {},
+      "validator_valid": true,
+      "provider_mode": "SIMULATED",
+      "matrix_hash": "16473fc2c325ced27d500cc288590a95ce07951e6f6acecccf13c346b2b7aee2",
+      "case": "same_zone_low_weight",
+      "before_version": 1,
+      "after_version": 2,
+      "expected": "可最小變動插入",
+      "confirmed": true
+    },
+    {
+      "status": "PREVIEWED",
+      "order_id": "TMP-260904-02",
+      "mode": "MINIMAL_CHANGE",
+      "affected_vehicle_count": 1,
+      "moved_order_count": 0,
+      "sequence_change_count": 16,
+      "distance_delta_m": 418,
+      "duration_delta_s": 53,
+      "assigned_weight_kg": 325.0,
+      "before_vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 104.7,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.8725
+        },
+        "VEH-002": {
+          "planned_load_kg": 0.0,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.0
+        },
+        "VEH-003": {
+          "planned_load_kg": 116.7,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.729375
+        },
+        "VEH-004": {
+          "planned_load_kg": 102.4,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.930909
+        }
+      },
+      "vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 104.7,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.8725
+        },
+        "VEH-002": {
+          "planned_load_kg": 0.0,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.0
+        },
+        "VEH-003": {
+          "planned_load_kg": 117.9,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.736875
+        },
+        "VEH-004": {
+          "planned_load_kg": 102.4,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.930909
+        }
+      },
+      "unassigned_orders": [],
+      "unassigned_reasons": {},
+      "validator_valid": true,
+      "provider_mode": "SIMULATED",
+      "matrix_hash": "06da4195a16ac579930f666427ada52a256e439f8be4054456d3e2bfaa8dbe98",
+      "case": "high_priority_narrow_window",
+      "before_version": 2,
+      "after_version": 3,
+      "expected": "高優先級窄時段",
+      "confirmed": true
+    },
+    {
+      "status": "PREVIEWED",
+      "order_id": "TMP-260904-03",
+      "mode": "FULL_REPLAN",
+      "affected_vehicle_count": 4,
+      "moved_order_count": 22,
+      "sequence_change_count": 42,
+      "distance_delta_m": 3973,
+      "duration_delta_s": 497,
+      "assigned_weight_kg": 368.8,
+      "before_vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 104.7,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.8725
+        },
+        "VEH-002": {
+          "planned_load_kg": 0.0,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.0
+        },
+        "VEH-003": {
+          "planned_load_kg": 117.9,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.736875
+        },
+        "VEH-004": {
+          "planned_load_kg": 102.4,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.930909
+        }
+      },
+      "vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 115.9,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.965833
+        },
+        "VEH-002": {
+          "planned_load_kg": 83.8,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.838
+        },
+        "VEH-003": {
+          "planned_load_kg": 151.4,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.94625
+        },
+        "VEH-004": {
+          "planned_load_kg": 17.7,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.160909
+        }
+      },
+      "unassigned_orders": [],
+      "unassigned_reasons": {},
+      "validator_valid": true,
+      "provider_mode": "SIMULATED",
+      "matrix_hash": "624104e16ef2ed31a033b8e5ada617990a6a3cb47975a8acdc23394fa99820c3",
+      "case": "capacity_pressure",
+      "before_version": 3,
+      "after_version": 4,
+      "expected": "接近車輛容量上限",
+      "confirmed": true
+    },
+    {
+      "status": "UNASSIGNED",
+      "order_id": "TMP-260904-04",
+      "mode": "FULL_REPLAN",
+      "affected_vehicle_count": 0,
+      "moved_order_count": 0,
+      "sequence_change_count": 0,
+      "distance_delta_m": 0,
+      "duration_delta_s": 0,
+      "assigned_weight_kg": 368.8,
+      "before_vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 115.9,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.965833
+        },
+        "VEH-002": {
+          "planned_load_kg": 83.8,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.838
+        },
+        "VEH-003": {
+          "planned_load_kg": 151.4,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.94625
+        },
+        "VEH-004": {
+          "planned_load_kg": 17.7,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.160909
+        }
+      },
+      "vehicle_loads": {
+        "VEH-001": {
+          "planned_load_kg": 115.9,
+          "max_load_kg": 120.0,
+          "load_utilization": 0.965833
+        },
+        "VEH-002": {
+          "planned_load_kg": 83.8,
+          "max_load_kg": 100.0,
+          "load_utilization": 0.838
+        },
+        "VEH-003": {
+          "planned_load_kg": 151.4,
+          "max_load_kg": 160.0,
+          "load_utilization": 0.94625
+        },
+        "VEH-004": {
+          "planned_load_kg": 17.7,
+          "max_load_kg": 110.0,
+          "load_utilization": 0.160909
+        }
+      },
+      "unassigned_orders": [
+        "TMP-260904-04"
+      ],
+      "unassigned_reasons": {
+        "TMP-260904-04": "UNASSIGNABLE"
+      },
+      "validator_valid": true,
+      "provider_mode": "SIMULATED",
+      "matrix_hash": "720d6bd11be2abb60a9fb00c40abad007a417cd9567e2e19a56f2db81a0a606e",
+      "case": "impossible_capacity",
+      "before_version": 4,
+      "after_version": 4,
+      "expected": "超過所有車輛容量",
+      "confirmed": false
+    },
+    {
+      "case": "duplicate_id",
+      "status": "REJECTED",
+      "order_id": "RND-260904-001",
+      "reason": "DUPLICATE_ID",
+      "before_version": 4,
+      "after_version": 4,
+      "validator_valid": true,
+      "expected": "與既有訂單 ID 重複"
+    },
+    {
+      "case": "missing_required_field",
+      "status": "REJECTED",
+      "order_id": "TMP-260904-06",
+      "reason": "MISSING_REQUIRED_FIELD:location_label",
+      "before_version": 4,
+      "after_version": 4,
+      "validator_valid": true,
+      "confirmed": false
+    }
+  ],
+  "stress_seeds": [
+    {
+      "seed": 260904,
+      "orders": 40,
+      "input_hash": "9bc302bf263ac8063b30ccd5a446d9645c5fbb12640f7d69978d66624e2fe0d7",
+      "input_hash_reproducible": true,
+      "matrix_hash": "c579f7cee6d72cb20f505c274293067662ddb1b7aeff85580c131fef9ac91d2c",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260905,
+      "orders": 40,
+      "input_hash": "063cc029af380c5500d314a9fcbc6400c28f59561821a067fe2fea8ef00b0923",
+      "input_hash_reproducible": true,
+      "matrix_hash": "031b22f8eb6de0c0a97c8785cbecf137fc78f989aab660af2f2d222a1c4bd5ba",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260906,
+      "orders": 40,
+      "input_hash": "1af6660fb7d242d156e82e5eba32ae17fc80bfcbcb304224dabf0d86bc21d2b9",
+      "input_hash_reproducible": true,
+      "matrix_hash": "28821f8742e1d97c1f761ce69994b62641bd09fa526f89d13f96d7e6db7ac4d7",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260907,
+      "orders": 40,
+      "input_hash": "5578c94e9ece1aa72d454eb823340f2997a2c9aaab7066b938aecc92822655b6",
+      "input_hash_reproducible": true,
+      "matrix_hash": "f2c6b97f59a3047095f1e4246ddf123cc72e97c8852214da26d166a633ccaecd",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260908,
+      "orders": 40,
+      "input_hash": "7f904164dd748d24e9e0b5f63926f7fb4b523bb398cde6cb18359e71f8bf975f",
+      "input_hash_reproducible": true,
+      "matrix_hash": "8b7d13c30bc62b54004d66800349de944167262c6afdd090a543bcc5d766bbbb",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260909,
+      "orders": 40,
+      "input_hash": "e230e2bbfe253c4556c84f1d0ca84db6a43673e9f2d4c560831616e1f1dba21d",
+      "input_hash_reproducible": true,
+      "matrix_hash": "2ead2f4305a586b614b87d73f4f1ba8794e7c7d5893df3f66b5af5e1442acd4c",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260910,
+      "orders": 40,
+      "input_hash": "1d024054b465b64c9c00be26b3adce8eac07dd89d0a81a73f95a98497223a95c",
+      "input_hash_reproducible": true,
+      "matrix_hash": "131f05f92d0b881206b25890a1cbd8276c67f23db07562ac67575a0f488ff9de",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260911,
+      "orders": 40,
+      "input_hash": "e892ff1aa26ea43dd68399f9171dbb26ac1824eeaabac1d1b1b50c877f21bb29",
+      "input_hash_reproducible": true,
+      "matrix_hash": "0e5252aa7c4f37aeb4aa4be721bf0da26fc958e297a661af1721503bdac7ce5d",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260912,
+      "orders": 40,
+      "input_hash": "f7e93bf2dea9e261fbbb1bb136f13a72ab67940768928020aefc05c07ea4a855",
+      "input_hash_reproducible": true,
+      "matrix_hash": "275da2b938466c8b55f322cce1d914cf7947f1cc6d805a9f07cd9808e1e2721e",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    },
+    {
+      "seed": 260913,
+      "orders": 40,
+      "input_hash": "328e823625c6305213907080a97627721d03bf091cba0e6956d129574ba4b299",
+      "input_hash_reproducible": true,
+      "matrix_hash": "bc4a93c4cc7cd5a59f99c45a5d8bbd0ff0123c93ce8e306545850b61554b0904",
+      "validator_valid": true,
+      "violations": {
+        "overload": 0,
+        "cross_zone": 0,
+        "duplicate": 0,
+        "time_window": 0
+      },
+      "unassigned_orders": [],
+      "provider_mode": "SIMULATED"
+    }
+  ]
+}

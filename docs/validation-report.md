@@ -172,3 +172,77 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 - ORD-041：Agent 自動使用結構化 fixture 呼叫 preview，REST 提案以同一 plan 基準建立 `MINIMAL_CHANGE`；40 → 41 張、365 → 367 kg、換車 0 張、僅一台車受影響，Validator 通過；前端顯示距離與時間差異並完成人工確認。
 - 瀏覽器流程：`frontend/tests/e2e/live-control-tower.spec.ts` 通過，涵蓋無資料聊天、Excel 匯入、Live Matrix、Map、Agent 多輪、插單差異、人工確認、配送任務與配送路線工作區；全程 Dispatch request `0`。
 - 最新截圖：`docs/screenshots/live-01-empty-chat.png`、`live-02-google-map-plan.png`、`live-03-agent-evidence.png`、`live-04-urgent-diff.png`、`live-05-human-confirmed.png`、`live-06-delivery-tasks.png`、`live-07-route-tracking.png`，均為 1440×900 且未含 secrets。
+
+## 第二組隨機資料與連續插單驗收（2026-09-04）
+
+本輪新增的 workbook 不沿用既有訂單 ID，並由固定 seed 產生：
+
+| 欄位 | 實際結果 |
+|---|---|
+| 檔案 | `data/samples/random-dispatch-seed-260904.xlsx` |
+| 生成器 | `scripts/generate_random_fixture.mjs` |
+| seed | `260904` |
+| 訂單／package | `40／79` |
+| 總重量 | `322.8 kg` |
+| SHA-256 | `44d81b9ac0112e1c147bf40ccbbfb2aa72997cee55f42a449c04f32e9cf35544` |
+| 基礎 provider／algorithm | `SIMULATED／ORTOOLS`（40/40、Validator 通過） |
+
+連續插單由 `scripts/run_randomized_insert_audit.py` 執行，所有數值皆由 planner／Validator 計算；壓力測試使用 keyless simulated provider，未宣稱 Google Live：
+
+| 案例 | 結果 | 版本 | 影響摘要 | Validator |
+|---|---|---|---|---|
+| `TMP-260904-01` 同區低重量 | `MINIMAL_CHANGE` | V1 → V2 | 1 台車、換車 0、順序 1、距離 +12 m、時間 +1 s | 通過 |
+| `TMP-260904-02` 高優先窄時段 | `MINIMAL_CHANGE` | V2 → V3 | 1 台車、換車 0、順序 16、距離 +418 m、時間 +53 s | 通過 |
+| `TMP-260904-03` 容量壓力 | `FULL_REPLAN` | V3 → V4 | 4 台車、換車 22、順序 42、距離 +3,973 m、時間 +497 s | 通過 |
+| `TMP-260904-04` 全車容量不足 | `UNASSIGNED` | V4 → V4 | 未安排；原方案未變更 | 通過 |
+| 既有 ID 重複 | `REJECTED` | V4 → V4 | `DUPLICATE_ID`；未污染方案 | 通過 |
+| 必填欄位缺漏 | `REJECTED` | V4 → V4 | `MISSING_REQUIRED_FIELD:location_label`；未污染方案 | 通過 |
+
+新增 `preview_structured_urgent_insert` strict tool，將任意結構化訂單轉成 Canonical Schema，並只引用 deterministic preview／OR-Tools／Validator evidence；既有 `preview_urgent_insert` 保持相容。確認後會更新 SQLite plan state 與 current-version pointer，前端重新整理可依 localStorage reference 重新載入 plan／map。
+
+固定 seeds `260904`–`260913` 共 10 組壓力測試均為 `SIMULATED PASS`：輸入 hash 可重現、Validator violations（overload／cross_zone／duplicate／time_window）均為 0；完整細節見 `docs/randomized-acceptance-report.json`。本輪沒有新增 Google Live 請求，既有 Google Live 證據仍依前節標示。
+
+## 剩餘缺口稽核與第二組瀏覽器驗收（2026-09-04）
+
+### 以程式與測試證據核對的狀態
+
+| 項目 | 狀態 | 證據與尚缺內容 |
+|---|---|---|
+| 任意 `.xlsx` 匯入與欄位級驗證 | `DONE` | parser／field-level tests、第二組 workbook 匯入；非 `.xlsx`、空檔與缺欄會回傳可讀錯誤並要求人工複核。 |
+| 附件＋文字單次送出 | `DONE` | Live／randomized Playwright：同一則使用者訊息包含檔案與文字，僅一次匯入請求。 |
+| 純附件、無附件對話 | `PARTIAL` | 元件已提供附件-only 預設意圖與無資料 `assistant_help`；本輪瀏覽器主閘門以附件＋文字為主，純附件仍需獨立產品回歸案例。 |
+| 多輪上下文 | `DONE` | Live Playwright 與 session history／plan pointer 驗證。 |
+| 任意結構化臨時訂單與連續插單 | `DONE`（simulated） | strict `preview_structured_urgent_insert`、API regression、固定 seed 5 類案例；Google Live 僅執行代表性流程。 |
+| Plan 版本、人工確認與失敗不污染 | `DONE` | SQLite current pointer regression、V1→V4 chain、失敗案例版本維持不變。 |
+| Google Matrix 快取／來源追蹤 | `DONE`（Live 代表性流程） | matrix version/hash、incremental extension 與 provider mode evidence；壓力測試不重複呼叫付費 provider。 |
+| Validator、地圖／車輛／順序／差異同步 | `DONE`（Live／simulated 分開） | Validator violations=0；既有 Google Live map gate 與 randomized screenshots。 |
+| 缺欄、超重、時段衝突、重複與無法安排 | `DONE` | competition acceptance、structured API validation、randomized impossible/duplicate/missing cases。 |
+| 人工確認後不得 Dispatch | `DONE` | Playwright request gate：Dispatch requests=0；確認只更新 plan state。 |
+| API 契約與前端錯誤狀態 | `DONE` | 13/13/13 contract coverage、OpenAPI snapshot、錯誤 envelope 與 UI fallback。 |
+| 部署前設定 | `BLOCKED` | 尚未執行正式部署；Linux runtime、TDX credentials 與正式環境設定仍需人工／環境準備。 |
+
+### 新隨機資料與連續插單證據
+
+- 檔案：`data/samples/random-dispatch-seed-260904.xlsx`；seed：`260904`；40 orders／79 packages／322.8 kg；SHA-256：`44d81b9ac0112e1c147bf40ccbbfb2aa72997cee55f42a449c04f32e9cf35544`。
+- 基礎方案：`SIMULATED／ORTOOLS`，40/40 assigned，Validator 通過；每次 chained preview 使用最新已確認版本。
+- `TMP-260904-01`：`MINIMAL_CHANGE`，V1→V2，1 台車，換車 0，順序 1，+12 m／+1 s，Validator 通過。
+- `TMP-260904-02`：`MINIMAL_CHANGE`，V2→V3，1 台車，換車 0，順序 16，+418 m／+53 s，Validator 通過。
+- `TMP-260904-03`：`FULL_REPLAN`（容量壓力），V3→V4，4 台車，換車 22，順序 42，+3,973 m／+497 s，Validator 通過。
+- `TMP-260904-04`：`UNASSIGNED`（全車容量不足），維持 V4；無法安排原因已保留，Validator 通過。
+- 重複 ID 與缺少 `location_label`：`REJECTED`，維持 V4，未污染方案；Validator 仍通過既有方案。
+- 固定 seeds `260904`–`260913` 的 10 組壓力測試均為 `SIMULATED PASS`，輸入 hash 可重現，overload／cross-zone／duplicate／time-window violations 均為 0。
+- 每一筆鏈式結果均在 JSON 保存 `before_vehicle_loads` 與 `vehicle_loads`（含 planned load、capacity 與 utilization），並保留 provider mode、matrix hash、Validator 與未安排原因。
+- `scripts/generate_random_fixture.mjs` 連續重跑兩次的 SHA-256 均為 `44d81b9ac0112e1c147bf40ccbbfb2aa72997cee55f42a449c04f32e9cf35544`；XLSX 正規化器固定 ZIP 順序、關係識別字與時間戳，確保可重現。
+
+### 瀏覽器驗收與重試修正
+
+- `frontend/tests/e2e/randomized-insert-flow.spec.ts`：`2 passed`；完成新 workbook 拖放、附件＋文字單次送出、純附件預設匯入意圖、simulated OR-Tools／Validator、連續三筆任意 ID 插單、人工確認、refresh hydration、Console errors=0、Dispatch requests=0。
+- 前端路線 provider 在此第二組壓力流程由測試明確固定為 `SIMULATED` 以控制成本；不可與既有 Google Routes／Google Maps `LIVE PASS` 混稱。TDX 維持 `OPTIONAL／NOT_CONFIGURED`。
+- `/api/v1/agent/chat` 對無副作用的 `Runner.run` 增加一次有限重試，以吸收暫時性 provider 502；不改變 tool evidence、strict schema、錯誤封裝或重試上限。
+- 新增截圖：`docs/screenshots/random-01-attached.png`、`random-02-base-plan.png`、`random-03-insert-1.png`、`random-04-insert-2.png`、`random-05-final-plan.png`、`random-06-attachment-only.png`；均為 1440×900 且未含 secrets。
+
+### 本輪品質閘門
+
+- Backend：`pytest 41 passed, 3 skipped`；skipped 為明確條件式 OpenAI Agent、Responses API、Google Live tests，分別需要環境旗標／匯出 credential；`ruff check . PASS`；`mypy src PASS`。
+- Frontend：既有 TypeScript typecheck、ESLint、Vitest、Vite build 與代表性 Google Live Playwright 維持通過；第二組 randomized Playwright `2 passed`。
+- Secret／安全：`.env`、plaintext source、`.venv` 與 `scripts/node_modules` 均排除；未輸出、記錄或提交任何 credential；未執行 Dispatch、部署、正式環境操作或 force push。

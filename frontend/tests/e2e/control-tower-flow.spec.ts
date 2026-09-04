@@ -28,8 +28,10 @@ test('控制塔 local simulated flow 可展示主要交付畫面', async ({ page
   await expect(page.locator('.chat-bubble.agent').last()).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: path.join(screenshotDir, '04-agent-blocked.png'), fullPage: true })
 
-  await page.getByRole('button', { name: 'ORD-041 插單差異' }).click()
-  await page.getByRole('button', { name: '預覽 ORD-041', exact: true }).click()
+  await page.getByRole('textbox', { name: '輸入訊息' }).fill('預覽 ORD-041 插單')
+  await page.getByRole('textbox', { name: '輸入訊息' }).press('Enter')
+  await expect(page.getByText(/臨時插單差異/)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '臨時插單差異' }).click()
   await expect(page.getByText(/最小變動插入|完整重新排程/)).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: path.join(screenshotDir, '05-urgent-preview.png'), fullPage: true })
   await expect(page.getByRole('button', { name: '人工確認預覽' })).toBeVisible()

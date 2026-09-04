@@ -45,6 +45,7 @@ credentials.json
 .idea/
 .vscode/
 frontend/node_modules/
+scripts/node_modules/
 frontend/dist/
 frontend/test-results/
 .DS_Store

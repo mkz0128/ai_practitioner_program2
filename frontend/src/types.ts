@@ -137,6 +137,26 @@ export interface ChatResponse {
   requires_human_confirmation: boolean
 }
 
+export interface UrgentOrderPayload {
+  order_id: string
+  zone_code: string
+  city: string
+  district: string
+  location_label: string
+  latitude: number
+  longitude: number
+  time_slot: 'AM' | 'PM'
+  declared_package_count: number
+  priority: 'NORMAL' | 'HIGH'
+  note?: string | null
+}
+
+export interface UrgentPackagePayload {
+  package_id: string
+  order_id: string
+  weight_kg: number
+}
+
 export interface UrgentPreview {
   plan_id: string
   base_version: number

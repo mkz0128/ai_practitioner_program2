@@ -168,3 +168,22 @@ class SQLiteRepository:
         with self._connect() as connection:
             rows = connection.execute("SELECT plan_id, version FROM plan_current").fetchall()
             return {str(row["plan_id"]): int(row["version"]) for row in rows}
+
+    def set_current_version(self, plan_id: str, version: int) -> None:
+        """Move the read pointer only after an explicit human confirmation."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO plan_current (plan_id, version) VALUES (?, ?)
+                ON CONFLICT(plan_id) DO UPDATE SET version = excluded.version
+                """,
+                (plan_id, version),
+            )
+
+    def update_plan_state(self, plan_id: str, version: int, state: str) -> None:
+        """Persist a lifecycle state transition after its authorization checkpoint."""
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE plans SET state = ? WHERE plan_id = ? AND version = ?",
+                (state, plan_id, version),
+            )

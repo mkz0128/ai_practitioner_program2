@@ -8,6 +8,8 @@ import type {
   UrgentPreview,
   ValidationError,
   ValidationPayload,
+  UrgentOrderPayload,
+  UrgentPackagePayload,
 } from './types'
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
@@ -95,26 +97,20 @@ export function chat(
   })
 }
 
-export function previewUrgent(planId: string, baseVersion: number, signal?: AbortSignal): Promise<UrgentPreview> {
+export function previewUrgent(
+  planId: string,
+  baseVersion: number,
+  order: UrgentOrderPayload,
+  packages: UrgentPackagePayload[],
+  signal?: AbortSignal,
+): Promise<UrgentPreview> {
   return request<UrgentPreview>(`/api/v1/plans/${encodeURIComponent(planId)}/urgent-insert/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       base_plan_version: baseVersion,
-      order: {
-        order_id: 'ORD-041',
-        zone_code: 'Z4',
-        city: '臺北市',
-        district: '信義',
-        location_label: '臨時插單展示點',
-        latitude: 25.033,
-        longitude: 121.565,
-        time_slot: 'PM',
-        declared_package_count: 1,
-        priority: 'HIGH',
-        note: '前端 preview，不執行 Dispatch',
-      },
-      packages: [{ package_id: 'PKG-041-01', order_id: 'ORD-041', weight_kg: 2 }],
+      order,
+      packages,
     }),
     signal,
   })

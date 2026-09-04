@@ -28,7 +28,7 @@
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
 | 超重重新分配 | 原始必要 | 完成（Google live Matrix） | Z4 112 kg acceptance、Validator evidence、本輪 Live plan | 無核心缺口 |
 | 臨時插單 Preview 與差異 | 原始必要 | 完成（Google live Matrix；Browser／TDX 待補） | `try_minimal_insert`、`compute_plan_diff`、本輪 ORD-041 Live preview | Browser／TDX 顯示仍待憑證 |
-| 人工確認與方案版本管理 | 原始必要 | 部分完成 | API lifecycle tests、SQLite immutable version tests | state mutation 尚未回寫既有 row；缺 restart lifecycle regression |
+| 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Live PASS） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 無核心缺口 |
 | Google Routes 真實距離／時間 | 原始必要 | 完成（Live PASS） | `src/providers/google_routes.py`、本輪 `provider_mode=GOOGLE` Matrix／geometry | Browser key 另屬前端缺口 |
 | Google Matrix 進入 OR-Tools | 原始必要 | 完成（Live PASS） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator | 無核心缺口 |
@@ -37,16 +37,17 @@
 | TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
 | 前端完整操作流程 | 原始必要 | 完成（Live Playwright PASS） | `frontend/tests/e2e/live-control-tower.spec.ts`、七張 1440×900 截圖 | TDX 為可選外部依賴 |
 | 全整合前後端 Live E2E | 原始必要 | 完成（TDX 排除於本輪） | Excel → Google Matrix → OR-Tools → Map → Agent → ORD-041 → confirm | TDX credentials 尚未設定 |
+| 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-- 完成 AI 調度單次附件＋文字對話流程的交付驗證；維持既有地圖、Provider 與排程核心，不執行 Dispatch／部署。
+- 完成剩餘缺口稽核、第二組隨機資料與連續多筆插單驗收；維持既有地圖、Provider 與排程核心，不執行 Dispatch／部署。
 
 ## NEXT
 
 1. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
 2. 由前端團隊依 `docs/frontend-handoff.md` 進行日常維護與使用者驗收。
-3. 評估是否啟用企業級擴充功能。
+3. 進行部署前的 Linux runtime／credential 注入檢查。
 
 ## BLOCKED
 
@@ -61,7 +62,7 @@
 - `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix、geometry 與 OR-Tools 同次求解為 Live PASS；後續仍需保留 quota／錯誤監控。
 - `REQ-ORIG-003／006／007 — Frontend Integration`：控制塔已通過 typecheck／lint／unit build 與 Live Playwright；TDX 仍為可選外部依賴，這些是原始必要功能，不是 P1。
 - `REQ-ORIG-005 — External Provider Issue`：TDX correlation/risk model 已建立，但尚無 live event evidence。
-- `CORE-STATE-001 — Code Bug／Persistence`：confirm／dispatch 目前只更新 process 內 state，尚未回寫既有 SQLite plan row；需要可重現的 restart regression 後才能宣稱 durable lifecycle 完成。
+- `CORE-STATE-001 — Resolved`：confirm 現在會回寫 SQLite plan state 並更新 current-version pointer；repository regression 已驗證，Dispatch 仍不在本輪範圍。
 - `AGENT-API-001 — Integration`：`/api/v1/agent/chat` 已使用 `Runner.run` 與 strict tools；本輪 HTTP Live Agent 回傳 `RunResult`、`explain_assignment` evidence。後續僅需持續維護模型／配額監控。
 - `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass. Retained as regression evidence; OpenAI Agent is DONE by human acceptance.
 - `API-001 — Acceptance`：全部 13 條 contract routes 與 40-order preview flow 通過 automated checks；Demo gate 刻意不執行 dispatch。
@@ -69,13 +70,15 @@
 - `P0-URG-002 — Regression`：先前 Demo 將 OR-Tools initial output 與 Baseline preview 比較；修正已完成，aligned OR-Tools regression 通過，ORD-041 使用 `MINIMAL_CHANGE`。
 
 - `LIVE-UI-001 — Live Integration`：Browser key 已載入 Vite；真實 Google Maps 顯示臺北道路、DEPOT-001、40 個 Marker 與四條 Google geometry；Agent／ORD-041／人工確認與兩個前端工作區均由 Playwright 通過，未產生 Dispatch request。
+- `RANDOM-AUDIT-001 — Acceptance`：固定 seed `260904` 的新 workbook 為 40 張訂單／79 packages／322.8 kg；simulated OR-Tools 40/40、Validator 通過。五類臨時插單與缺欄／重複拒絕均記錄在 `docs/randomized-acceptance-report.json`。
+- `RANDOM-BROWSER-001 — Acceptance`：第二組 workbook 已在 Playwright 以拖放方式匯入；附件與文字單次送出、純附件預設意圖、連續三筆任意 ID 插單均完成預覽／人工確認／重新整理 hydration，Console errors 與 Dispatch requests 皆為 0。該瀏覽器驗收為 `SIMULATED PASS`（路線 provider 為成本受控的 deterministic simulated）；既有代表性 Google Live gate 仍獨立標示 `LIVE PASS`。
 
 ## DONE THIS ROUND
 
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 將原始必要功能（A 類）、企業級擴充（B 類）與目前暫不處理（C 類）分開記錄，並保留每項工作的 Requirement ID、證據、缺口、前置條件與驗收方式。
 - 記錄 Canonical Order Schema、FastAPI／MCP 邊界，以及車輛出發後動態調度的最小變動與人工確認安全流程。
-- 校正歷史文件與程式不一致處；本輪後的現況為：Google strict Matrix／geometry 已完成 Live wiring、`/api/v1/agent/chat` 已使用 `Runner.run`、TDX adapter 與 `frontend/` control tower 已保留；confirm／dispatch durable persistence 仍不完整。
+- 校正歷史文件與程式不一致處；本輪後的現況為：Google strict Matrix／geometry 已完成 Live wiring、`/api/v1/agent/chat` 已使用 `Runner.run`、TDX adapter 與 `frontend/` control tower 已保留；confirm current pointer／state 已持久化，Dispatch 仍不在本輪範圍。
 
 - 已接受明確的 `APPROVE_IMPLEMENTATION` 命令，僅開放 local Feature Code 工作。
 - 完成 credential preflight，未讀取或記錄任何值；OpenAI 與 Google Routes 已設定，Browser 與 TDX 未設定。
@@ -157,6 +160,8 @@
 - 本輪現況查證：`frontend/` 控制塔已通過 typecheck、lint、unit tests、production build 與完整 browser-to-live-provider E2E；無 Browser key 的環境仍顯示明確 simulated fallback。
 - 本輪限制：未輸出或提交任何憑證、未執行 Dispatch／部署／正式環境操作；TDX 因缺少 credentials 維持 `OPTIONAL／NOT_CONFIGURED`。
 - 本輪最新測試：Frontend TypeScript `PASS`、ESLint `PASS`、Vitest `2 passed`、Vite build `PASS`；Backend `pytest 36 passed, 3 conditional skipped`、`ruff check . PASS`、`mypy src PASS`；Live Playwright `1 passed`（真實 OpenAI／Google、停止回覆與 console error gate）。
+- 本輪隨機驗收：`scripts/run_randomized_insert_audit.py` 完成 1 組基礎方案、5 類插單／拒絕案例與 10 個固定 seed 壓力測試；所有 simulated Validator violations 為 0、確認版本只遞增一次、失敗案例版本不變。`frontend/tests/e2e/randomized-insert-flow.spec.ts` 為 `2 passed`（拖放、附件＋文字／純附件單次送出、連續三筆任意插單、refresh、Console error／Dispatch request gate）。
+- 本輪品質修正後後端全套：`pytest 41 passed, 3 skipped`（條件式 OpenAI／Responses／Google Live）；`ruff check . PASS`；`mypy src PASS`。前端既有 typecheck／ESLint／Vitest／Vite build 與 Live Playwright 維持通過。
 - 本輪截圖：`docs/screenshots/chat-composer-empty.png`（簡潔初始對話）、`docs/screenshots/chat-composer-attached.png`（附件尚未送出）、`docs/screenshots/chat-composer-completed.png`（單次送出後的 Agent 回覆與真實地圖），均為 1440×900 且未含 secrets。
 - 前一輪 Commit：`7185ba97ef66c449ce6eed81d8225207dd7673b0`，已推送至 `origin/feat/frontend-control-tower`；本輪視覺重整另建立新 Commit。
 - 本輪前端視覺重整品質閘門：TypeScript typecheck `PASS`；ESLint `PASS`；Vitest `2 passed`；Vite production build `PASS`；Playwright Chromium `2 passed`（local simulated，未執行 Dispatch）。
@@ -169,4 +174,12 @@
 - 本輪前端對話體驗：AI 調度改為可直接輸入的 ChatGPT 風格訊息區；`.xlsx` 可由附件按鈕或整個對話區拖放，附件與文字在同一則使用者訊息一次送出，背景完成匯入、驗證、排程、地圖更新與 Agent 回覆。
 - 本輪對話安全與可讀性：加入附件檢查、附件移除／重選、附件-only 預設意圖、Enter／Shift+Enter、停止回覆、進度步驟與收合的「查看計算依據」；主畫面不再顯示 Raw JSON、provider code 或內部識別資訊，計算摘要改為繁體中文。
 - 本輪插單可靠性修正：urgent preview 的最小變動候選會精確保留既有路線相對順序，避免將合法插入誤判為不可行；Live ORD-041 preview、人工確認與 Dispatch request=0 均通過。
+- 修正 Agent provider 的單次暫時性失敗處理：`/api/v1/agent/chat` 對無副作用的 `Runner.run` 增加一次有限重試，仍保留錯誤封裝、無限重試防護與 evidence-only 邊界；隨機瀏覽器驗收重跑通過。
 - 本輪瀏覽器驗證：`frontend/tests/e2e/live-control-tower.spec.ts` 實際完成無資料聊天、無效格式恢復、拖放／單次送出、40 單 Live Google Matrix → OR-Tools、Validator、Google Maps、Agent 多輪、ORD-041 preview、人工確認與停止回覆，保存 `chat-composer-empty.png`、`chat-composer-attached.png`、`chat-composer-completed.png`。
+- 新增第二組可重現 workbook：`data/samples/random-dispatch-seed-260904.xlsx`，由 `scripts/generate_random_fixture.mjs` 以 seed `260904` 產生；檔案 hash、資料摘要與生成規則已記錄。
+- 生成器追加 `scripts/normalize_xlsx.py` 固定 XLSX ZIP 順序、關係識別字與時間戳；同一 seed 連續重跑的檔案 SHA-256 已驗證一致。
+- 新增通用 `preview_structured_urgent_insert` strict tool，接受任意結構化臨時訂單並引用 deterministic planner／Validator evidence；保留既有 `preview_urgent_insert` 相容路徑。
+- 新增連續插單與 10 個固定 seed 的 keyless 壓力驗收：每次確認只增加一個版本；無法安排、缺欄或重複 ID 不污染已確認方案；同 seed input hash 可重現。
+- 確認後 current plan pointer 與 SQLite state 會持久化，新增 repository regression；前端重新整理可依 localStorage plan reference 重新載入 plan／map。
+- 新增隨機資料瀏覽器證據：`random-01-attached.png`、`random-02-base-plan.png`、`random-03-insert-1.png`、`random-04-insert-2.png`、`random-05-final-plan.png`（1440×900，未含 secrets）。
+- 新增純附件瀏覽器證據：`random-06-attachment-only.png`（1440×900，未含 secrets）。

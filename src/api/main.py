@@ -906,6 +906,11 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
     if record.state != "PROPOSED" or not record.validation.valid:
         return _error(request, 409, "PLAN_NOT_CONFIRMABLE", "規劃尚未通過驗證或狀態不允許確認。")
     record.state = "CONFIRMED"
+    # A confirmed version becomes the current read/continuation pointer. Preview
+    # versions remain immutable and never become current before this checkpoint.
+    store.current_versions[plan_id] = record.version
+    repository.set_current_version(plan_id, record.version)
+    repository.update_plan_state(plan_id, record.version, record.state)
     repository.append_audit(
         f"AUD-{uuid4().hex[:12].upper()}",
         "PLAN_CONFIRMED",
@@ -1001,7 +1006,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     else:
         dataset, matrix = dataset_record.dataset, record.matrix
 
-    order_match = re.search(r"ORD-\d+", payload.message.upper())
+    order_match = re.search(r"\b[A-Z]{2,}(?:-[A-Z0-9]+)+\b", payload.message.upper())
     if order_match:
         context_order_id = order_match.group(0)
         session.order_id = context_order_id
@@ -1030,9 +1035,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     # selected order identifier as a hint so the model must still invoke the
     # allowlisted deterministic tool instead of receiving precomputed facts.
     agent_message = payload.message
-    history_text = "\n".join(
-        f"{role}: {content}" for role, content in session.history[-6:]
-    )
+    history_text = "\n".join(f"{role}: {content}" for role, content in session.history[-6:])
     if history_text:
         agent_message = (
             "Conversation history (use only as context):\n"
@@ -1043,6 +1046,14 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             f"{agent_message}\n\nApplication context: call preview_urgent_insert exactly once "
             "with order_id=ORD-041. Use only its deterministic preview evidence and do not ask "
             "for additional order fields."
+        )
+    elif preview_request and isinstance(context_order_id, str) and record is not None:
+        agent_message = (
+            f"{agent_message}\n\nApplication context: this is a new structured "
+            "urgent-order request. "
+            "Extract only the order fields explicitly supplied by the user and call "
+            "preview_structured_urgent_insert. If any required order or package field is missing, "
+            "ask for only those missing fields. Never calculate weight, route, or assignment."
         )
     elif isinstance(context_order_id, str):
         agent_message = (
@@ -1076,17 +1087,35 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         else None
     )
     try:
-        final_output, context, result = await run_dispatch_agent(
-            agent_message,
-            dataset,
-            matrix,
-            pending_order=pending_order,
-            plan=record.plan if record else None,
-            request_id=_request_id(request),
-            dataset_id=record.dataset_id if record else None,
-            plan_id=record.plan_id if record else None,
-            plan_version=record.version if record else None,
-        )
+        # Agent calls are evidence-only and deterministic tools have no
+        # external side effects, so one bounded retry is safe for transient
+        # provider/model transport failures.  This avoids turning a single
+        # intermittent 502 into a broken conversational turn while keeping
+        # retry count finite and observable.
+        agent_result: tuple[str, Any, Any] | None = None
+        last_agent_error: Exception | None = None
+        for _attempt in range(2):
+            try:
+                agent_result = await run_dispatch_agent(
+                    agent_message,
+                    dataset,
+                    matrix,
+                    pending_order=pending_order,
+                    plan=record.plan if record else None,
+                    request_id=_request_id(request),
+                    dataset_id=record.dataset_id if record else None,
+                    plan_id=record.plan_id if record else None,
+                    plan_version=record.version if record else None,
+                )
+                break
+            except InputGuardrailTripwireTriggered:
+                raise
+            except Exception as exc:
+                last_agent_error = exc
+        if agent_result is None:
+            assert last_agent_error is not None
+            raise last_agent_error
+        final_output, context, result = agent_result
     except InputGuardrailTripwireTriggered:
         return _error(
             request,

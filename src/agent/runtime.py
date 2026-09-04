@@ -18,10 +18,11 @@ from agents import (
 from agents.models.interface import Model
 from agents.run_context import RunContextWrapper
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.tools import explain_assignment as build_assignment_evidence
 from src.config import get_settings
-from src.domain.models import Dataset, Order
+from src.domain.models import Dataset, Order, Package, Priority
 from src.observability import JsonlEventRecorder, LimitReachedError, RunBudget
 from src.providers.google_routes import GoogleRoutesProvider, GoogleRoutesProviderError
 from src.services.fingerprint import dataset_hash
@@ -50,6 +51,34 @@ class DispatchAgentContext:
     def __post_init__(self) -> None:
         if self.recorder is None:
             self.recorder = JsonlEventRecorder(self.agent_run_id)
+
+
+class StructuredPackageInput(BaseModel):
+    """Strict package payload extracted from a natural-language urgent order."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    package_id: str = Field(min_length=1)
+    order_id: str = Field(min_length=1)
+    weight_kg: float = Field(gt=0)
+
+
+class StructuredUrgentOrderInput(BaseModel):
+    """Canonical urgent-order input accepted by the Agent tool."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    order_id: str = Field(min_length=1)
+    zone_code: str = Field(min_length=1)
+    city: str = Field(min_length=1)
+    district: str = Field(min_length=1)
+    location_label: str = Field(min_length=1)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    time_slot: Literal["AM", "PM"]
+    declared_package_count: int = Field(ge=1, le=3)
+    priority: Literal["NORMAL", "HIGH"] = "NORMAL"
+    packages: list[StructuredPackageInput] = Field(min_length=1, max_length=3)
 
 
 def _tool_started(context: DispatchAgentContext, tool_name: str, arguments: dict[str, Any]) -> None:
@@ -101,7 +130,7 @@ def assistant_help(
             "超載時會改派或標記無法安排。"
         ),
         "URGENT_INSERTION": (
-            "ORD-041 會使用已驗證的結構化示範資料，建立插單前後的最小變動 preview；"
+            "臨時訂單會使用已驗證的結構化資料，建立插單前後的最小變動 preview；"
             "只有人工確認後才會套用。"
         ),
         "DATA_REQUIRED": (
@@ -248,55 +277,46 @@ def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
     return json.dumps(evidence_payload, ensure_ascii=False, sort_keys=True)
 
 
-@function_tool(strict_mode=True)
-def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
-    """Preview a structured urgent order with deterministic planning and validation."""
-    _tool_started(ctx.context, "preview_urgent_insert", {"order_id": order_id})
-    pending = ctx.context.pending_order
-    if pending is None or pending.order_id != order_id:
+def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_name: str) -> str:
+    """Run one deterministic preview for any validated structured urgent order."""
+    order_id = pending.order_id
+    _tool_started(context, tool_name, {"order_id": order_id})
+    evidence: dict[str, Any]
+    if order_id in {order.order_id for order in context.dataset.orders}:
         evidence = {
-            "tool": "preview_urgent_insert",
-            "status": "REQUIRES_STRUCTURED_ORDER",
-            "order_id": order_id,
-        }
-        ctx.context.evidence.append(evidence)
-        _tool_finished(ctx.context, "preview_urgent_insert")
-        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
-    if order_id in {order.order_id for order in ctx.context.dataset.orders}:
-        evidence = {
-            "tool": "preview_urgent_insert",
+            "tool": tool_name,
             "status": "ORDER_ID_EXISTS",
             "order_id": order_id,
         }
-        ctx.context.evidence.append(evidence)
-        _tool_finished(ctx.context, "preview_urgent_insert")
+        context.evidence.append(evidence)
+        _tool_finished(context, tool_name)
         return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
-    new_dataset = ctx.context.dataset.model_copy(
+    new_dataset = context.dataset.model_copy(
         update={
-            "orders": (*ctx.context.dataset.orders, pending),
-            "packages": (*ctx.context.dataset.packages, *pending.packages),
+            "orders": (*context.dataset.orders, pending),
+            "packages": (*context.dataset.packages, *pending.packages),
         }
     )
     dataset_validation = validate_dataset(new_dataset)
     if not dataset_validation.is_valid:
-        invalid_evidence: dict[str, Any] = {
-            "tool": "preview_urgent_insert",
+        evidence = {
+            "tool": tool_name,
             "status": "URGENT_ORDER_INVALID",
             "order_id": order_id,
             "validation": dataset_validation.model_dump(mode="json"),
         }
-        ctx.context.evidence.append(invalid_evidence)
-        _tool_finished(ctx.context, "preview_urgent_insert")
-        return json.dumps(invalid_evidence, ensure_ascii=False, sort_keys=True)
-    if ctx.context.matrix.provider_mode == "GOOGLE":
+        context.evidence.append(evidence)
+        _tool_finished(context, tool_name)
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    if context.matrix.provider_mode == "GOOGLE":
         settings = get_settings()
         try:
             preview_matrix = GoogleRoutesProvider(
                 settings.google_routes_server_api_key
             ).extend_matrix(
-                ctx.context.matrix,
-                ctx.context.matrix.node_ids,
-                _matrix_coordinates(ctx.context.dataset),
+                context.matrix,
+                context.matrix.node_ids,
+                _matrix_coordinates(context.dataset),
                 (
                     "DEPOT-001",
                     *(
@@ -308,22 +328,20 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
                 allow_fallback=False,
             )
         except GoogleRoutesProviderError as exc:
-            invalid_evidence = {
-                "tool": "preview_urgent_insert",
+            evidence = {
+                "tool": tool_name,
                 "status": "PROVIDER_UNAVAILABLE",
                 "order_id": order_id,
                 "provider": "GOOGLE",
                 "provider_error": exc.code,
                 "fallback_used": False,
             }
-            ctx.context.evidence.append(invalid_evidence)
-            _tool_finished(ctx.context, "preview_urgent_insert")
-            return json.dumps(invalid_evidence, ensure_ascii=False, sort_keys=True)
+            context.evidence.append(evidence)
+            _tool_finished(context, tool_name)
+            return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     else:
         preview_matrix = SimulatedRouteProvider().build(new_dataset)
-    base_plan = ctx.context.plan or build_ortools(
-        ctx.context.dataset, ctx.context.matrix, time_limit_seconds=2
-    )
+    base_plan = context.plan or build_ortools(context.dataset, context.matrix, time_limit_seconds=2)
     preview_plan = try_minimal_insert(base_plan, new_dataset, preview_matrix, pending)
     mode = "MINIMAL_CHANGE"
     full_replan_reason: str | None = None
@@ -370,8 +388,8 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
             ],
         }
 
-    preview_evidence: dict[str, Any] = {
-        "tool": "preview_urgent_insert",
+    evidence = {
+        "tool": tool_name,
         "status": "PREVIEWED",
         "order_id": order_id,
         "algorithm": preview_plan.algorithm,
@@ -384,9 +402,13 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
         "comparison": {
             "base_algorithm": base_plan.algorithm,
             "preview_algorithm": preview_plan.algorithm,
-            "base_dataset_hash": dataset_hash(ctx.context.dataset),
+            "base_dataset_hash": dataset_hash(context.dataset),
             "preview_dataset_hash": dataset_hash(new_dataset),
         },
+        "structured_order": pending.model_dump(
+            exclude={"packages", "total_weight_kg"}, mode="json"
+        ),
+        "structured_packages": [package.model_dump(mode="json") for package in pending.packages],
         "diff": {"inserted_order_id": order_id, **diff},
         "feasible": validation.valid and order_id not in preview_plan.unassigned_orders,
         "unassigned_orders": preview_plan.unassigned_orders,
@@ -395,9 +417,55 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
         "validator": validation.model_dump(mode="json"),
         "provider_mode": preview_matrix.provider_mode,
     }
-    ctx.context.evidence.append(preview_evidence)
-    _tool_finished(ctx.context, "preview_urgent_insert")
-    return json.dumps(preview_evidence, ensure_ascii=False, sort_keys=True)
+    context.evidence.append(evidence)
+    _tool_finished(context, tool_name)
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+@function_tool(strict_mode=True)
+def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
+    """Preview the existing structured urgent-order context (legacy-compatible)."""
+    pending = ctx.context.pending_order
+    if pending is None or pending.order_id != order_id:
+        _tool_started(ctx.context, "preview_urgent_insert", {"order_id": order_id})
+        evidence = {
+            "tool": "preview_urgent_insert",
+            "status": "REQUIRES_STRUCTURED_ORDER",
+            "order_id": order_id,
+        }
+        ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "preview_urgent_insert")
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    return _preview_urgent_order(ctx.context, pending, "preview_urgent_insert")
+
+
+@function_tool(strict_mode=True)
+def preview_structured_urgent_insert(
+    ctx: RunContextWrapper[DispatchAgentContext], order: StructuredUrgentOrderInput
+) -> str:
+    """Convert strict structured input into the canonical Order and preview it."""
+    pending = Order(
+        order_id=order.order_id,
+        zone_code=order.zone_code,
+        city=order.city,
+        district=order.district,
+        location_label=order.location_label,
+        latitude=order.latitude,
+        longitude=order.longitude,
+        time_slot=order.time_slot,
+        declared_package_count=order.declared_package_count,
+        priority=Priority(order.priority),
+        note=None,
+        packages=tuple(
+            Package(
+                package_id=package.package_id,
+                order_id=package.order_id,
+                weight_kg=package.weight_kg,
+            )
+            for package in order.packages
+        ),
+    )
+    return _preview_urgent_order(ctx.context, pending, "preview_structured_urgent_insert")
 
 
 @input_guardrail(run_in_parallel=False)
@@ -440,6 +508,9 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "If no validated dataset is loaded, do not call planning or query tools; call "
             "assistant_help with the best topic (CAPABILITIES, DATA_REQUIREMENTS, "
             "CAPACITY_RULES, URGENT_INSERTION, or DATA_REQUIRED) and answer from its evidence. "
+            "For a new urgent order, extract only the supplied order fields into the strict "
+            "preview_structured_urgent_insert tool; if required fields are missing, ask only "
+            "for those fields. Never calculate weight, route, or assignment in the model. "
             "When the user says they confirm a proposal, call prepare_confirmation; never mutate "
             "state or dispatch from chat. After a tool returns, answer briefly using values "
             "present "
@@ -452,6 +523,7 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             explain_assignment,
             explain_unassigned,
             preview_urgent_insert,
+            preview_structured_urgent_insert,
             assistant_help,
             prepare_confirmation,
         ],

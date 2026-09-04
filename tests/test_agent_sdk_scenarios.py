@@ -132,6 +132,37 @@ async def test_sdk_urgent_insert_runs_preview_planner_and_validator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_structured_urgent_insert_accepts_arbitrary_order_id() -> None:
+    order_id = "RND-URGENT-900"
+    _, context, _ = await _run_tool(
+        "Preview a structured urgent order.",
+        "preview_structured_urgent_insert",
+        {
+            "order": {
+                "order_id": order_id,
+                "zone_code": "Z4",
+                "city": "臺北市",
+                "district": "信義",
+                "location_label": "合成臨時配送點",
+                "latitude": 25.033,
+                "longitude": 121.565,
+                "time_slot": "PM",
+                "declared_package_count": 1,
+                "priority": "HIGH",
+                "packages": [
+                    {"package_id": "RPK-URGENT-900-1", "order_id": order_id, "weight_kg": 2.0}
+                ],
+            }
+        },
+    )
+    evidence = context.evidence[-1]
+    assert evidence["tool"] == "preview_structured_urgent_insert"
+    assert evidence["status"] == "PREVIEWED"
+    assert evidence["order_id"] == order_id
+    assert evidence["validator"]["valid"] is True
+
+
+@pytest.mark.asyncio
 async def test_sdk_missing_data_prompts_instead_of_guessing() -> None:
     dataset, matrix = _fixture()
     model = ScriptedModel([[assistant_message("Please provide the dataset and order details.")]])
