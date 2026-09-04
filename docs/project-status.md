@@ -41,7 +41,7 @@
 
 ## NOW
 
-- 修正 Render Docker build 的 frontend `dist` 來源並完成部署前品質驗證；等待 Render 重新建置，不執行 Dispatch、不合併 `main`。
+- 修正 Render 第二次建置的 pnpm workspace 契約並完成部署前品質驗證；等待 Render 重新建置，不執行 Dispatch、不合併 `main`。
 
 ## NEXT
 
@@ -80,6 +80,7 @@
 - 將 production 前端 API 改為同源相對路徑；Vite 本機開發以 `/api` proxy 連接 FastAPI，Browser key 由公開 runtime-config 注入，不把 server secrets 放入 bundle。
 - 新增可選的 `DEMO_ACCESS_PASSWORD` 展示環境閘門：`/health`／Swagger／登入端點公開，其餘 `/api/v1/*` 受 HttpOnly、SameSite session cookie 保護；未設定密碼的本機 deterministic tests 維持原 API 行為。
 - 修正 Production `Dockerfile`：runtime stage 改由 `COPY --from=frontend-builder /app/frontend/dist ./frontend/dist` 取得 builder 產物；`.dockerignore` 僅排除不必要的 `dist`／`node_modules`，不排除 frontend source、package manifest 或 pnpm lockfile。
+- 確認 `frontend` 為單一 package（非 monorepo）；保留 `allowBuilds` 並補上 `packages: ["."]`，同時在 `frontend/package.json` 鎖定 `packageManager: pnpm@9.15.0`，與 Dockerfile 及 lockfile v9.0 相容。
 - 已以本機 Uvicorn smoke check 驗證 `/health`、`/ready`、`/docs`、SPA root／deep-link、assets 與 runtime-config；已驗證展示閘門的未登入 401、登入後 API 200，未執行 Dispatch。
 
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
@@ -142,6 +143,7 @@
 - 本輪驗證：backend `pytest 41 passed, 3 skipped`（3 個條件式 live gate）、OpenAPI snapshot、`ruff check .`、`mypy src` 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。
 - 本輪 Git：deployment baseline commit `9432580`（完整 SHA 由 Git 回報）已推送至 `origin/feat/frontend-control-tower`；未執行 force push、Dispatch 或部署。
 - 本輪 Docker fix commit `bb8e72ae819ef23291e1eae834758e66d2cfd5e3` 已推送；Dockerfile／ignore 檢查、backend `pytest 41 passed, 3 skipped`、`ruff`、`mypy`、frontend TypeScript／ESLint／Vitest／Vite build 與 secret scan 均 `PASS`。
+- 本輪 Render workspace 修正：以 Dockerfile 使用的 `pnpm@9.15.0` 執行 `pnpm install --frozen-lockfile` 與 `pnpm run build` 均 `PASS`，並確認 `frontend/dist/index.html` 存在；本機 Docker `--no-cache` 仍受 Linux daemon 未啟動阻塞，未冒稱 image build 成功。
 
 - 日期：`2026-09-04 Asia/Taipei`
 - Credential preflight（早期 keyless process environment 歷史紀錄）：當時未匯出 OpenAI、Google Routes、Browser、TDX 變數；最新 Live process 已安全載入 OpenAI、Google Routes 與 Browser，TDX 仍為可選未設定，且未讀取或記錄任何值。
