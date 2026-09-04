@@ -141,7 +141,7 @@
 - Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
 - 本輪驗證：backend `pytest 41 passed, 3 skipped`（3 個條件式 live gate）、OpenAPI snapshot、`ruff check .`、`mypy src` 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。
 - 本輪 Git：deployment baseline commit `9432580`（完整 SHA 由 Git 回報）已推送至 `origin/feat/frontend-control-tower`；未執行 force push、Dispatch 或部署。
-- 本輪 Docker fix 尚待建立 commit；Dockerfile／ignore 檢查、backend `pytest 41 passed, 3 skipped`、`ruff`、`mypy`、frontend TypeScript／ESLint／Vitest／Vite build 與 secret scan 均 `PASS`。
+- 本輪 Docker fix commit `bb8e72ae819ef23291e1eae834758e66d2cfd5e3` 已推送；Dockerfile／ignore 檢查、backend `pytest 41 passed, 3 skipped`、`ruff`、`mypy`、frontend TypeScript／ESLint／Vitest／Vite build 與 secret scan 均 `PASS`。
 
 - 日期：`2026-09-04 Asia/Taipei`
 - Credential preflight（早期 keyless process environment 歷史紀錄）：當時未匯出 OpenAI、Google Routes、Browser、TDX 變數；最新 Live process 已安全載入 OpenAI、Google Routes 與 Browser，TDX 仍為可選未設定，且未讀取或記錄任何值。
