@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: ai-dispatch-control-tower
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: feat/frontend-control-tower
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////tmp/dispatch.db
+      - key: DEMO_ACCESS_PASSWORD
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: GOOGLE_ROUTES_SERVER_API_KEY
+        sync: false
+      - key: VITE_GOOGLE_MAPS_BROWSER_API_KEY
+        sync: false
+      - key: TDX_CLIENT_ID
+        sync: false
+      - key: TDX_CLIENT_SECRET
+        sync: false

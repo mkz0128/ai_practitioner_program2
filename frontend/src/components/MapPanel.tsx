@@ -54,7 +54,21 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  const browserKey = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY as string | undefined
+  const [runtimeBrowserKey, setRuntimeBrowserKey] = useState<string | undefined>(
+    import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY || window.__DISPATCH_RUNTIME_CONFIG__?.googleMapsBrowserApiKey,
+  )
+  useEffect(() => {
+    if (runtimeBrowserKey) return
+    let cancelled = false
+    void fetch('/api/v1/runtime-config')
+      .then((response) => (response.ok ? response.json() as Promise<{ google_maps_browser_api_key?: string }> : null))
+      .then((config) => {
+        if (!cancelled && config?.google_maps_browser_api_key) setRuntimeBrowserKey(config.google_maps_browser_api_key)
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [runtimeBrowserKey])
+  const browserKey = runtimeBrowserKey
   const visibleRoutes = useMemo(() => data?.routes || [], [data])
   const liveMap = Boolean(browserKey && data?.provider_mode === 'GOOGLE' && data.routes.every((route) => !route.encoded_polyline.startsWith('simulated:')))
 

@@ -2,7 +2,7 @@
 
 本系統是一套可解釋的 AI 配送調度 Copilot。單一 OpenAI Agent 負責理解自然語言並調用具明確 Schema 的工具；資料驗證、重量彙總、車輛分配、路線最佳化、配送時段約束及狀態管理，均由確定性程式執行，確保結果可驗證、可解釋且可追溯。所有最終配送方案仍由調度人員確認。
 
-已收到 `APPROVE_IMPLEMENTATION`；目前已啟用本機 Feature Code 實作，並維持不部署、不啟用 Actions、不接觸正式環境的安全邊界。
+已收到 `APPROVE_IMPLEMENTATION`；目前已啟用本機 Feature Code 實作。Render 部署設定限定於 `feat/frontend-control-tower` 的 Free 測試服務，不啟用 Actions、不合併 `main`、不執行 Dispatch。
 
 ## 真實來源
 
@@ -96,7 +96,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 前端只需要知道以下變數：
 
 ```dotenv
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=
 VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 ```
 
@@ -218,3 +218,13 @@ Fixture 刻意將 112 kg 集中在 Z4；`VEH-002` 上限為 100 kg，因此 clie
 ## 範圍排除
 
 本版本不包含 production deployment、live TMS/ERP/GPS、WebSocket、vehicle-in-motion insertion、depot return for pickup、real fleet control、multi-Agent、A2A 或 AP2。
+
+## Render Free 測試部署
+
+Repository 已提供單一 Web Service 的 Production Docker 設定：`Dockerfile`、`.dockerignore` 與 `render.yaml`。前端 Vite bundle 與 FastAPI API 會在同一個 container／origin 提供服務，啟動時使用 Render 注入的 `$PORT`，健康檢查為 `/health`，並以單一 Uvicorn worker 執行。
+
+Render Blueprint 固定部署 `feat/frontend-control-tower`、`singapore` region 與 `free` plan。請在 Render Dashboard 連結本 Repository 後，依 `render.yaml` 建立服務；`OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY`、`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 與 `DEMO_ACCESS_PASSWORD` 必須以 Render Secret 設定，TDX 變數可留空。YAML 不含任何秘密值。
+
+公開展示服務啟用 `DEMO_ACCESS_PASSWORD` 時，`/health`、Swagger 與登入端點保持可讀，其餘 `/api/v1/*` 端點需先登入；密碼不會進入前端 bundle。SQLite 使用 `/tmp/dispatch.db`，服務休眠、重啟或重新部署後資料可能重置，需重新匯入 Excel。Render 公開驗收必須確認沒有 localhost 請求，且全程不呼叫 `/dispatch`。
+
+目前程式與本機健康／SPA／展示登入 smoke checks 已完成；公開部署仍需 Render 登入／GitHub OAuth，以及確認已輪替且可安全使用的 Provider keys。未完成公開部署前，不宣稱 Render Live PASS。

@@ -1,8 +1,8 @@
 ---
 spec_id: AI-DISPATCH-MVP
 spec_version: 1.0.0-spec
-status: IMPLEMENTATION_IN_PROGRESS
-current_phase: PHASE_2_FEATURE_IMPLEMENTATION
+status: DEPLOYMENT_IN_PROGRESS
+current_phase: PHASE_3_RENDER_FREE_TEST_DEPLOYMENT
 feature_code_allowed: true
 required_approval_command: APPROVE_IMPLEMENTATION
 approved_product_input_date: 2026-09-01
@@ -15,7 +15,7 @@ application_agent_count: 1
 
 本文件已吸收使用者確認的產品決策，不再重新訪談。使用者已輸入精確命令 `APPROVE_IMPLEMENTATION`，現在允許在本地沙盒開始 Feature Code。所有部署、Git push、外部付費、IAM、Production 或其他 L2/L3 動作仍需另行範圍核准。
 
-`APPROVE_IMPLEMENTATION` 不包含部署、Git push、外部付費、IAM、Production 或其他 L2/L3 動作。
+`APPROVE_IMPLEMENTATION` 本身不包含部署；本輪使用者另行明確核准的 Render Free 測試服務部署，僅限 `feat/frontend-control-tower`，不包含付費資源、IAM、Production、Dispatch、force push 或合併 `main`。
 
 ## 1. Why — 商業意圖
 

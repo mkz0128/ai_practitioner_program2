@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
+from pathlib import Path
 from threading import RLock
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -12,7 +15,8 @@ from uuid import uuid4
 from agents import InputGuardrailTripwireTriggered
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.runtime import run_dispatch_agent
@@ -58,6 +62,10 @@ class ChatRequest(StrictRequest):
     session_id: str = Field(min_length=1, max_length=120)
     message: str = Field(min_length=1, max_length=4000)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class DemoLoginRequest(StrictRequest):
+    password: str = Field(min_length=1, max_length=256)
 
 
 class UrgentOrderRequest(StrictRequest):
@@ -175,6 +183,51 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+def _demo_session_token() -> str | None:
+    password = settings.demo_access_password
+    if not password:
+        return None
+    return hmac.new(
+        password.encode("utf-8"), b"ai-dispatch-demo-session", hashlib.sha256
+    ).hexdigest()
+
+
+def _has_demo_session(request: Request) -> bool:
+    expected = _demo_session_token()
+    actual = request.cookies.get("dispatch_demo_session")
+    return bool(expected and actual and hmac.compare_digest(actual, expected))
+
+
+@app.middleware("http")
+async def demo_access_middleware(request: Request, call_next: Any) -> Any:
+    """Protect mutating/data APIs when a Render demo password is configured.
+
+    Local development and deterministic tests leave DEMO_ACCESS_PASSWORD unset,
+    preserving the existing API contract. Health, docs, login, and the public
+    browser-key runtime configuration remain reachable before login.
+    """
+    protected = request.url.path.startswith("/api/v1/") and request.url.path not in {
+        "/api/v1/runtime-config",
+    }
+    if (
+        settings.demo_access_password
+        and protected
+        and request.method != "OPTIONS"
+        and not _has_demo_session(request)
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "code": "DEMO_AUTH_REQUIRED",
+                    "message": "請先登入展示環境。",
+                    "field_errors": [],
+                }
+            },
+        )
+    return await call_next(request)
 
 
 def _request_id(request: Request) -> str:
@@ -496,6 +549,47 @@ def ready(request: Request) -> dict[str, Any]:
         },
         "request_id": _request_id(request),
     }
+
+
+@app.get("/auth/status", include_in_schema=False)
+def auth_status(request: Request) -> dict[str, Any]:
+    """Return only the demo gate state; never disclose the configured password."""
+    return {
+        "required": bool(settings.demo_access_password),
+        "authenticated": _has_demo_session(request) if settings.demo_access_password else True,
+    }
+
+
+@app.post("/auth/login", include_in_schema=False)
+def auth_login(payload: DemoLoginRequest, request: Request) -> Any:
+    expected = settings.demo_access_password
+    if not expected:
+        return {"authenticated": True, "required": False}
+    if not hmac.compare_digest(payload.password, expected):
+        return _error(request, 401, "DEMO_AUTH_INVALID", "展示環境密碼不正確。")
+    response = JSONResponse(content={"authenticated": True, "required": True})
+    response.set_cookie(
+        "dispatch_demo_session",
+        _demo_session_token() or "",
+        max_age=60 * 60 * 12,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+    )
+    return response
+
+
+@app.post("/auth/logout", include_in_schema=False)
+def auth_logout() -> JSONResponse:
+    response = JSONResponse(content={"authenticated": False})
+    response.delete_cookie("dispatch_demo_session")
+    return response
+
+
+@app.get("/api/v1/runtime-config", include_in_schema=False)
+def runtime_config() -> dict[str, str | None]:
+    """Expose only the browser-safe runtime configuration to the SPA."""
+    return {"google_maps_browser_api_key": settings.google_maps_browser_api_key}
 
 
 @app.post("/api/v1/datasets/import-excel", status_code=201)
@@ -1165,3 +1259,29 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         "runner_result_type": type(result).__name__,
         "request_id": _request_id(request),
     }
+
+
+# In the Render image the Vite build is copied to /app/frontend/dist. Keeping
+# the same path convention locally makes the production container and local
+# smoke tests exercise the same SPA fallback behaviour.
+_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_frontend_dist / "assets"),
+        name="frontend-assets",
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> Any:
+        requested = (_frontend_dist / full_path).resolve()
+        try:
+            requested.relative_to(_frontend_dist.resolve())
+        except ValueError:
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        if requested.is_file():
+            return FileResponse(requested)
+        index_file = _frontend_dist / "index.html"
+        if index_file.is_file():
+            return FileResponse(index_file)
+        return JSONResponse(status_code=404, content={"detail": "Frontend build unavailable"})

@@ -183,6 +183,18 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 | Plan race／stale preview | wrong confirmation | immutable versions + optimistic concurrency |
 | Provider cost loop | denial of wallet | quotas、cache、timeouts、retries、Agent limits |
 
+## Render Free 測試部署工作包
+
+本工作包只針對已核准的 `feat/frontend-control-tower` 測試環境，不延伸為 Production deployment：
+
+1. 以 `Dockerfile` 的 multi-stage build 產生前端 bundle，並在最終 image 僅保留 runtime dependencies、`src/`、sample data 與 `frontend/dist/`。
+2. 以同一個 FastAPI origin 提供 `/health`、Swagger、SPA fallback 與既有 API；啟動使用 Render `$PORT` 及單一 Uvicorn worker。
+3. 由 `render.yaml` 鎖定 `free` plan、`singapore` region、`feat/frontend-control-tower` branch 與 `/health` health check；敏感值一律 `sync: false`，不寫入 YAML、image 或 Git。
+4. 在本機完成 production image、container、SPA deep-link、health、OpenAPI、secret scan 與 no-Dispatch checks 後，才進行 Render Dashboard 建立與公開網址驗收。
+5. 公開驗收必須逐項分開記錄 OpenAI、Google Routes、Google Maps、Excel→Plan→Map→Agent 與連續插單結果；TDX 維持 `OPTIONAL／NOT_CONFIGURED` 時不得標示 Live PASS。
+
+目前 Docker daemon、Render 登入／GitHub OAuth 與已輪替 Provider keys 均是外部前置條件；未具備時只完成可驗證的程式與 Blueprint，不宣稱部署完成。
+
 ## 檢查點
 
 - 前端 contract review。

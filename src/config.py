@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +20,10 @@ class Settings(BaseSettings):
         default=None, validation_alias="GOOGLE_ROUTES_SERVER_API_KEY"
     )
     google_maps_browser_api_key: str | None = Field(
-        default=None, validation_alias="GOOGLE_MAPS_BROWSER_API_KEY"
+        default=None,
+        validation_alias=AliasChoices(
+            "GOOGLE_MAPS_BROWSER_API_KEY", "VITE_GOOGLE_MAPS_BROWSER_API_KEY"
+        ),
     )
     tdx_client_id: str | None = Field(default=None, validation_alias="TDX_CLIENT_ID")
     tdx_client_secret: str | None = Field(default=None, validation_alias="TDX_CLIENT_SECRET")
@@ -43,6 +46,9 @@ class Settings(BaseSettings):
     )
     solver_time_limit_seconds: int = Field(
         default=10, ge=1, le=300, validation_alias="SOLVER_TIME_LIMIT_SECONDS"
+    )
+    demo_access_password: str | None = Field(
+        default=None, validation_alias="DEMO_ACCESS_PASSWORD"
     )
 
     @property

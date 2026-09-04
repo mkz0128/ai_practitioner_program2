@@ -2,7 +2,7 @@
 
 ## CURRENT PHASE
 
-- 階段：`PHASE_2_FEATURE_IMPLEMENTATION`
+- 階段：`PHASE_3_RENDER_FREE_TEST_DEPLOYMENT`
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
@@ -41,18 +41,19 @@
 
 ## NOW
 
-- 完成剩餘缺口稽核、第二組隨機資料與連續多筆插單驗收；維持既有地圖、Provider 與排程核心，不執行 Dispatch／部署。
+- 完成 Render Free 測試服務的 Production Docker 本機驗證與公開部署前置檢查；不執行 Dispatch、不合併 `main`。
 
 ## NEXT
 
-1. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
-2. 由前端團隊依 `docs/frontend-handoff.md` 進行日常維護與使用者驗收。
-3. 進行部署前的 Linux runtime／credential 注入檢查。
+1. 完成 Render Dashboard 登入／GitHub OAuth 與安全 Provider key 注入後的公開網址驗收。
+2. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
+3. 由前端團隊依 `docs/frontend-handoff.md` 進行日常維護與使用者驗收。
 
 ## BLOCKED
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
 - `REQ-ORIG-003`：已以 Browser key 完成 Google Maps Live 瀏覽器驗收；無 key 的環境仍保留明確 simulated fallback。
+- `DEPLOY-001`：Render Dashboard／API 認證尚未提供，且目前可見的 Provider key 來源屬曾曝光的開發憑證；公開部署前必須由使用者完成 Render 登入／GitHub OAuth，並注入已輪替的 Render Secrets。未完成前不得建立公開服務或宣稱 Live PASS。
 
 ## OPEN ISSUES
 
@@ -74,6 +75,11 @@
 - `RANDOM-BROWSER-001 — Acceptance`：第二組 workbook 已在 Playwright 以拖放方式匯入；附件與文字單次送出、純附件預設意圖、連續三筆任意 ID 插單均完成預覽／人工確認／重新整理 hydration，Console errors 與 Dispatch requests 皆為 0。該瀏覽器驗收為 `SIMULATED PASS`（路線 provider 為成本受控的 deterministic simulated）；既有代表性 Google Live gate 仍獨立標示 `LIVE PASS`。
 
 ## DONE THIS ROUND
+
+- 新增單一 Render Web Service 的 `Dockerfile`、`.dockerignore` 與 `render.yaml`：multi-stage Vite build、FastAPI SPA fallback、`$PORT`、單一 Uvicorn worker、`/health`、Free Singapore region、branch pinning 與 `sync: false` secrets。
+- 將 production 前端 API 改為同源相對路徑；Vite 本機開發以 `/api` proxy 連接 FastAPI，Browser key 由公開 runtime-config 注入，不把 server secrets 放入 bundle。
+- 新增可選的 `DEMO_ACCESS_PASSWORD` 展示環境閘門：`/health`／Swagger／登入端點公開，其餘 `/api/v1/*` 受 HttpOnly、SameSite session cookie 保護；未設定密碼的本機 deterministic tests 維持原 API 行為。
+- 已以本機 Uvicorn smoke check 驗證 `/health`、`/ready`、`/docs`、SPA root／deep-link、assets 與 runtime-config；已驗證展示閘門的未登入 401、登入後 API 200，未執行 Dispatch。
 
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 將原始必要功能（A 類）、企業級擴充（B 類）與目前暫不處理（C 類）分開記錄，並保留每項工作的 Requirement ID、證據、缺口、前置條件與驗收方式。
@@ -130,6 +136,9 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- Render deployment preflight（2026-09-04 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常、工作區初始乾淨；Docker CLI 存在但 Docker Linux daemon 未啟動，Production image build 因此 `BLOCKED`。本機無 Render CLI、Render API token 或可用 Render service id；未建立雲端資源、未部署。
+- 本輪驗證：backend OpenAPI snapshot、ruff、mypy 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；完整 pytest 尚待本輪提交前重跑。新增部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。
 
 - 日期：`2026-09-04 Asia/Taipei`
 - Credential preflight（早期 keyless process environment 歷史紀錄）：當時未匯出 OpenAI、Google Routes、Browser、TDX 變數；最新 Live process 已安全載入 OpenAI、Google Routes 與 Browser，TDX 仍為可選未設定，且未讀取或記錄任何值。

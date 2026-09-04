@@ -327,6 +327,12 @@ DRAFT -> VALIDATED -> PROPOSED -> CONFIRMED -> DISPATCHED
 - CORS 是 environment allowlist。
 - 不含真實 customer PII、production mutation、auto-deploy 或冒用使用者的 confirmation。
 
+## Render Free 測試部署架構
+
+本專案的 Render 目標是 `feat/frontend-control-tower` 上的單一 Free Web Service，僅供測試與展示，不代表 Production deployment。Docker multi-stage build 先產生 Vite `frontend/dist`，再由單一 FastAPI/Uvicorn worker 同源提供 SPA、Swagger 與 `/api/v1/*`；Render `$PORT` 與 `/health` 由平台注入及檢查。Render Blueprint 的 branch auto-deploy 僅限此測試服務，不建立 GitHub Actions、不合併 `main`、不執行 Dispatch。
+
+Render Secrets 只注入 server-side `OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY` 與展示密碼；Browser key 透過公開 runtime config 供 Maps JavaScript 使用，TDX 變數可缺省。部署前必須使用已輪替且受限的 Provider keys，不能把曾曝光的開發憑證帶入公開服務。SQLite 使用 `/tmp` 暫存路徑，服務休眠或重啟後資料可能重置。
+
 ## 已查閱的官方參考資料（2026-09-01）
 
 - OpenAI model/Agent guidance: https://developers.openai.com/api/docs/guides/latest-model

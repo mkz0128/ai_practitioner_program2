@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, chat, confirmPlan, createPlan, getMapData, getPlan, getProviderStatus, getValidation, importWorkbook, previewUrgent } from './api'
 import { AgentPanel } from './components/AgentPanel'
 import { DetailsPanel } from './components/DetailsPanel'
@@ -45,7 +45,41 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [demoGate, setDemoGate] = useState({ required: false, authenticated: true })
+  const [demoPassword, setDemoPassword] = useState('')
+  const [demoLoginError, setDemoLoginError] = useState<string | null>(null)
+  const [demoLoginBusy, setDemoLoginBusy] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    // The local app has no gate by default. A Render deployment can enable it
+    // with DEMO_ACCESS_PASSWORD without baking the password into the bundle.
+    void fetch('/auth/status')
+      .then((response) => (response.ok ? response.json() as Promise<{ required?: boolean; authenticated?: boolean }> : null))
+      .then((status) => {
+        if (status?.required) setDemoGate({ required: true, authenticated: Boolean(status.authenticated) })
+      })
+      .catch(() => undefined)
+  }, [])
+
+  const loginToDemo = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!demoPassword || demoLoginBusy) return
+    setDemoLoginBusy(true); setDemoLoginError(null)
+    try {
+      const response = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ password: demoPassword }),
+      })
+      if (!response.ok) throw new Error('展示環境密碼不正確。')
+      setDemoGate({ required: true, authenticated: true })
+      setDemoPassword('')
+      await refreshProviders()
+    } catch (loginError) {
+      setDemoLoginError(loginError instanceof Error ? loginError.message : '登入失敗，請重試。')
+    } finally { setDemoLoginBusy(false) }
+  }
 
   const refreshProviders = useCallback(async () => {
     try { setProviders((await getProviderStatus()).providers) } catch { setProviders([]) }
@@ -143,6 +177,10 @@ export default function App() {
       setNotice(`已確認方案版本 ${confirmed.version}；本控制塔未執行 Dispatch。`)
     } catch (requestError) { setError(errorText(requestError)) }
     finally { setBusy(false) }
+  }
+
+  if (demoGate.required && !demoGate.authenticated) {
+    return <div className="demo-gate"><form className="demo-login-card" onSubmit={loginToDemo}><div className="brand-mark">AI</div><h1>展示環境登入</h1><p>請輸入展示密碼以開始使用配送調度 Copilot。</p><input aria-label="展示密碼" type="password" autoComplete="current-password" value={demoPassword} onChange={(event) => setDemoPassword(event.target.value)} placeholder="展示密碼" /><button className="control-button" type="submit" disabled={demoLoginBusy}>{demoLoginBusy ? '登入中…' : '登入展示環境'}</button>{demoLoginError && <div className="error-box" role="alert">{demoLoginError}</div>}</form></div>
   }
 
   return <div className="app-shell">

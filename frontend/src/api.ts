@@ -12,7 +12,10 @@ import type {
   UrgentPackagePayload,
 } from './types'
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+// Production is served by the same FastAPI origin. Local Vite development can
+// proxy /api to port 8000 (see vite.config.ts), so no environment-specific
+// hostname is baked into the bundle.
+const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 export class ApiError extends Error {
   readonly code: string
