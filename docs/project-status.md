@@ -41,7 +41,7 @@
 
 ## NOW
 
-- 完成 Render Free 測試服務的 Production Docker 本機驗證與公開部署前置檢查；不執行 Dispatch、不合併 `main`。
+- 修正 Render Docker build 的 frontend `dist` 來源並完成部署前品質驗證；等待 Render 重新建置，不執行 Dispatch、不合併 `main`。
 
 ## NEXT
 
@@ -79,6 +79,7 @@
 - 新增單一 Render Web Service 的 `Dockerfile`、`.dockerignore` 與 `render.yaml`：multi-stage Vite build、FastAPI SPA fallback、`$PORT`、單一 Uvicorn worker、`/health`、Free Singapore region、branch pinning 與 `sync: false` secrets。
 - 將 production 前端 API 改為同源相對路徑；Vite 本機開發以 `/api` proxy 連接 FastAPI，Browser key 由公開 runtime-config 注入，不把 server secrets 放入 bundle。
 - 新增可選的 `DEMO_ACCESS_PASSWORD` 展示環境閘門：`/health`／Swagger／登入端點公開，其餘 `/api/v1/*` 受 HttpOnly、SameSite session cookie 保護；未設定密碼的本機 deterministic tests 維持原 API 行為。
+- 修正 Production `Dockerfile`：runtime stage 改由 `COPY --from=frontend-builder /app/frontend/dist ./frontend/dist` 取得 builder 產物；`.dockerignore` 僅排除不必要的 `dist`／`node_modules`，不排除 frontend source、package manifest 或 pnpm lockfile。
 - 已以本機 Uvicorn smoke check 驗證 `/health`、`/ready`、`/docs`、SPA root／deep-link、assets 與 runtime-config；已驗證展示閘門的未登入 401、登入後 API 200，未執行 Dispatch。
 
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
@@ -137,9 +138,10 @@
 
 ## LAST VALIDATION
 
-- Render deployment preflight（2026-09-04 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；Docker CLI 存在但 Docker Linux daemon 未啟動，Production image build 因此 `BLOCKED`。本機無 Render CLI、Render API token 或可用 Render service id；未建立雲端資源、未部署。
+- Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
 - 本輪驗證：backend `pytest 41 passed, 3 skipped`（3 個條件式 live gate）、OpenAPI snapshot、`ruff check .`、`mypy src` 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。
 - 本輪 Git：deployment baseline commit `9432580`（完整 SHA 由 Git 回報）已推送至 `origin/feat/frontend-control-tower`；未執行 force push、Dispatch 或部署。
+- 本輪 Docker fix 尚待建立 commit；Dockerfile／ignore 檢查、backend `pytest 41 passed, 3 skipped`、`ruff`、`mypy`、frontend TypeScript／ESLint／Vitest／Vite build 與 secret scan 均 `PASS`。
 
 - 日期：`2026-09-04 Asia/Taipei`
 - Credential preflight（早期 keyless process environment 歷史紀錄）：當時未匯出 OpenAI、Google Routes、Browser、TDX 變數；最新 Live process 已安全載入 OpenAI、Google Routes 與 Browser，TDX 仍為可選未設定，且未讀取或記錄任何值。

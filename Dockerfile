@@ -1,6 +1,6 @@
 # Production image for the Render free test service.
 # The React bundle and FastAPI API are served by one process/origin.
-FROM node:22-bookworm-slim AS frontend-build
+FROM node:22-bookworm-slim AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
@@ -26,7 +26,7 @@ RUN sed '/^pywin32==/d' requirements.lock > /tmp/requirements.render.lock \
     && rm -f /tmp/requirements.render.lock
 
 COPY src/ ./src/
-COPY frontend/dist/ ./frontend/dist/
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 COPY data/samples/ ./data/samples/
 COPY pyproject.toml README.md ./
 
