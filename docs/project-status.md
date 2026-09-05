@@ -8,7 +8,7 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（Render 公開 simulated plan 語意案例）；完整 Windows HTTP gate 仍記錄平台限制
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE；LIFECYCLE_PARTIAL`
-- Live Provider Integration：`OPENAI_LIVE；GOOGLE_BLOCKED_403；BROWSER_MISSING；TDX_OPTIONAL_NOT_CONFIGURED`
+- Live Provider Integration：`OPENAI_LIVE；GOOGLE_BLOCKED_403；BROWSER_CONFIGURED；TDX_OPTIONAL_NOT_CONFIGURED`
 - Frontend Integration status：`PUBLIC_REVALIDATED（simulated route flow）；Google server Matrix 仍受權限阻塞`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
@@ -32,7 +32,7 @@
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Local Live；HTTP gate blocked） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 需在不觸發 Windows in-process OR-Tools abort 的 HTTP harness／公開環境重驗 |
 | Google Routes 真實距離／時間 | 原始必要 | 部分完成（Live blocked） | `src/providers/google_routes.py`；本輪 live gate 回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 的權限／API 或配額設定 |
 | Google Matrix 進入 OR-Tools | 原始必要 | 部分完成（Live gate blocked） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator；本輪 Google gate 為 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗 |
-| Google Maps Browser 地圖 | 原始必要 | 部分完成（Browser key missing） | `frontend/src/components/MapPanel.tsx`、simulated fallback 與 key-presence runtime gate | 需提供 Browser key 後重新執行瀏覽器 Live gate |
+| Google Maps Browser 地圖 | 原始必要 | 部分完成（Browser key configured；路線資料受 Google server provider 阻塞） | `frontend/src/components/MapPanel.tsx`、runtime key gate；公開 runtime-config 僅回報設定狀態 | 需先解除 Google Routes 403，再重驗真實路線與站點 |
 | TDX OAuth／真實路況查詢 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth/event models、mock test | TDX credentials 與 live response |
 | TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
 | 前端完整操作流程 | 原始必要 | 部分完成（本機回歸通過；公開 Live 需重驗） | `frontend/tests/e2e/live-control-tower.spec.ts`、本機 Playwright regression | 目前 Browser key／Google live provider gate 受環境限制 |
@@ -56,13 +56,24 @@
 ## BLOCKED
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
-- `REQ-ORIG-003`：歷史公開驗收曾以 Browser key 完成 Google Maps；目前本機 Browser key 未設定，仍保留明確 simulated fallback，不能由歷史證據推論目前 Live PASS。
+- `REQ-ORIG-003`：Browser key 已在目前 Render runtime 設定；Google Routes 403 使目前無法取得新的真實路線方案，故不將地圖路線標示為 Live PASS。
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
 
 - `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
 - `EXT-002 — External Provider Issue`：local environment 尚未設定 TDX credentials；core planning 仍可使用。
+
+## 2026-09-05 V2 最新公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
+
+- Render Dashboard 顯示該 Commit 已部署為 `Live`；`/health` HTTP 200，服務回報 `status=ok`。
+- 無資料的八種口語／中英混用事件均由公開 `/api/v1/agent/chat` 回傳 `RunResult`：急單與缺資料事件選 `request_missing_fields`；車輛事件選 `change_vehicle_availability`；凍結站點選 `change_frozen_stops`；延遲查詢選 `simulate_delay`。未使用 regex 或固定訂單路由。
+- 公開 Agent 有方案查詢選用 `highest_load_vehicle`，提示注入回傳 `400 PROMPT_INJECTION_BLOCKED`；Dispatch tool 不在 allowlist，公開驗收 Dispatch requests 為 0。
+- 公開 simulated 40 單方案：40/40 安排、365 kg、ORTOOLS、Validator `valid=true`；策略比較仍為同一 simulated Matrix：FASTEST `19,463s`、BALANCED `35,732s`／載重差 `9kg`、STABLE `21,742s`／最小餘裕 `177.4min`。
+- 公開換車 preview（ORD-002→VEH-004）HTTP 200，Validator `valid=true`、距離 `+4,003m`、時間 `+501s`、需要人工確認；無效車輛回傳 `409 REASSIGNMENT_NOT_FEASIBLE`，不污染方案。
+- 公開延遲 10／20／30 分鐘均回傳 40 筆 deterministic risk；公開版本流程為 V1→V2（CONFIRMED）→V3（restore preview），V3 重新 Validator 通過且不覆蓋歷史。
+- 公開 AUTO Google plan 實際回傳 `502 PROVIDER_UNAVAILABLE`，安全分類 `GOOGLE_HTTP_403`／`API_KEY_RESTRICTED`、`fallback_used=false`。這是目前唯一阻塞真實 Google Matrix→OR-Tools 的外部設定問題；未輸出 response body、headers 或任何 key。
+- 本機全量 `pytest --basetemp=.pytest-verify-20260905`：`83 passed、4 skipped`；Ruff、mypy 通過。Frontend TypeScript／ESLint 通過；Vite build 以 ASCII drive 通過，Vitest 受 Windows sandbox 路徑解析限制。未執行 Dispatch。
 - `ENV-001 — Environment Issue`：dependency lock 已在 Windows CPython 3.12 驗證；未來 Linux deployment 前仍需進行 Linux wheel／lock verification。
 - `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix gate 實際回傳 `GOOGLE_HTTP_403`，未 fallback；需修正 key 權限後再驗收 Matrix、geometry 與 OR-Tools 同次求解。
 - `REQ-ORIG-001／002 — Google error classification`：Render 公開 AUTO 回應安全分類為 `API_KEY_RESTRICTED`（HTTP 403）；未記錄 response body、headers 或 key。Server key 應在 Google Cloud 將 Routes API 加入 API restriction，且不要使用 HTTP referrer restriction；修改後需重新部署。

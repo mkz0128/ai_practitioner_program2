@@ -421,6 +421,26 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 
 目前可從公開回應確認的分類是 `API_KEY_RESTRICTED`，未記錄 response body、headers 或任何金鑰值；因此不能進一步宣稱是 Billing 或 API 未啟用。若要解除阻塞，需在 Google Cloud Console 啟用 Routes API／Maps JavaScript API、確認 Billing，將 server key 限制為 Routes API 且不使用 HTTP referrer，並將 Browser key 的 HTTP referrer 限制為 `https://ai-dispatch-control-tower.onrender.com/*`；更新 Render 環境變數後重新部署，再重驗同一份 Matrix→OR-Tools。
 
+## 2026-09-05 V2 最新公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
+
+| 閘門 | 實際證據 | 分類 |
+|---|---|---|
+| Render 部署與健康檢查 | Dashboard 顯示 `c5fe929` 為 `Live`；公開 `/health` HTTP 200、`status=ok` | `PUBLIC LIVE PASS` |
+| 無資料急單語意 | 「幫我插入一張急單」、「臨時多了一個下午三點前要送的包裹」、「把這筆塞進今天的路線」均 HTTP 200、`RunResult`、`request_missing_fields`；回傳嚴格欄位清單且未猜測資料 | `PUBLIC LIVE PASS` |
+| 車輛／凍結／延遲語意 | 三號車故障與中英混用故障選 `change_vehicle_availability`；前五站選 `change_frozen_stops`；塞車十分鐘選 `simulate_delay` | `PUBLIC LIVE PASS` |
+| Agent 有方案證據 | 公開計畫查詢選 `highest_load_vehicle`，回傳 1 筆 evidence；全程未顯示 private reasoning | `PUBLIC LIVE PASS` |
+| Prompt injection | 公開請求回傳 `400 PROMPT_INJECTION_BLOCKED`，未提供 Dispatch tool | `PUBLIC LIVE PASS` |
+| 40 單 simulated 方案 | 公開匯入 40 orders／80 packages／4 vehicles／365 kg；ORTOOLS 40/40、Validator `valid=true` | `SIMULATED PASS` |
+| 三策略比較 | 同一 simulated Matrix：FASTEST `19,463s／155,485m`；BALANCED `35,732s／285,839m`、載重差 `9kg`；STABLE `21,742s／173,702m`、最小餘裕 `177.4min`；三者 Validator 通過 | `SIMULATED PASS` |
+| 公開換車 Preview | ORD-002→VEH-004 HTTP 200；Validator `valid=true`、距離 `+4,003m`、時間 `+501s`、需要人工確認；無效目標 HTTP 409 且原方案不變 | `PUBLIC LIVE PASS` |
+| 公開延遲風險 | 10／20／30 分鐘各 HTTP 200、40 筆 deterministic risk；無捏造機率 | `PUBLIC LIVE PASS` |
+| 公開版本與復原 | V1→V2 `CONFIRMED`；復原 V1 建立 V3 `PROPOSED`，歷史未覆蓋且 Validator 通過 | `PUBLIC LIVE PASS` |
+| Google Routes AUTO | HTTP 502 `PROVIDER_UNAVAILABLE`；`GOOGLE_HTTP_403` 分類 `API_KEY_RESTRICTED`、`fallback_used=false` | `BLOCKED` |
+| Google Maps Browser | Render runtime-config 回報 Browser key 已設定；地圖路線仍需先取得 Google Routes 方案，故目前不把真實路線標為 PASS | `BLOCKED`（依 Google Routes） |
+| TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
+| 本機品質 | `pytest --basetemp=.pytest-verify-20260905`：`83 passed、4 skipped`；Ruff／mypy 通過；前端 TypeScript／ESLint 通過、Vite build 在 ASCII drive 通過 | `LOCAL PASS`；Vitest 受 Windows sandbox 路徑限制 |
+| 安全／Dispatch | Secret pattern `0`、real env tracked `0`、workflow `0`、公開驗收 Dispatch requests `0` | `PASS` |
+
 ## 2026-09-05 策略與 Provider 分類修正
 
 - `BALANCED` 現在使用 Capacity dimension span 作為主要成本，避免沿用行駛時間弧成本而偶然比 `FASTEST` 更快；`FASTEST` 以 `total_driving_time_s`、`BALANCED` 以 `load_spread_kg`、`STABLE` 以 `min_slack_minutes` 作為公開比較指標。回歸測試會直接斷言三項排序與同一 Matrix／Validator。
