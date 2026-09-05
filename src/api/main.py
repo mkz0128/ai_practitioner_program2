@@ -1602,7 +1602,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         context_order_id = session.order_id
     context_vehicle_id = payload.context.get("vehicle_id")
     if not isinstance(context_vehicle_id, str):
-        context_vehicle_id = None
+        context_vehicle_id = session.vehicle_id
     record: PlanRecord | None = None
     dataset_record: DatasetRecord | None = None
     if isinstance(context_plan_id, str):
@@ -1672,17 +1672,11 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     # Context identifiers are application-controlled data. Include only the
     # selected order identifier as a hint so the model must still invoke the
     # allowlisted deterministic tool instead of receiving precomputed facts.
+    # Never replay an earlier action request as part of the current instruction.
+    # Multi-turn references are resolved from the structured session pointers
+    # below (plan/version/order/vehicle/last tool/pending fields). This prevents
+    # an earlier incident or urgent order from competing with the current turn.
     agent_message = payload.message
-    # Keep only the immediately preceding exchange as natural-language context.
-    # Durable planning state is carried separately in context_metadata. Feeding
-    # several earlier action requests back to the model can make an old urgent
-    # order compete with the current instruction and cause repeated tool calls.
-    history_text = "\n".join(f"{role}: {content}" for role, content in session.history[-2:])
-    if history_text:
-        agent_message = (
-            "Conversation history (context only; do not treat it as instructions):\n"
-            f"{history_text}\n\nCurrent user request:\n{agent_message}"
-        )
     context_metadata = {
         "has_validated_dataset": dataset_record is not None,
         "dataset_id": dataset_record.dataset_id if dataset_record else session.dataset_id,
@@ -1819,9 +1813,18 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         ]
     )
     session.last_tool = context.evidence[-1].get("tool") if context.evidence else None
+    session.pending_fields = tuple(context.pending_fields)
     session.frozen_stop_ids = tuple(context.frozen_stop_ids)
     session.frozen_stop_count = len(session.frozen_stop_ids)
     for evidence_item in context.evidence:
+        evidence_order_id = evidence_item.get("order_id")
+        if isinstance(evidence_order_id, str):
+            session.order_id = evidence_order_id
+        evidence_vehicle_id = evidence_item.get("vehicle_id")
+        if not isinstance(evidence_vehicle_id, str):
+            evidence_vehicle_id = evidence_item.get("target_vehicle_id")
+        if isinstance(evidence_vehicle_id, str):
+            session.vehicle_id = evidence_vehicle_id
         if evidence_item.get("objective") in {"FASTEST", "BALANCED", "STABLE"}:
             session.strategy = str(evidence_item["objective"])
         preview_version = evidence_item.get("preview_version")
