@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import src.services.planner as planner_module
 from src.services.importer import parse_workbook
 from src.services.matrix import SimulatedRouteProvider
 from src.services.planner import build_baseline, build_ortools
@@ -47,3 +48,16 @@ def test_fixed_matrix_is_shared_for_comparison() -> None:
 
     assert baseline.provider_mode == optimized.provider_mode == matrix.provider_mode
     assert matrix.matrix_version == "sim-v1"
+
+
+def test_ortools_reconciles_solver_sequence_without_greedy_reordering(monkeypatch) -> None:
+    dataset, matrix = _dataset_and_matrix()
+
+    def fail_if_greedy_reconstruction(*_args, **_kwargs):
+        raise AssertionError("OR-Tools routes must be evaluated in solver order")
+
+    monkeypatch.setattr(planner_module, "_route_metrics", fail_if_greedy_reconstruction)
+    plan = planner_module.build_ortools(dataset, matrix, time_limit_seconds=1)
+
+    validation = validate_plan(dataset, plan, matrix)
+    assert validation.valid, validation.model_dump()

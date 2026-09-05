@@ -468,7 +468,12 @@ def build_ortools(
                 order_ids.append(node_ids[node])
                 assigned.add(node_ids[node])
             index = solution.Value(routing.NextVar(index))
-        route = _route_metrics(order_ids, vehicle, order_map, matrix)
+        # The solver's sequence already satisfies the Capacity and Time
+        # dimensions. Re-running the nearest-neighbor builder here can choose
+        # a different order and incorrectly reject an otherwise feasible route.
+        # Reconstruct metrics in the exact solver order, then let the
+        # independent validator perform the final legality check.
+        route = _route_metrics_preserving_order(order_ids, vehicle, order_map, matrix)
         if route is not None:
             routes.append(route)
         else:

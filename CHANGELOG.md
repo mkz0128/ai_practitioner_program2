@@ -6,6 +6,7 @@
 
 - 以 Render 公開網址重新核對健康檢查、13 條 API 契約、40 單 Google Matrix → OR-Tools → Validator、OpenAI Agent、Google Maps 與 ORD-041 preview。
 - 修正前端服務狀態列：Browser key 由 runtime config 設定時，Google Maps 狀態顯示為已設定，不再誤報未設定。
+- 修正 OR-Tools 路線結果重建：以求解器原始順序計算路線指標，避免合法車輛路線被最近鄰重排誤判為不可行；新增回歸測試。
 - 新增公開驗收與競賽缺口紀錄；CSV（目前四表 `.xlsx` 契約）與 TDX Live 仍明確標示為阻塞／加分項，不冒稱完成。
 - 保持 Dispatch requests 為 0；未執行正式環境操作、付費資源、force push 或合併 `main`。
 
