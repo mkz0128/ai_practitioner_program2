@@ -26,7 +26,7 @@
 | OR-Tools 分車與順序 | 原始必要 | 部分完成（Google live gate 目前受 403 阻塞） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`；Live gate 實際回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗同次 Matrix→OR-Tools |
 | 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成（simulated） | planner／validator time-window tests | 尚未以 live duration 驗證 |
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
-| 超重重新分配 | 原始必要 | 完成（Google live Matrix） | Z4 112 kg acceptance、Validator evidence、本輪 Live plan | 無核心缺口 |
+| 超重重新分配 | 原始必要 | 完成（deterministic／simulated；Google live 目前阻塞） | Z4 112 kg acceptance、Validator evidence；Google AUTO gate 實際回傳 403 並未 fallback | Google server key 權限修正後重驗 live Matrix |
 | 臨時插單 Preview 與差異 | 原始必要 | 部分完成（deterministic；Google live gate 阻塞） | `try_minimal_insert`、`compute_plan_diff`、本輪 deterministic regression | 需在 Google live Matrix 可用時重驗代表性插單 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Local Live；HTTP gate blocked） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 需在不觸發 Windows in-process OR-Tools abort 的 HTTP harness／公開環境重驗 |
@@ -155,6 +155,7 @@
 ## LAST VALIDATION
 
 - 2026-09-05 Render 公開稽核：`https://ai-dispatch-control-tower.onrender.com/` 回應 `/health=200`、`/ready=200`；OpenAPI 實際 13 paths；CORS `http://localhost:5173` preflight 通過。官方合成 40 單匯入為 40 orders／80 packages／4 vehicles／5 zones；Google `provider_mode=GOOGLE` Matrix 進入 OR-Tools，同一方案 40/40、365 kg、Validator valid=true，Map data 回傳 4 條非 simulated Google geometry。
+- 2026-09-05（本輪 V2 權威重驗）：Render `/health=200`、`/ready=200`、`/docs=200`；最新部署為 `842da61b0f2b003633e3c839a001a54efa9f647e`。公開 Baseline 與 simulated OR-Tools 端點可回應；Google `AUTO` 方案本輪實際回傳 `502 PROVIDER_UNAVAILABLE`／`GOOGLE_HTTP_403`，安全分類為 `API_KEY_RESTRICTED`，`fallback_used=false`，因此不得將目前 Google Matrix→OR-Tools 或 Browser 地圖標示為 Live Pass。公開 Browser 頁面目前顯示 Browser key 未設定；TDX 為 `OPTIONAL／NOT_CONFIGURED`。
 - 2026-09-05 Render 公開 Agent：無資料一般問答 HTTP 200；有方案的多輪查詢 HTTP 200，evidence tool `highest_load_vehicle`，回答引用 `VEH-003` 的 deterministic load evidence；prompt-injection 測試拒絕虛構並呼叫 `assistant_help`。官方 ORD-041 preview 為 V1→V2、`MINIMAL_CHANGE`、40→41 張、365→367 kg、換車 0、僅 1 台車受影響、Validator 通過；preview 仍為待人工確認，未執行 Dispatch。
 - 2026-09-05 程式修正驗證：新增 `test_plan_evidence_vehicle_count_counts_non_empty_routes` 與 `test_malformed_request_uses_field_level_manual_review_envelope`；目標測試 10 passed。`ruff`／`mypy` 與前端 typecheck／ESLint／Vitest 2 tests／Vite build 均通過。完整 pytest 在本機以空白 OpenAI key 執行時 41 passed、3 skipped，另有 1 個既有測試因本機未提供可用 OpenAI key 回傳 503（非程式失敗）。
 - 本輪仍未執行 Dispatch、正式部署、付費資源、force push 或 main merge；TDX 維持 `OPTIONAL／NOT_CONFIGURED`。修正後需等待 Render 自動部署，再重驗公開頁面。

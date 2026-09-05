@@ -398,6 +398,29 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 
 目前 OpenAPI 實際註冊 18 組 `/api/v1`／health paths：原有 13 組契約保持相容，新增的 5 組為策略比較、版本列舉／復原、延遲預覽與換車預覽；snapshot test 已同步。
 
+## 2026-09-05 V2 權威重驗（目前部署）
+
+以下結果優先於本文件較早的歷史快照；所有數字均來自目前 Render `842da61b0f2b003633e3c839a001a54efa9f647e` 部署或本機可重現測試。
+
+| 閘門 | 實際證據 | 分類 |
+|---|---|---|
+| 三策略一致性 | 同一 simulated dataset／matrix：FASTEST `19,463s／155,485m`；BALANCED `35,732s／285,839m`、載重差 `9kg`；STABLE `21,742s／173,702m`、最小餘裕 `177.4min`；三者 Validator 均通過 | `SIMULATED PASS` |
+| FASTEST 主要速度指標 | `total_duration_s` 為三者最低（19,463 < 21,742 < 35,732）；API `primary_goal` 明示最小化總行駛時間 | `SIMULATED PASS` |
+| BALANCED 工作量指標 | `load_spread_kg=9`，低於 FASTEST／STABLE；API 明示縮小各車載重差距 | `SIMULATED PASS` |
+| STABLE 風險指標 | `min_slack_minutes=177.4`，高於 FASTEST／BALANCED；API 明示保留時段餘裕 | `SIMULATED PASS` |
+| 公開 Agent 語意 | `ORD-020 為什麼給這台車？` 回傳 `RunResult`／`explain_assignment` evidence；`三號車壞掉了，help me reassign` 回傳 `RunResult`／`change_vehicle_availability`；缺資料案例回傳 `request_missing_fields` | `PUBLIC LIVE PASS`（路線資料為 SIMULATED） |
+| Render 基本服務 | `/health=200`、`/ready=200`、`/docs=200`、OpenAPI 18 paths | `PUBLIC LIVE PASS` |
+| Google Routes AUTO | HTTP `502 PROVIDER_UNAVAILABLE`，`GOOGLE_HTTP_403`，安全分類 `API_KEY_RESTRICTED`，`fallback_used=false`；未把 simulated 結果冒稱 Live | `BLOCKED` |
+| Google Maps Browser | 公開頁面目前顯示 Browser key 未設定，故不能宣稱目前地圖 Live | `BLOCKED` |
+| TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
+| 本機後端品質 | `pytest --basetemp=.pytest-local-temp-run`：`83 passed、4 skipped`；`ruff`、`mypy`、`git diff --check` 通過 | `LOCAL PASS` |
+| 前端品質 | TypeScript／ESLint 通過；Vite production build 以 ASCII drive alias 通過；Vitest 在 Windows 非 ASCII sandbox 路徑的 esbuild setup-file 解析受工具層限制 | `LOCAL PASS`／`BLOCKED`（Vitest 工具層） |
+| 安全與 Dispatch | tracked secret pattern `0`、workflow `0`；所有公開驗收 Dispatch requests `0` | `PASS` |
+
+### Google 403 安全分類與必要外部修正
+
+目前可從公開回應確認的分類是 `API_KEY_RESTRICTED`，未記錄 response body、headers 或任何金鑰值；因此不能進一步宣稱是 Billing 或 API 未啟用。若要解除阻塞，需在 Google Cloud Console 啟用 Routes API／Maps JavaScript API、確認 Billing，將 server key 限制為 Routes API 且不使用 HTTP referrer，並將 Browser key 的 HTTP referrer 限制為 `https://ai-dispatch-control-tower.onrender.com/*`；更新 Render 環境變數後重新部署，再重驗同一份 Matrix→OR-Tools。
+
 ## 2026-09-05 策略與 Provider 分類修正
 
 - `BALANCED` 現在使用 Capacity dimension span 作為主要成本，避免沿用行駛時間弧成本而偶然比 `FASTEST` 更快；`FASTEST` 以 `total_driving_time_s`、`BALANCED` 以 `load_spread_kg`、`STABLE` 以 `min_slack_minutes` 作為公開比較指標。回歸測試會直接斷言三項排序與同一 Matrix／Validator。
