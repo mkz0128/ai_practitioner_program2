@@ -40,6 +40,8 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
   const planEvidence = evidence.find((item) => item.tool === 'plan_dispatch')?.data
   const highestLoadEvidence = evidence.find((item) => item.tool === 'highest_load_vehicle')?.data
   const missingFieldsEvidence = evidence.find((item) => item.tool === 'request_missing_fields')?.data
+  const vehicleAvailabilityEvidence = evidence.find((item) => item.tool === 'change_vehicle_availability')?.data
+  const urgentInsertEvidence = evidence.find((item) => item.tool === 'preview_urgent_insert')?.data
   if (missingFieldsEvidence && Array.isArray(missingFieldsEvidence.missing_fields)) {
     const labels: Record<string, string> = {
       order_id: '訂單編號', zone_code: '配送區域', city: '城市', district: '行政區',
@@ -55,8 +57,32 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
     const utilization = typeof highestLoadEvidence.load_utilization === 'number' ? `${(highestLoadEvidence.load_utilization * 100).toFixed(1)}%` : '—'
     return `目前載重最高的是 ${highestLoadEvidence.vehicle_id}，載重 ${load}／${capacity} kg，使用率 ${utilization}。`
   }
-  const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間/i.test(normalized)
-  if (!containsEngineeringFields) return normalized
+  if (vehicleAvailabilityEvidence && typeof vehicleAvailabilityEvidence.vehicle_id === 'string') {
+    const unavailable = vehicleAvailabilityEvidence.status === 'UNAVAILABLE'
+    const action = unavailable ? '暫停使用' : '恢復使用'
+    return `已依你提供的狀況，建立 ${vehicleAvailabilityEvidence.vehicle_id} ${action}的重新安排預覽；尚未套用，請先查看影響並由調度員確認。`
+  }
+  if (urgentInsertEvidence && typeof urgentInsertEvidence.order_id === 'string') {
+    const diff = urgentInsertEvidence.diff && typeof urgentInsertEvidence.diff === 'object'
+      ? urgentInsertEvidence.diff as Record<string, unknown>
+      : {}
+    const affected = typeof urgentInsertEvidence.affected_vehicle_count === 'number' ? urgentInsertEvidence.affected_vehicle_count : 0
+    const moved = typeof urgentInsertEvidence.moved_order_count === 'number' ? urgentInsertEvidence.moved_order_count : 0
+    const distance = typeof diff.total_distance_delta_m === 'number' ? diff.total_distance_delta_m : null
+    const duration = typeof diff.total_duration_delta_s === 'number' ? diff.total_duration_delta_s : null
+    const parts = [`已建立 ${urgentInsertEvidence.order_id} 的插單預覽，影響 ${affected} 台車，既有訂單換車 ${moved} 張。`]
+    if (distance !== null) parts.push(`總距離${distance >= 0 ? '增加' : '減少'} ${Math.abs(distance).toLocaleString()} 公尺。`)
+    if (duration !== null) parts.push(`行車時間${duration >= 0 ? '增加' : '減少'} ${Math.abs(duration).toLocaleString()} 秒。`)
+    const validator = urgentInsertEvidence.validator && typeof urgentInsertEvidence.validator === 'object'
+      ? urgentInsertEvidence.validator as Record<string, unknown>
+      : undefined
+    parts.push(validator?.valid === true ? '方案檢查通過，尚未套用，請由調度員確認。' : '方案尚未通過檢查，不能套用。')
+    return parts.join(' ')
+  }
+  const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間|UNAVAILABLE|change_vehicle_availability|preview_urgent_insert|inspect_plan_overview/i.test(normalized)
+  const trimmed = normalized.trimStart()
+  const looksLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[')
+  if (!containsEngineeringFields && !looksLikeJson) return normalized
   if (planEvidence) {
     const assigned = typeof planEvidence.assigned_order_count === 'number' ? planEvidence.assigned_order_count : null
     const unassigned = Array.isArray(planEvidence.unassigned_orders) ? planEvidence.unassigned_orders : []
@@ -81,6 +107,8 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   if (tool === 'explain_assignment') return '這份說明來自訂單、車輛容量、服務區域與時段驗證結果。'
   if (tool === 'preview_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
   if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
+  if (tool === 'change_vehicle_availability') return `已建立 ${String(data.vehicle_id ?? '指定車輛')} 的可用狀態變更預覽，尚未套用。`
+  if (tool === 'inspect_plan_overview') return '已依目前方案確認訂單完整性、車輛載重與需要人工處理的項目。'
   if (tool === 'prepare_confirmation') return '已準備確認資訊；請在畫面按下人工確認，系統不會自動執行派車。'
   if (tool === 'assistant_help') return String(data.message ?? '已取得使用說明。')
   return '已取得後端工具證據。'
