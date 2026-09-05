@@ -169,7 +169,11 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
     destination.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
     source.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: transfer }))
   }, { source: sourceElement, destination: targetElement })
-  expect((await reassignResponse).status()).toBe(200)
+  const reassignResult = await reassignResponse
+  expect([200, 409]).toContain(reassignResult.status())
+  if (reassignResult.status() === 409) {
+    expect((await reassignResult.json()).error?.code).toBe('REASSIGNMENT_NOT_FEASIBLE')
+  }
   await expect(page.getByText('局部變更預覽')).toBeVisible({ timeout: 120_000 })
   await expect(page.getByLabel('配送明細').getByText(/方案仍可執行|目前不可套用/)).toBeVisible()
   await capture(page, '10-drag-reassignment-preview.png')

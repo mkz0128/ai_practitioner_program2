@@ -178,6 +178,7 @@ export interface UrgentPreview {
   requires_human_confirmation: boolean
   mode: 'MINIMAL_CHANGE' | 'FULL_REPLAN'
   full_replan_reason?: string | null
+  rejection_reason?: string | null
   affected_vehicle_count: number
   moved_order_count: number
   before: Plan['summary']

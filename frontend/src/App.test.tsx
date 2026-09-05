@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   getProviderStatus: vi.fn(),
   chat: vi.fn(),
   previewUrgent: vi.fn(),
+  previewReassignment: vi.fn(),
   confirmPlan: vi.fn(),
 }))
 
@@ -143,5 +144,31 @@ describe('控制塔主流程', () => {
     await waitFor(() => expect(screen.getByText(/目前不可套用/)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: '套用變更' })).toBeDisabled()
     expect(api.previewUrgent).not.toHaveBeenCalled()
+  })
+
+  it('換車不可行時顯示紅色預覽並保留原方案', async () => {
+    window.localStorage.setItem('dispatch.active-plan', JSON.stringify({ plan_id: 'PLAN-001', version: 1 }))
+    api.previewReassignment.mockRejectedValueOnce(new ApiError(409, {
+      error: {
+        code: 'REASSIGNMENT_NOT_FEASIBLE',
+        message: '換車預覽不符合容量、服務區域或時段限制；原方案未變更。',
+        details: { order_id: 'ORD-002', target_vehicle_id: 'VEH-004' },
+      },
+    }))
+    const planWithOrder = {
+      ...plan,
+      vehicles: [{ vehicle_id: 'VEH-001', vehicle_name: '配送車 1', service_zone_codes: ['Z1'], order_count: 1, package_count: 1, planned_load_kg: 10, max_load_kg: 120, load_utilization: 0.08, total_distance_m: 100, total_duration_s: 60, route_provider_mode: 'SIMULATED', unused_reason: null, stops: [{ order_id: 'ORD-002', sequence: 1, location_label: '示範配送點', latitude: 25, longitude: 121, time_slot: 'AM', eta: '09:00', service_duration_s: 180, leg_distance_m: 100, leg_duration_s: 60, order_weight_kg: 10 }] }, { vehicle_id: 'VEH-004', vehicle_name: '配送車 4', service_zone_codes: ['Z1'], order_count: 0, package_count: 0, planned_load_kg: 0, max_load_kg: 110, load_utilization: 0, total_distance_m: 0, total_duration_s: 0, route_provider_mode: 'SIMULATED', unused_reason: '保留備援容量。', stops: [] }],
+    }
+    api.getPlan.mockResolvedValueOnce(planWithOrder)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('40／40')).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('將 ORD-002 移至其他車輛'), { target: { value: 'VEH-004' } })
+
+    await waitFor(() => expect(screen.getByText(/目前不可套用：目標車輛的載重、服務區域或配送時段不符合要求/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '套用變更' })).toBeDisabled()
+    expect(screen.getByText(/變更前/)).toBeInTheDocument()
+    expect(screen.getByText(/變更後/)).toBeInTheDocument()
+    expect(api.getMapData).toHaveBeenCalledTimes(1)
   })
 })

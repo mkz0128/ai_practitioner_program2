@@ -25,6 +25,7 @@ export class ApiError extends Error {
   readonly code: string
   readonly requestId?: string
   readonly fieldErrors: ValidationError[]
+  readonly details: Record<string, unknown>
 
   constructor(public readonly status: number, body: ApiErrorBody) {
     super(body.error?.message || '後端請求失敗。')
@@ -32,6 +33,7 @@ export class ApiError extends Error {
     this.code = body.error?.code || 'REQUEST_FAILED'
     this.requestId = body.request_id || body.error?.details?.request_id as string | undefined
     this.fieldErrors = body.error?.field_errors || []
+    this.details = body.error?.details || {}
   }
 }
 

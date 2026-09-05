@@ -61,6 +61,39 @@ function rejectedPreviewFromEvidence(data: Record<string, unknown>, activePlan: 
   }
 }
 
+function rejectedReassignmentPreview(error: ApiError, activePlan: Plan, orderId: string, targetVehicleId: string): UrgentPreview | null {
+  if (error.code !== 'REASSIGNMENT_NOT_FEASIBLE') return null
+  const sourceVehicleId = activePlan.vehicles.find((vehicle) => vehicle.stops.some((stop) => stop.order_id === orderId))?.vehicle_id
+  return {
+    plan_id: activePlan.plan_id,
+    base_version: activePlan.version,
+    preview_version: activePlan.version,
+    feasible: false,
+    requires_human_confirmation: true,
+    mode: 'MINIMAL_CHANGE',
+    full_replan_reason: null,
+    rejection_reason: '目標車輛的載重、服務區域或配送時段不符合要求；原方案完全沒有變更。',
+    affected_vehicle_count: new Set([sourceVehicleId, targetVehicleId].filter(Boolean)).size,
+    moved_order_count: 0,
+    before: activePlan.summary,
+    after: activePlan.summary,
+    comparison: {
+      base_algorithm: activePlan.algorithm,
+      preview_algorithm: activePlan.algorithm,
+      base_dataset_hash: activePlan.dataset_hash || '',
+      preview_dataset_hash: activePlan.dataset_hash || '',
+    },
+    diff: {
+      inserted_order_id: orderId,
+      reassigned_orders: [],
+      sequence_changes: [],
+      vehicle_load_changes: [],
+      total_distance_delta_m: 0,
+      total_duration_delta_s: 0,
+    },
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<'assistant' | 'tasks' | 'tracking'>('assistant')
   const [sessionId] = useState(() => `CONVERSATION-${Math.random().toString(36).slice(2, 10).toUpperCase()}`)
@@ -330,7 +363,18 @@ export default function App() {
       setMapData(await getMapData(plan.plan_id, result.preview_version))
       setActiveVehicle(targetVehicleId)
       setActiveOrderId(orderId)
-    } catch (requestError) { setError(errorText(requestError)) }
+    } catch (requestError) {
+      if (requestError instanceof ApiError) {
+        const rejected = rejectedReassignmentPreview(requestError, plan, orderId, targetVehicleId)
+        if (rejected) {
+          setPreview(rejected)
+          setActiveVehicle(targetVehicleId)
+          setActiveOrderId(orderId)
+          return
+        }
+      }
+      setError(errorText(requestError))
+    }
     finally { setBusy(false) }
   }
 

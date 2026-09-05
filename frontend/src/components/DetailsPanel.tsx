@@ -40,7 +40,7 @@ export function DetailsPanel({ plan, preview, onConfirm, onCancelPreview, busy, 
   const previewAssessment = !preview
     ? null
     : !previewCanApply
-      ? { tone: 'error-box', text: `目前不可套用：變更後仍有 ${preview.after.unassigned_order_count} 張訂單無法安排，或方案檢查未通過。` }
+      ? { tone: 'error-box', text: `目前不可套用：${preview.rejection_reason || `變更後仍有 ${preview.after.unassigned_order_count} 張訂單無法安排，或方案檢查未通過。`}` }
       : preview.diff.total_distance_delta_m > 0 || preview.diff.total_duration_delta_s > 0
         ? { tone: 'warning-box', text: `方案仍可執行，但距離${preview.diff.total_distance_delta_m >= 0 ? '增加' : '減少'} ${Math.abs(preview.diff.total_distance_delta_m).toLocaleString()} 公尺、時間${preview.diff.total_duration_delta_s >= 0 ? '增加' : '減少'} ${Math.abs(preview.diff.total_duration_delta_s).toLocaleString()} 秒，需要人工確認。` }
         : { tone: 'success-box', text: '方案檢查通過，沒有新增載重、區域或時段風險，仍需人工確認。' }
