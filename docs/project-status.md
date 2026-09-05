@@ -194,9 +194,10 @@
 
 ## LAST VALIDATION
 
-- 2026-09-06 Commit `7769a977e0894445c4a1551e900a235c09eb8c0b` 公開 Render 線性 E2E：`1 passed`（5.1 分鐘）；同一瀏覽器會話由空白首頁走完整流程，15 張 1440×900 截圖存於 `docs/screenshots/public-final/`，未處理 Console／page error `0`，正式派車 requests `0`。
-- 公開正式方案：40／40 張、4／4 台、365 kg、Google 即時 Matrix→OR-Tools、方案檢查通過；本次畫面載重為 VEH-001 `100/120 kg`、VEH-002 `99/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。
-- 公開 ORD-041：40→41 張、365→367 kg、影響 1 台車、既有訂單換車 0 張、距離 `+0 m`、服務時間 `+180 s`、方案檢查通過；人工確認後建立新版本。固定案例與既有合成站點同位置，以避免即時交通變化迫使全面重排；任意結構化插單仍使用輸入位置。
+- 2026-09-06 Commit `6fcc2d221e201d99ce74395c1a2dbb655fbecb42` 公開 Render 線性 E2E：`1 passed`（5.3 分鐘）；同一瀏覽器會話由空白首頁走完整流程，15 張 1440×900 截圖存於 `docs/screenshots/public-final/`，未處理 Console／page error `0`，正式派車 requests `0`。
+- 公開正式方案：40／40 張、4／4 台、365 kg、Google 即時 Matrix→OR-Tools、方案檢查通過；本次畫面載重為 VEH-001 `106/120 kg`、VEH-002 `93/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。
+- 公開 ORD-041：40→41 張、365→367 kg、影響 1 台車、既有訂單換車 0 張、當次道路距離 `+0 m`、行車時間 `+6 s`、方案檢查通過；人工確認後建立新版本。固定案例與既有合成站點同位置，以避免即時交通變化迫使全面重排；任意結構化插單仍使用輸入位置。
+- 公開三策略：最快 `447 分鐘`；最平均載重差 `8 kg`，小於最穩定的 `24 kg`；公開 Playwright 已加入數值排序斷言，避免名稱與畫面指標再次矛盾。
 - 最新本機：Backend `219 passed、28 skipped`；deterministic corpus `115 passed`；Live Runner `24 passed`；Ruff、mypy、TypeScript、ESLint、Vitest `20 passed`、Vite build 均通過。
 - Playwright：基礎回歸 `2 passed`；固定 seed 隨機資料／純附件 `2 passed`（明確 `SIMULATED`）；公開完整 Google／OpenAI 流程 `1 passed`。本機舊 Live gate 因 Server Key 僅允許 Render 而分類 `API_KEY_RESTRICTED`，不影響已通過的公開 Live 驗收。
 

@@ -7,6 +7,7 @@
 - 最新品質結果：Backend `219 passed、28 skipped`；112-case corpus `115 passed`；OpenAI Live Runner `24 passed`；Frontend Vitest `20 passed`，TypeScript、ESLint、Vite build、Ruff、mypy 與 secret scan 均通過。
 - Commit `550f736` 已在 Render 顯示 Live；公開網站再由空白首頁完整演練一次，結果 `1 passed`（4.6 分鐘），Console／page error 與正式派車請求皆為 0。
 - 修正固定 ORD-041 在不同即時交通結果下偶爾退化為全面重排：示範單改與既有合成站點同位置，並新增 `MINIMAL_CHANGE`、單車影響與零既有訂單換車回歸斷言；Render `7769a97` 公開完整流程 `1 passed`（5.1 分鐘）。
+- 修正均衡策略只壓低最大載重、未同時拉近低載重車輛的目標落差；Capacity 終點加入平均需求軟界線，公開結果的載重差由 `18 kg` 改善為 `8 kg`，小於最穩定方案的 `24 kg`，並新增瀏覽器數值斷言。
 - regression-first 修正空白首頁把「尚未使用」誤顯示為 Google 路線故障；Google Maps 的「已連線」只在地圖實際載入後成立，TDX 依本輪範圍顯示「本版本未啟用」。
 - 修正有 validated dataset 的自然語言「請匯入這份訂單並建立今天的配送方案」被 Agent 誤選為臨時插單缺欄流程；真實 `gpt-5-mini` `Runner.run` 已選用 strict `plan_dispatch`。
 - 車輛清單可展開所有訂單，保留真正的 drag-and-drop 與「移至其他車輛」無障礙替代操作；不完整 Preview 現在會停用「套用變更」並顯示白話原因。
