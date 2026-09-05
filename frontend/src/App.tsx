@@ -39,6 +39,9 @@ export default function App() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [mapData, setMapData] = useState<MapData | null>(null)
   const [providers, setProviders] = useState<ProviderStatus[]>([])
+  const [mapsConfigured, setMapsConfigured] = useState(Boolean(
+    import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY || window.__DISPATCH_RUNTIME_CONFIG__?.googleMapsBrowserApiKey,
+  ))
   const [preview, setPreview] = useState<UrgentPreview | null>(null)
   const [activeVehicle, setActiveVehicle] = useState<string | null>(null)
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
@@ -86,6 +89,15 @@ export default function App() {
   }, [])
 
   useEffect(() => { void refreshProviders() }, [refreshProviders])
+
+  useEffect(() => {
+    // The Browser key is public client configuration. Read only its presence
+    // for status display; the value is never rendered or logged here.
+    void fetch('/api/v1/runtime-config')
+      .then((response) => (response.ok ? response.json() as Promise<{ google_maps_browser_api_key?: string }> : null))
+      .then((config) => { if (config) setMapsConfigured(Boolean(config.google_maps_browser_api_key)) })
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -186,7 +198,7 @@ export default function App() {
   return <div className="app-shell">
     <Sidebar activeView={activeView} onViewChange={setActiveView} />
     <div className="app-content">
-      <StatusBar plan={plan} providers={providers} activeView={activeView} onViewChange={setActiveView} />
+      <StatusBar plan={plan} providers={providers} mapsConfigured={mapsConfigured} activeView={activeView} onViewChange={setActiveView} />
       <main className="page-content">
         {activeView === 'assistant' && <>
           <div className="assistant-layout">

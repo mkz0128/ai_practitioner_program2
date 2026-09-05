@@ -3,6 +3,7 @@ import type { Plan, ProviderStatus } from '../types'
 interface StatusBarProps {
   plan: Plan | null
   providers: ProviderStatus[]
+  mapsConfigured: boolean
   activeView: 'assistant' | 'tasks' | 'tracking'
   onViewChange: (view: 'assistant' | 'tasks' | 'tracking') => void
 }
@@ -17,9 +18,9 @@ function providerLabel(providers: ProviderStatus[], name: string, activeMode?: s
 
 const viewLabels = { assistant: 'AI 調度', tasks: '配送任務', tracking: '路線追蹤' }
 
-export function StatusBar({ plan, providers, activeView, onViewChange }: StatusBarProps) {
+export function StatusBar({ plan, providers, mapsConfigured, activeView, onViewChange }: StatusBarProps) {
   const google = providerLabel(providers, 'google_routes', plan?.provider_mode)
-  const maps = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY
+  const maps = mapsConfigured
     ? { label: '已設定', tone: 'live' as const }
     : { label: '未設定', tone: 'blocked' as const }
   const tdx = providerLabel(providers, 'tdx')

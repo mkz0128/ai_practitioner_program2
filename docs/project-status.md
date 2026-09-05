@@ -41,6 +41,8 @@
 
 ## NOW
 
+公開 Render 競賽驗收與必要缺口修正（不執行 Dispatch、不部署正式環境）
+
 - 依競賽命題稽核 Render 公開服務與核心流程，區分 public live、simulated 與阻塞證據；必要修正後重新驗收，不執行 Dispatch、不合併 `main`。
 
 ## NEXT
@@ -76,6 +78,9 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 已以公開 Render 網站核對目前部署、API、Agent、Google Maps 與例外處理證據；持續補做競賽命題的公開流程驗收。
+- 已修正前端 StatusBar 對 runtime Browser key 的狀態判定，避免公開地圖已載入卻顯示「未設定」。
 
 - 新增單一 Render Web Service 的 `Dockerfile`、`.dockerignore` 與 `render.yaml`：multi-stage Vite build、FastAPI SPA fallback、`$PORT`、單一 Uvicorn worker、`/health`、Free Singapore region、branch pinning 與 `sync: false` secrets。
 - 將 production 前端 API 改為同源相對路徑；Vite 本機開發以 `/api` proxy 連接 FastAPI，Browser key 由公開 runtime-config 注入，不把 server secrets 放入 bundle。
@@ -145,6 +150,8 @@
 - 2026-09-05 Render 公開 Agent：無資料一般問答 HTTP 200；有方案的多輪查詢 HTTP 200，evidence tool `highest_load_vehicle`，回答引用 `VEH-003` 的 deterministic load evidence；prompt-injection 測試拒絕虛構並呼叫 `assistant_help`。官方 ORD-041 preview 為 V1→V2、`MINIMAL_CHANGE`、40→41 張、365→367 kg、換車 0、僅 1 台車受影響、Validator 通過；preview 仍為待人工確認，未執行 Dispatch。
 - 2026-09-05 程式修正驗證：新增 `test_plan_evidence_vehicle_count_counts_non_empty_routes` 與 `test_malformed_request_uses_field_level_manual_review_envelope`；目標測試 10 passed。`ruff`／`mypy` 與前端 typecheck／ESLint／Vitest 2 tests／Vite build 均通過。完整 pytest 在本機以空白 OpenAI key 執行時 41 passed、3 skipped，另有 1 個既有測試因本機未提供可用 OpenAI key 回傳 503（非程式失敗）。
 - 本輪仍未執行 Dispatch、正式部署、付費資源、force push 或 main merge；TDX 維持 `OPTIONAL／NOT_CONFIGURED`。修正後需等待 Render 自動部署，再重驗公開頁面。
+- 2026-09-05 最終公開稽核：Render `/health`／`/ready` 成功，OpenAPI 13 paths、CORS、官方 40 單 Google→OR-Tools→Validator、OpenAI Agent、Google Maps 與 ORD-041 preview 均有公開證據；Google Maps Browser key presence 已納入前端 runtime status。公開容量不足插單回傳明確 `FULL_REPLAN`／unassigned 且基準版本不變；CSV 單檔與 TDX 仍分別為契約缺口及加分功能阻塞。未執行 Dispatch，requests=0。
+- 本輪品質：前端 install/typecheck/ESLint/Vitest（2 passed）/Vite build 通過；後端 ruff、mypy 通過。完整 pytest 在刻意清空本機 OpenAI key 下為 43 passed、3 skipped、1 個既有 Agent API 測試因預期 OpenAI 200 而收到安全 503；此為本機憑證條件，不冒稱 Live。
 
 - Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
 - 本輪驗證：backend `pytest 41 passed, 3 skipped`（3 個條件式 live gate）、OpenAPI snapshot、`ruff check .`、`mypy src` 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。

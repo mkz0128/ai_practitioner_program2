@@ -282,3 +282,32 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 - 前端：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest（2 tests）、Vite production build 通過。
 - 完整 pytest 在本機以空白 OpenAI key（避免使用本機舊憑證）執行為 `41 passed、3 skipped`；另有 1 個既有 Agent API 測試因 OpenAI 未設定回傳 503，屬環境條件，不冒稱 Live PASS。3 個 skipped 為明確條件式 live gates：Agents SDK、Google live key、Responses smoke。
 - Secret scan、GitHub Actions／部署風險檢查未發現新增 secret 或 workflow；全程 Dispatch requests=0。
+
+## 公開驗收補充與最終缺口稽核（2026-09-05）
+
+本節是本輪最後一次公開檢查的摘要；數字僅引用 Render 回應、瀏覽器 DOM／地圖證據與可重現測試，不以舊截圖取代實際驗收。
+
+| 競賽要求 | 實際證據 | 狀態 | 缺口或修正 |
+|---|---|---|---|
+| Render 健康檢查與 OpenAPI | `/health`、`/ready` 回傳成功；`/openapi.json` 實際列出 13 條 path，Swagger 可載入 | `PUBLIC LIVE PASS` | Dispatch endpoint 僅核對契約，刻意不呼叫 |
+| 官方 40 單匯入與排程 | 公開 `.xlsx` 匯入 40 orders／80 packages／4 vehicles／5 zones；Google Matrix 進入 OR-Tools；40/40、365 kg、Validator valid | `PUBLIC LIVE PASS` | 無 |
+| Google Maps | 公開瀏覽器顯示臺北道路與地名、Google attribution、DEPOT-001、40 個編號 Marker、4 色非 simulated geometry；可依車輛篩選 | `PUBLIC LIVE PASS` | 修正前端狀態列，使 runtime Browser key 已設定時不再誤顯示「未設定」 |
+| Agent 與證據 | `/api/v1/agent/chat` 公開回傳 `RunResult`；`plan_dispatch`／`highest_load_vehicle` 由 strict tool 執行；回答引用 plan／Validator 數值；prompt injection 不繞過規則 | `PUBLIC LIVE PASS` | 無 private reasoning；本機無 credential 的相依測試仍明確列為 skipped |
+| ORD-041 Preview | 同一 OR-Tools plan 基準建立 `MINIMAL_CHANGE` preview，40→41、365→367 kg、換車 0、1 台車受影響、Validator 通過 | `PUBLIC LIVE PASS` | 預覽維持待人工確認；未執行 Dispatch |
+| 超重、重複、缺欄與無法安排 | 本機 deterministic acceptance／randomized tests 通過；公開 Google mode 的 500 kg 插單回傳 `FULL_REPLAN` 且明確列為 1 筆 unassigned，既有版本維持不變；重複 ID 回傳 422 | `SIMULATED PASS` | 時段衝突以 deterministic provider 測試驗證；公開網站未為製造衝突而污染方案 |
+| 前端任務與路線工作區 | 公開瀏覽器實際切換「配送任務／路線追蹤」；表格、車輛載重、順序、40 stops、地圖與 Google 路線一致 | `PUBLIC LIVE PASS` | 無 |
+| CSV 輸入 | 現行 API 契約與 parser 僅接受四表 `.xlsx`；本輪依競賽最低要求實測 `.xlsx` | `BLOCKED` | 若競賽明確要求單檔 CSV，需另定 vehicles／zones 的輸入契約；本輪不捏造預設資料 |
+| TDX 路況 | Render／本機未設定 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` | `BLOCKED` | 屬加分功能，不列入競賽最低合格判定 |
+
+### 公開方案與安全證據
+
+- 公開基礎方案：40 張訂單、4 台車，VEH-001 116／120 kg（96.7%）、VEH-002 98／100 kg（98.0%）、VEH-003 151／160 kg（94.4%）、VEH-004 0／110 kg（0%）；未安排 0，Validator 的 overload／cross-zone／duplicate／time-window 皆為 0。
+- 公開瀏覽器 console 僅有 Google Maps API 的 deprecation warning，未發現未處理 error；全程未送出 Dispatch request（0）。
+- Secret scan：追蹤檔案高信心 pattern 0、追蹤的非 example env 0、GitHub Actions workflow 0；任何 key 均未輸出、記錄或提交。
+- 本輪程式修正：`src/agent/runtime.py` 的 vehicle count 僅計實際承載車輛；`src/api/main.py` 的 malformed payload 與 urgent planner edge case 均以安全欄位級／manual-review envelope 回應；前端 StatusBar 改由 runtime config 的 presence 顯示 Browser key 狀態。
+
+### 品質閘門（本輪）
+
+- Backend：`43 passed, 3 skipped, 1 failed`（唯一失敗是刻意清空本機 OpenAI key 後，既有 API test 預期 200 而收到安全的 503；不冒稱 Live）；skipped 為 Agents SDK、Google live key、Responses smoke 的條件式 gates。`ruff check src tests scripts PASS`、`mypy src PASS`。
+- Frontend：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest `2 passed`、Vite production build PASS。
+- Render 公開網址：健康檢查、13-path OpenAPI／CORS、40 單 Google→OR-Tools→Validator、Agent、Google Maps 與 ORD-041 preview 均有實際回應；TDX 為 `OPTIONAL／NOT_CONFIGURED`。

@@ -2,6 +2,13 @@
 
 ## 未發布 — 2026-09-03
 
+### 2026-09-05 競賽公開驗收補充
+
+- 以 Render 公開網址重新核對健康檢查、13 條 API 契約、40 單 Google Matrix → OR-Tools → Validator、OpenAI Agent、Google Maps 與 ORD-041 preview。
+- 修正前端服務狀態列：Browser key 由 runtime config 設定時，Google Maps 狀態顯示為已設定，不再誤報未設定。
+- 新增公開驗收與競賽缺口紀錄；CSV（目前四表 `.xlsx` 契約）與 TDX Live 仍明確標示為阻塞／加分項，不冒稱完成。
+- 保持 Dispatch requests 為 0；未執行正式環境操作、付費資源、force push 或合併 `main`。
+
 ### 2026-09-05 公開驗收修正
 
 - Render 公開網址完成競賽核心流程查證：官方 40 單、Google Matrix → OR-Tools、Validator、Google Maps、OpenAI Agent 與 ORD-041 preview。
