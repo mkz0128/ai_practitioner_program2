@@ -246,3 +246,39 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 - Backend：`pytest 41 passed, 3 skipped`；skipped 為明確條件式 OpenAI Agent、Responses API、Google Live tests，分別需要環境旗標／匯出 credential；`ruff check . PASS`；`mypy src PASS`。
 - Frontend：既有 TypeScript typecheck、ESLint、Vitest、Vite build 與代表性 Google Live Playwright 維持通過；第二組 randomized Playwright `2 passed`。
 - Secret／安全：`.env`、plaintext source、`.venv` 與 `scripts/node_modules` 均排除；未輸出、記錄或提交任何 credential；未執行 Dispatch、部署、正式環境操作或 force push。
+
+## 競賽命題最終盤點與 Render 公開驗收（2026-09-05）
+
+本節以實際 Render 公開網址與目前程式／測試結果為準；歷史快照不覆蓋本節證據。驗收網址：`https://ai-dispatch-control-tower.onrender.com/`。測試資料皆為合成資料，未讀取、輸出或提交任何憑證。
+
+| 競賽要求 | 實際證據 | 狀態 | 缺口或修正 |
+|---|---|---|---|
+| 官方 40 單匯入與四表驗證 | 公開 `import-excel`：40 orders／80 packages／4 vehicles／5 zones，`is_valid=true` | `PUBLIC LIVE PASS` | 無；另有固定 seed 隨機 workbook 供非付費壓力測試 |
+| Google Matrix → OR-Tools → Validator | 公開 plan：`provider_mode=GOOGLE`、40/40、365 kg、ORTOOLS、Validator valid=true；Matrix hash/version 一致 | `PUBLIC LIVE PASS` | 無；未使用 simulated fallback |
+| 車輛容量、服務區域、順序與理由 | 公開頁面顯示四車負載／使用率、40 個站點順序與 evidence-grounded reason | `PUBLIC LIVE PASS` | 修正 Agent evidence 的 `vehicle_count` 只計實際有單車輛 |
+| Google Maps 真實道路地圖 | 公開瀏覽器顯示臺北道路、Google attribution、DEPOT-001、40 markers 與 4 條 `is_simplified=false` geometry | `PUBLIC LIVE PASS` | 無 |
+| Agent 對話與 deterministic tool | `/api/v1/agent/chat` HTTP 200；多輪 tool `highest_load_vehicle`；prompt injection 僅回 `assistant_help`，不虛構數字 | `PUBLIC LIVE PASS` | 未顯示 private reasoning |
+| ORD-041 臨時插單 | 公開 preview V1→V2、`MINIMAL_CHANGE`、40→41、365→367 kg、換車 0、1 台車受影響、Validator 通過 | `PUBLIC LIVE PASS` | preview 保持 `PROPOSED`，等待調度員確認；本輪未代替使用者確認 |
+| 13 支 REST API／Swagger／CORS | OpenAPI 實際 13 paths；Swagger 200；localhost preflight 200／GET,POST | `PUBLIC LIVE PASS` | Dispatch path 僅核對契約，未呼叫 |
+| 缺漏欄位與安全錯誤 envelope | 新增 RequestValidationError handler，回傳 `field_errors`、`requires_manual_review=true` 且不回傳 raw input；新增 regression test | `LIVE PASS` | Render 自動部署新 commit 後需再確認版本已更新 |
+| 例外情境（超重／時段／重複／無法安排） | 本機 deterministic competition／randomized acceptance tests；公開 preview 對容量不足回傳明確 `URGENT_INSERT_UNASSIGNABLE` | `SIMULATED PASS` | 公開網站未執行會造成狀態污染的多次確認鏈 |
+| 人工確認與 Dispatch 安全邊界 | 公開 UI 顯示待人工確認；本輪無 Dispatch request；未執行正式環境操作 | `PUBLIC LIVE PASS` | 需由實際調度員在畫面按確認 |
+| TDX 路況 | 本環境 credentials 未設定 | `BLOCKED` | 加分功能；`OPTIONAL／NOT_CONFIGURED`，不影響競賽最低要求 |
+
+### 公開 40 單實測摘要
+
+| 項目 | 結果 |
+|---|---|
+| Render URL | `https://ai-dispatch-control-tower.onrender.com/` |
+| 訂單／車輛 | 40／4；未安排 0 |
+| 總重量 | 365.0 kg |
+| 各車負載 | VEH-001 116.0／120.0 kg（96.7%）；VEH-002 98.0／100.0 kg（98.0%）；VEH-003 151.0／160.0 kg（94.4%）；VEH-004 0.0／110.0 kg（0.0%） |
+| Validator | `valid=true`；overload／cross_zone／duplicate／time_window 均為 0 |
+| 路線 | 4 條 Google geometry；40 stops；非 straight-line placeholder |
+
+### 品質閘門
+
+- 新增 regression tests：欄位級錯誤 envelope 與 Agent evidence vehicle count；目標測試 `10 passed`。`ruff`、`mypy src` 通過。
+- 前端：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest（2 tests）、Vite production build 通過。
+- 完整 pytest 在本機以空白 OpenAI key（避免使用本機舊憑證）執行為 `41 passed、3 skipped`；另有 1 個既有 Agent API 測試因 OpenAI 未設定回傳 503，屬環境條件，不冒稱 Live PASS。3 個 skipped 為明確條件式 live gates：Agents SDK、Google live key、Responses smoke。
+- Secret scan、GitHub Actions／部署風險檢查未發現新增 secret 或 workflow；全程 Dispatch requests=0。

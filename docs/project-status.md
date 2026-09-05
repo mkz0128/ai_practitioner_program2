@@ -41,7 +41,7 @@
 
 ## NOW
 
-- 修正 Render 第二次建置的 pnpm workspace 契約並完成部署前品質驗證；等待 Render 重新建置，不執行 Dispatch、不合併 `main`。
+- 依競賽命題稽核 Render 公開服務與核心流程，區分 public live、simulated 與阻塞證據；必要修正後重新驗收，不執行 Dispatch、不合併 `main`。
 
 ## NEXT
 
@@ -53,7 +53,7 @@
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
 - `REQ-ORIG-003`：已以 Browser key 完成 Google Maps Live 瀏覽器驗收；無 key 的環境仍保留明確 simulated fallback。
-- `DEPLOY-001`：Render Dashboard／API 認證尚未提供，且目前可見的 Provider key 來源屬曾曝光的開發憑證；公開部署前必須由使用者完成 Render 登入／GitHub OAuth，並注入已輪替的 Render Secrets。未完成前不得建立公開服務或宣稱 Live PASS。
+- `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
 
@@ -73,6 +73,7 @@
 - `LIVE-UI-001 — Live Integration`：Browser key 已載入 Vite；真實 Google Maps 顯示臺北道路、DEPOT-001、40 個 Marker 與四條 Google geometry；Agent／ORD-041／人工確認與兩個前端工作區均由 Playwright 通過，未產生 Dispatch request。
 - `RANDOM-AUDIT-001 — Acceptance`：固定 seed `260904` 的新 workbook 為 40 張訂單／79 packages／322.8 kg；simulated OR-Tools 40/40、Validator 通過。五類臨時插單與缺欄／重複拒絕均記錄在 `docs/randomized-acceptance-report.json`。
 - `RANDOM-BROWSER-001 — Acceptance`：第二組 workbook 已在 Playwright 以拖放方式匯入；附件與文字單次送出、純附件預設意圖、連續三筆任意 ID 插單均完成預覽／人工確認／重新整理 hydration，Console errors 與 Dispatch requests 皆為 0。該瀏覽器驗收為 `SIMULATED PASS`（路線 provider 為成本受控的 deterministic simulated）；既有代表性 Google Live gate 仍獨立標示 `LIVE PASS`。
+- `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
 
@@ -82,6 +83,7 @@
 - 修正 Production `Dockerfile`：runtime stage 改由 `COPY --from=frontend-builder /app/frontend/dist ./frontend/dist` 取得 builder 產物；`.dockerignore` 僅排除不必要的 `dist`／`node_modules`，不排除 frontend source、package manifest 或 pnpm lockfile。
 - 確認 `frontend` 為單一 package（非 monorepo）；保留 `allowBuilds` 並補上 `packages: ["."]`，同時在 `frontend/package.json` 鎖定 `packageManager: pnpm@9.15.0`，與 Dockerfile 及 lockfile v9.0 相容。
 - 已以本機 Uvicorn smoke check 驗證 `/health`、`/ready`、`/docs`、SPA root／deep-link、assets 與 runtime-config；已驗證展示閘門的未登入 401、登入後 API 200，未執行 Dispatch。
+- 已修正 Agent plan evidence 的 `vehicle_count`，改為只計算實際承載訂單的車輛，避免空車造成使用車輛數誤導；新增 malformed API payload 的欄位級、manual-review error envelope 與 regression test。
 
 - 完成 `src/`、`tests/`、13 條 API、provider adapter、Agent runtime、SQLite 與既有文件的逐項現況查證；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 將原始必要功能（A 類）、企業級擴充（B 類）與目前暫不處理（C 類）分開記錄，並保留每項工作的 Requirement ID、證據、缺口、前置條件與驗收方式。
@@ -138,6 +140,11 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- 2026-09-05 Render 公開稽核：`https://ai-dispatch-control-tower.onrender.com/` 回應 `/health=200`、`/ready=200`；OpenAPI 實際 13 paths；CORS `http://localhost:5173` preflight 通過。官方合成 40 單匯入為 40 orders／80 packages／4 vehicles／5 zones；Google `provider_mode=GOOGLE` Matrix 進入 OR-Tools，同一方案 40/40、365 kg、Validator valid=true，Map data 回傳 4 條非 simulated Google geometry。
+- 2026-09-05 Render 公開 Agent：無資料一般問答 HTTP 200；有方案的多輪查詢 HTTP 200，evidence tool `highest_load_vehicle`，回答引用 `VEH-003` 的 deterministic load evidence；prompt-injection 測試拒絕虛構並呼叫 `assistant_help`。官方 ORD-041 preview 為 V1→V2、`MINIMAL_CHANGE`、40→41 張、365→367 kg、換車 0、僅 1 台車受影響、Validator 通過；preview 仍為待人工確認，未執行 Dispatch。
+- 2026-09-05 程式修正驗證：新增 `test_plan_evidence_vehicle_count_counts_non_empty_routes` 與 `test_malformed_request_uses_field_level_manual_review_envelope`；目標測試 10 passed。`ruff`／`mypy` 與前端 typecheck／ESLint／Vitest 2 tests／Vite build 均通過。完整 pytest 在本機以空白 OpenAI key 執行時 41 passed、3 skipped，另有 1 個既有測試因本機未提供可用 OpenAI key 回傳 503（非程式失敗）。
+- 本輪仍未執行 Dispatch、正式部署、付費資源、force push 或 main merge；TDX 維持 `OPTIONAL／NOT_CONFIGURED`。修正後需等待 Render 自動部署，再重驗公開頁面。
 
 - Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
 - 本輪驗證：backend `pytest 41 passed, 3 skipped`（3 個條件式 live gate）、OpenAPI snapshot、`ruff check .`、`mypy src` 與 frontend TypeScript／ESLint／Vitest（2 tests）／Vite build 均 `PASS`；部署檔案未包含 secrets；`.env`、frontend `.env.local` 與 plaintext credential source 均未被 Git 追蹤。

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from agents import InputGuardrailTripwireTriggered
 from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -183,6 +184,43 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Keep malformed API payloads in the same safe, field-level envelope.
+
+    FastAPI's default 422 response includes raw ``input`` values and a generic
+    ``detail`` array.  The API contract instead requires actionable paths and
+    manual-review signalling without echoing untrusted payload contents.
+    """
+
+    field_errors: list[dict[str, Any]] = []
+    for item in exc.errors():
+        location = [str(part) for part in item.get("loc", ()) if part != "body"]
+        path = ".".join(location) or "request"
+        error_type = str(item.get("type", ""))
+        code = "MISSING_REQUIRED_FIELD" if error_type == "missing" else "FIELD_VALIDATION_ERROR"
+        message = "缺少必要欄位，請補齊後再試。" if error_type == "missing" else "欄位格式不正確，請修正後再試。"
+        field_errors.append(
+            {
+                "path": path,
+                "code": code,
+                "message": message,
+                "value_summary": None,
+                "requires_manual_review": True,
+            }
+        )
+    return _error(
+        request,
+        422,
+        "FIELD_VALIDATION_ERROR",
+        "資料欄位未通過驗證，請依欄位提示修正後再試。",
+        field_errors=field_errors,
+        requires_manual_review=True,
+    )
 
 
 def _demo_session_token() -> str | None:

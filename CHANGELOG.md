@@ -2,6 +2,13 @@
 
 ## 未發布 — 2026-09-03
 
+### 2026-09-05 公開驗收修正
+
+- Render 公開網址完成競賽核心流程查證：官方 40 單、Google Matrix → OR-Tools、Validator、Google Maps、OpenAI Agent 與 ORD-041 preview。
+- 修正 Agent 方案證據的 `vehicle_count`，只計算實際承載訂單的車輛，避免空車造成摘要誤導。
+- 新增 API malformed payload 的欄位級錯誤 envelope 與 `requires_manual_review` 標記；不回傳未信任的 raw input。
+- TDX 維持 `OPTIONAL／NOT_CONFIGURED`；未執行 Dispatch、正式環境操作或付費資源建立。
+
 ### 新增
 
 - Workbook 缺漏欄位錯誤可精確定位 order／package／field，並帶有 manual-review markers。

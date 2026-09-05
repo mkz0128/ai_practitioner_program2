@@ -50,6 +50,19 @@ async def test_sdk_daily_dispatch_calls_planner_and_validator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_plan_evidence_vehicle_count_counts_non_empty_routes() -> None:
+    _, context, _ = await _run_tool(
+        "Create today's daily dispatch plan.",
+        "plan_dispatch",
+        {"algorithm": "ORTOOLS"},
+    )
+    evidence = context.evidence[-1]
+    assert evidence["vehicle_count"] == sum(
+        bool(route.order_ids) for route in context.plan.routes
+    )
+
+
+@pytest.mark.asyncio
 async def test_sdk_highest_load_uses_validated_plan_evidence() -> None:
     _, context, _ = await _run_tool(
         "Which vehicle has the highest planned load?",
