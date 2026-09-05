@@ -1380,7 +1380,11 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
         tool_use_behavior="stop_on_first_tool" if live_model else "run_llm_again",
         # The tool result is compact, but Responses reasoning plus the final
         # evidence-only answer needs more than the 256-token smoke-test cap.
-        model_settings=ModelSettings(max_tokens=2048, parallel_tool_calls=False),
+        model_settings=ModelSettings(
+            max_tokens=2048,
+            parallel_tool_calls=False,
+            tool_choice="required",
+        ),
     )
 
 

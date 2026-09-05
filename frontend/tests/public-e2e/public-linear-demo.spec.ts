@@ -11,6 +11,17 @@ async function capture(page: Page, name: string) {
   }
 }
 
+async function waitForPublicHealth(page: Page) {
+  await expect.poll(async () => {
+    const response = await page.request.get('/health', { timeout: 120_000 })
+    if (!response.ok()) return false
+    const contentType = response.headers()['content-type'] ?? ''
+    if (!contentType.includes('application/json')) return false
+    const body = await response.json() as { status?: string }
+    return body.status === 'ok'
+  }, { timeout: 300_000, intervals: [2_000, 5_000, 10_000] }).toBe(true)
+}
+
 type AgentResponseBody = {
   runner_result_type?: string
   evidence?: Array<{ tool?: string; data?: Record<string, unknown> }>
@@ -57,6 +68,7 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
     if (message.type() === 'error' && !/ERR_ABORTED|Failed to load resource: the server responded with a status of 400/.test(message.text())) consoleErrors.push(message.text())
   })
 
+  await waitForPublicHealth(page)
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 120_000 })
   await expect(page.getByRole('heading', { name: '今日配送規劃' })).toBeVisible()
   await expect(page.getByText('尚未匯入訂單')).toBeVisible()

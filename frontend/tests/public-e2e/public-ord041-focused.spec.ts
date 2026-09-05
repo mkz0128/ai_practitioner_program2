@@ -6,6 +6,10 @@ const workbook = path.resolve('..', 'data', 'samples', 'demo-delivery-40-orders.
 test('公開站建立正式方案後可由 Agent 預覽 ORD-041', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.addInitScript(() => window.localStorage.clear())
+  await expect.poll(async () => {
+    const response = await page.request.get('/health', { timeout: 120_000 })
+    return response.ok() && (response.headers()['content-type'] ?? '').includes('application/json')
+  }, { timeout: 300_000, intervals: [2_000, 5_000, 10_000] }).toBe(true)
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 120_000 })
   await page.getByRole('button', { name: '附加訂單檔案' }).click()
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
