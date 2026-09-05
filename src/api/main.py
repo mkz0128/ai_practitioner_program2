@@ -1759,6 +1759,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             error_code,
             message,
             provider="OPENAI",
+            exception_type=type(exc).__name__,
             fallback_used=False,
             retryable=retryable,
         )
