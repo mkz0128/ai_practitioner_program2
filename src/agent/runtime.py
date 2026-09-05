@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 class DispatchAgentContext:
     dataset: Dataset
     matrix: MatrixResult
+    current_user_message: str = ""
     plan: PlanResult | None = None
     pending_order: Order | None = None
     request_id: str | None = None
@@ -264,9 +266,16 @@ def request_missing_fields(
     ctx: RunContextWrapper[DispatchAgentContext], request: MissingFieldsInput
 ) -> str:
     """Ask for only the structured fields required before an urgent preview."""
-    _tool_started(ctx.context, "request_missing_fields", request.model_dump(mode="json"))
-    fields = list(dict.fromkeys(request.fields))
-    ctx.context.pending_fields = tuple(fields)
+    return _record_missing_fields(ctx.context, request.fields)
+
+
+def _record_missing_fields(
+    context: DispatchAgentContext, fields: Sequence[str]
+) -> str:
+    """Record a deterministic clarification without inferring user intent."""
+    _tool_started(context, "request_missing_fields", {"fields": list(fields)})
+    fields = list(dict.fromkeys(fields))
+    context.pending_fields = tuple(fields)
     evidence = {
         "tool": "request_missing_fields",
         "status": "MISSING_REQUIRED_FIELDS",
@@ -274,8 +283,8 @@ def request_missing_fields(
         "message": "請補充上述配送欄位後，才能進行安全的插單預覽。",
         "requires_human_confirmation": False,
     }
-    ctx.context.evidence.append(evidence)
-    _tool_finished(ctx.context, "request_missing_fields")
+    context.evidence.append(evidence)
+    _tool_finished(context, "request_missing_fields")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -983,6 +992,29 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
     """
     normalized_order_id = order_id.strip().upper()
     pending = ctx.context.pending_order
+    explicitly_supplied = normalized_order_id in ctx.context.current_user_message.upper()
+    # A selected order from prior conversation state is not evidence that it is
+    # the new urgent order.  This is strict argument validation after the LLM
+    # tool call, not intent routing: an unsupported identifier is rejected and
+    # converted into a clarification instead of silently substituting context.
+    if not explicitly_supplied and (
+        pending is None or pending.order_id != normalized_order_id
+    ):
+        return _record_missing_fields(
+            ctx.context,
+            [
+                "order_id",
+                "zone_code",
+                "city",
+                "district",
+                "location_label",
+                "latitude",
+                "longitude",
+                "time_slot",
+                "declared_package_count",
+                "packages",
+            ],
+        )
     if pending is None or pending.order_id != normalized_order_id:
         pending = get_demo_urgent_order(normalized_order_id)
     if pending is None or pending.order_id != normalized_order_id:
@@ -1417,6 +1449,7 @@ async def run_dispatch_agent(
     context = DispatchAgentContext(
         dataset=dataset,
         matrix=matrix,
+        current_user_message=message,
         plan=plan,
         pending_order=pending_order,
         request_id=request_id,

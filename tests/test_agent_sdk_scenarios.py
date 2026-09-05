@@ -176,7 +176,7 @@ async def test_sdk_urgent_insert_runs_preview_planner_and_validator() -> None:
 async def test_sdk_demo_urgent_insert_resolves_known_fixture_without_pending_context() -> None:
     """The public demo ID is data looked up by the tool, not an intent-routing shortcut."""
     _, context, _ = await _run_tool(
-        "Preview the documented demo urgent order.",
+        "Preview the documented demo urgent order ORD-041.",
         "preview_urgent_insert",
         {"order_id": "ORD-041"},
     )
@@ -350,6 +350,21 @@ async def test_sdk_missing_urgent_fields_are_requested_structurally() -> None:
     evidence = context.evidence[-1]
     assert evidence["status"] == "MISSING_REQUIRED_FIELDS"
     assert evidence["missing_fields"] == ["order_id", "zone_code", "time_slot", "packages"]
+
+
+@pytest.mark.asyncio
+async def test_sdk_rejects_stale_order_context_as_new_urgent_order() -> None:
+    """A model-selected stale ID cannot become an implicit urgent order."""
+    _, context, _ = await _run_tool(
+        "幫我插入一張急單",
+        "preview_urgent_insert",
+        {"order_id": "ORD-001"},
+    )
+
+    evidence = context.evidence[-1]
+    assert evidence["tool"] == "request_missing_fields"
+    assert evidence["status"] == "MISSING_REQUIRED_FIELDS"
+    assert "order_id" in evidence["missing_fields"]
 
 
 @pytest.mark.asyncio

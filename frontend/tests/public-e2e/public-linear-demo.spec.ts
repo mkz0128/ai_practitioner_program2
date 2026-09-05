@@ -40,7 +40,10 @@ async function send(page: Page, message: string, expectedTool?: string) {
   if (expectedTool) {
     expect(agentResponse.status(), `${body.error?.code ?? 'UNKNOWN_AGENT_ERROR'}:${body.error?.details?.exception_type ?? 'UNKNOWN_EXCEPTION'}`).toBe(200)
     expect(body.runner_result_type).toBe('RunResult')
-    expect(body.evidence?.some((item) => item.tool === expectedTool)).toBeTruthy()
+    expect(
+      body.evidence?.some((item) => item.tool === expectedTool),
+      `expected ${expectedTool}, received ${JSON.stringify(body.evidence ?? [])}`,
+    ).toBeTruthy()
   }
   await expect(page.locator('.processing-bubble')).toHaveCount(0, { timeout: 120_000 })
   await expect(page.locator('.chat-bubble.agent').last()).toContainText(/\S/)
