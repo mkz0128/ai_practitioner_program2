@@ -89,9 +89,9 @@ application_agent_count: 1
 
 | 原始必要能力 | 現況 | 實際證據與缺口 |
 |---|---|---|
-| Google Routes live distance／duration | 部分完成（Live BLOCKED） | `src/providers/google_routes.py` strict adapter 與 `tests/test_live_provider_wiring.py`；本環境缺 server key，無 LIVE PASS。 |
+| Google Routes live distance／duration | 完成 | Render 公開線性 E2E 實際取得 Google Matrix，並由同一次 OR-Tools 方案回傳可追溯來源；未 fallback。 |
 | Google Matrix 進入 OR-Tools | 部分完成（wiring verified） | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性 test；尚缺真實 provider E2E。 |
-| Google Maps Browser 地圖 | 部分完成（Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx` 可載入 Google Maps、Marker、polyline，無 key 時為 simulated fallback。 |
+| Google Maps Browser 地圖 | 完成 | Render 公開 Chromium 實際載入 Google Maps 道路底圖、四車道路 polyline 與站點，且可切換單車／全部路線。 |
 | TDX OAuth／真實路況／道路事件 | 未來可選擴充（本版本未啟用） | 既有 `src/providers/tdx.py` 與 mock coverage 保留；本輪不申請憑證、不做 Live 驗收。 |
 | TDX 受影響路線／配送風險 | 未來可選擴充（本版本未啟用） | 既有 `correlate_events_to_plan` 保留，不影響 Google／OR-Tools／Agent 核心 Demo。 |
 | 前端完整操作與 Agent 顯示 | 完成（控制塔 UI；Live 依環境） | `frontend/` React/Vite/MUI、API client、Agent-first attachment flow、RTL tests；公開 Live 需當前憑證。 |

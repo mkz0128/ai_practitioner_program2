@@ -2,6 +2,10 @@
 
 ## 2026-09-06 — 明晚 Demo 穩定性與公開線性驗收
 
+- 公開 Render 以同一個 Chromium 會話從空白首頁完整跑完 Excel、40／40、4／4、Google 地圖、Agent、拖拉換車、取消、ORD-041、人工確認、三策略、延遲與版本，結果 `1 passed`；未處理錯誤與正式派車請求皆為 0。
+- 視覺驗收發現車輛停用與延遲回答仍可能顯示 JSON／英文內部欄位；已 regression-first 改為證據導向的繁體中文摘要，並補強 ORD-041 差異摘要與未知 JSON fail-closed 顯示。
+- 最新品質結果：Backend `218 passed、28 skipped`；112-case corpus `115 passed`；OpenAI Live Runner `24 passed`；Frontend Vitest `20 passed`，TypeScript、ESLint、Vite build、Ruff、mypy 與 secret scan 均通過。
+- Commit `550f736` 已在 Render 顯示 Live；公開網站再由空白首頁完整演練一次，結果 `1 passed`（4.6 分鐘），Console／page error 與正式派車請求皆為 0。
 - regression-first 修正空白首頁把「尚未使用」誤顯示為 Google 路線故障；Google Maps 的「已連線」只在地圖實際載入後成立，TDX 依本輪範圍顯示「本版本未啟用」。
 - 修正有 validated dataset 的自然語言「請匯入這份訂單並建立今天的配送方案」被 Agent 誤選為臨時插單缺欄流程；真實 `gpt-5-mini` `Runner.run` 已選用 strict `plan_dispatch`。
 - 車輛清單可展開所有訂單，保留真正的 drag-and-drop 與「移至其他車輛」無障礙替代操作；不完整 Preview 現在會停用「套用變更」並顯示白話原因。

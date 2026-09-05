@@ -29,25 +29,25 @@
 | 超重重新分配 | 原始必要 | 完成 | Z4 112 kg acceptance、獨立方案檢查與公開最佳化方案證據 | 無核心缺口 |
 | 臨時插單 Preview 與差異 | 原始必要 | 完成 | `try_minimal_insert`、`compute_plan_diff`；公開 ORD-041 Google Live 預覽與人工確認 | 無核心缺口 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
-| OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Local Live；HTTP gate blocked） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 需在不觸發 Windows in-process OR-Tools abort 的 HTTP harness／公開環境重驗 |
+| OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成 | `src/agent/runtime.py`、`/api/v1/agent/chat`；24 個 Live Runner 與公開線性 E2E 均驗證 `RunResult`／strict tool evidence | 無核心缺口 |
 | Google Routes 真實距離／時間 | 原始必要 | 完成 | 公開 `provider_mode=GOOGLE`，Matrix 與道路 geometry 均實際取得 | 無核心缺口 |
 | Google Matrix 進入 OR-Tools | 原始必要 | 完成 | 公開 Matrix hash、40／40 OR-Tools plan、方案檢查與策略比較 hash 一致 | 無核心缺口 |
 | Google Maps Browser 地圖 | 原始必要 | 完成 | 公開 Google 地圖實例、40 個站點、4 條非 simulated 道路路線，Console error 0 | 無核心缺口 |
 | TDX OAuth／真實路況查詢 | 未來可選擴充 | 本版本未啟用 | 既有 adapter 保留，但不列入本次 Demo 流程 | 未排入本輪 |
 | TDX 路線風險判斷 | 未來可選擴充 | 本版本未啟用 | 既有 deterministic correlation 保留 | 未排入本輪 |
 | 前端完整操作流程 | 原始必要 | 完成 | 公開 Excel→Agent→Plan→Map→拖拉 Preview→ORD-041→人工確認驗收 | 無核心缺口 |
-| 全整合前後端 Live E2E | 原始必要 | 公開重驗中 | OpenAI、Google Routes、Google Maps、OR-Tools、方案檢查與人工確認具既有公開證據 | 等待本輪最新 Commit 部署後，從空白首頁完整重跑 |
+| 全整合前後端 Live E2E | 原始必要 | 完成 | 公開網站從空白首頁一次完成 Excel→Google Matrix→OR-Tools→地圖→Agent→拖拉→ORD-041→確認→策略→延遲→版本；未處理錯誤 0、正式派車請求 0 | 無核心缺口 |
 | 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-推送本輪已通過本機閘門的修正，等待 Render 自動部署後，從公開空白首頁完成單次線性 Demo 驗收。
+依 `docs/demo-runbook.md` 執行明晚展示前檢查；不新增功能、不執行正式派車。
 
 ## NEXT
 
-1. 推送本輪修正並等待 Render 自動部署。
-2. 從公開空白首頁完成單次線性 Demo 與 1440×900 截圖。
-3. 依公開證據更新最終驗證紀錄。
+1. 明晚展示前確認 Render `/health` 與首頁可用。
+2. 準備範例 Excel，依線性流程演練一次。
+3. 後續再評估非必要的企業擴充；TDX 不在本版範圍。
 
 ## BLOCKED
 
@@ -58,7 +58,9 @@
 - `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
 - `EXT-002 — Scope Decision`：TDX 已由本輪明確排除並移至未來可選擴充，不影響核心 Demo 或完成判定。
 
-## 2026-09-05 V2 最新公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
+## 2026-09-05 歷史公開紀錄（已由 2026-09-06 驗收取代）
+
+以下保留事故與修正軌跡，不代表目前狀態；目前權威結果以文件頂端與 `LAST VALIDATION` 的 2026-09-06 紀錄為準。
 
 - Render Dashboard 顯示該 Commit 已部署為 `Live`；`/health` HTTP 200，服務回報 `status=ok`。
 - 無資料的八種口語／中英混用事件均由公開 `/api/v1/agent/chat` 回傳 `RunResult`：急單與缺資料事件選 `request_missing_fields`；車輛事件選 `change_vehicle_availability`；凍結站點選 `change_frozen_stops`；延遲查詢選 `simulate_delay`。未使用 regex 或固定訂單路由。
@@ -86,6 +88,13 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 從 Render 公開空白首頁以單一 Chromium 會話完成完整線性 Demo，涵蓋 Excel、40／40、4／4、Google 道路地圖、Agent 工具證據、車輛事件、真實拖拉換車、取消、ORD-041、人工確認、三策略、延遲與版本；結果 `1 passed`，正式派車請求 `0`。
+- 公開 Agent 現場題目均實際呼叫 `/api/v1/agent/chat`；重要問題逐題驗證 `RunResult` 與預期 strict tool。Prompt injection 收到明確 `PROMPT_INJECTION_BLOCKED`，沒有未處理 Console／page error。
+- 視覺稽核發現車輛停用與延遲回答可能顯示 JSON／英文內部欄位；已 regression-first 修正為繁體中文白話摘要，並讓 ORD-041 回答直接顯示受影響車輛、換車數、距離、時間與方案檢查。
+- Backend 全量 `218 passed、28 skipped`；112 案例 corpus 實際 `115 passed`；24 個 Live Runner `24 passed`；Ruff／mypy 通過。
+- Frontend TypeScript、ESLint、Vitest `20 passed`、production build 通過；本機 Playwright core `2 passed`、隨機資料／純附件 `2 passed`，公開線性 E2E `1 passed`。
+- Secret scan：高信心 pattern `0`、追蹤敏感路徑 `0`、GitHub Actions `0`；`.env` 與 `frontend/.env.local` 均被 Git 排除。
 
 - 以 regression-first 新增空白首頁狀態、Google／TDX 顯示與不完整 Preview 禁止套用測試，並完成對應修正。
 - 修正 validated dataset 的自然語言建立方案被誤選為臨時插單缺欄流程；真實 `gpt-5-mini` `Runner.run` 已驗證選用 `plan_dispatch`。
@@ -184,6 +193,12 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- 2026-09-06 Commit `550f73678f8772a9d1f96c03cd4d66a2870f3664` 公開 Render 線性 E2E：`1 passed`（4.6 分鐘）；同一瀏覽器會話由空白首頁走完整流程，15 張 1440×900 截圖存於 `docs/screenshots/public-final/`，未處理 Console／page error `0`，正式派車 requests `0`。
+- 公開正式方案：40／40 張、4／4 台、365 kg、Google 即時 Matrix→OR-Tools、方案檢查通過；本次畫面載重為 VEH-001 `106/120 kg`、VEH-002 `93/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。
+- 公開 ORD-041：40→41 張、365→367 kg、影響 1 台車、既有訂單換車 0 張、距離 `+2,296 m`、時間 `+268 s`、方案檢查通過；人工確認後建立新版本。
+- 最新本機：Backend `218 passed、28 skipped`；deterministic corpus `115 passed`；Live Runner `24 passed`；Ruff、mypy、TypeScript、ESLint、Vitest `20 passed`、Vite build 均通過。
+- Playwright：基礎回歸 `2 passed`；固定 seed 隨機資料／純附件 `2 passed`（明確 `SIMULATED`）；公開完整 Google／OpenAI 流程 `1 passed`。本機舊 Live gate 因 Server Key 僅允許 Render 而分類 `API_KEY_RESTRICTED`，不影響已通過的公開 Live 驗收。
 
 - 2026-09-06 本機最終閘門：`pytest 216 passed、28 skipped`；28 個 skipped 全是明確 opt-in 外部 gates，其中 24 個 OpenAI Runner corpus 已另行以 Live 模式得到 `24 passed`。
 - 112 筆機器可讀 Agent corpus 全數通過；測試檔總計 `115 passed`（含 3 個資料集完整性檢查）。

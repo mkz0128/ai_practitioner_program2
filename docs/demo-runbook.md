@@ -88,12 +88,12 @@
 
 ## 展示完成檢查
 
-- [ ] 40／40 張已安排，4／4 台車有任務。
-- [ ] 正式方案是 OR-Tools，快速初步方案未成為可確認方案。
-- [ ] Google Matrix、OR-Tools、地圖與 API 使用同一方案來源。
-- [ ] 拖拉換車、ORD-041、延遲、三策略與版本皆有可見結果。
-- [ ] 不完整或違規 Preview 無法套用。
-- [ ] 人工確認建立新版本。
-- [ ] Console 未處理錯誤為 0。
-- [ ] Dispatch requests 為 0。
-- [ ] 截圖不含 Secret 或真實客戶資料。
+- [x] 40／40 張已安排，4／4 台車有任務。
+- [x] 正式方案是 OR-Tools，快速初步方案未成為可確認方案。
+- [x] Google Matrix、OR-Tools、地圖與 API 使用同一方案來源。
+- [x] 拖拉換車、ORD-041、延遲、三策略與版本皆有可見結果。
+- [x] 不完整或違規 Preview 無法套用。
+- [x] 人工確認建立新版本。
+- [x] Console 未處理錯誤為 0；Prompt injection 的預期 400 已以錯誤碼單獨驗證。
+- [x] Dispatch requests 為 0。
+- [x] 截圖不含 Secret 或真實客戶資料。

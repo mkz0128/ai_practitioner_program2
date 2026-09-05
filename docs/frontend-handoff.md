@@ -37,6 +37,14 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 本輪分支為 `feat/frontend-control-tower`，完成後只推送該分支，不自動合併 `main`。
 
+## 目前公開交付狀態
+
+- Render：`https://ai-dispatch-control-tower.onrender.com/`。
+- 公開單一路徑 Playwright 已從空白首頁完成 Excel＋文字單次送出、40／40、4／4、Google 道路地圖、Agent、拖拉換車、ORD-041、人工確認、三策略、延遲與版本；正式派車 requests 為 0。
+- Agent 對話主畫面會把車輛停用、插單差異與其他工具輸出轉成繁體中文摘要；Raw JSON、內部狀態代碼與技術證據只可出現在收合區域。
+- 15 張 1440×900 驗收畫面位於 `docs/screenshots/public-final/`；明晚操作順序見 `docs/demo-runbook.md`。
+- TDX 是未來可選擴充，本版本不啟用，不影響匯入、方案、地圖、Agent、插單、換車或人工確認。
+
 ## 前端安裝與啟動
 
 在 repository root 啟動後端後，再於 `frontend/` 使用 bundled Node／`pnpm`（或團隊核准的 Node 24 + pnpm 11）：
