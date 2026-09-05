@@ -311,3 +311,13 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 - Backend：`43 passed, 3 skipped, 1 failed`（唯一失敗是刻意清空本機 OpenAI key 後，既有 API test 預期 200 而收到安全的 503；不冒稱 Live）；skipped 為 Agents SDK、Google live key、Responses smoke 的條件式 gates。`ruff check src tests scripts PASS`、`mypy src PASS`。
 - Frontend：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest `2 passed`、Vite production build PASS。
 - Render 公開網址：健康檢查、13-path OpenAPI／CORS、40 單 Google→OR-Tools→Validator、Agent、Google Maps 與 ORD-041 preview 均有實際回應；TDX 為 `OPTIONAL／NOT_CONFIGURED`。
+
+### 修正後公開重驗（Commit `35c7952`）
+
+- Render 自動部署完成後，重新匯入官方 workbook 並建立 `PLAN-C932F22FFF36`：40/40 已安排、365.0 kg、`provider_mode=GOOGLE`、`matrix_version=google-routes-v1`；VEH-001 116/120 kg、VEH-002 98/100 kg、VEH-003 151/160 kg、VEH-004 0/110 kg。
+- 獨立 Validator：`valid=true`，overload／cross-zone／duplicate／time-window 均為 0；`map-data` 為 4 條 route、40 stops，simulated geometry 0。
+- 公開 OpenAI Agent 回應 `RunResult`，工具為 `highest_load_vehicle`，回答引用 VEH-003 151/160 kg；未輸出 key 或 private reasoning。
+- 公開 ORD-041 preview：`MINIMAL_CHANGE`、preview version 3、40→41 張、365→367 kg、換車 0、受影響 1 台車；GET preview version 的 Validator `valid=true`。距離／時間差由當次 Google Matrix 計算，未寫死固定值。
+- 公開容量不足插單：`FULL_REPLAN`，新增訂單列為 unassigned，基準 plan version 1、40/40 與原車輛載重保持不變；重複 ID 與缺欄請求分別回傳 422 `URGENT_ORDER_INVALID`／`FIELD_VALIDATION_ERROR`，缺欄 envelope 含 9 個 field errors 且 `details.requires_manual_review=true`。
+- 公開瀏覽器切換至「路線追蹤」可見 40 stops、4 車篩選、Google attribution、道路地圖與 `Google Maps · 即時道路`；修正後服務狀態列顯示 Google Maps「已設定」。Console 無未處理 error；Dispatch requests=0。
+- 非付費壓力驗收：`scripts/run_randomized_insert_audit.py` 固定 seeds `260904`–`260913` 共 10 組，重跑後 input hash 可重現、Validator violations 全為 0；最新差異已寫入 `docs/randomized-acceptance-report.json`。

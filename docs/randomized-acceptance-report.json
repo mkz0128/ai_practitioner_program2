@@ -28,9 +28,9 @@
       "mode": "MINIMAL_CHANGE",
       "affected_vehicle_count": 1,
       "moved_order_count": 0,
-      "sequence_change_count": 1,
-      "distance_delta_m": 12,
-      "duration_delta_s": 1,
+      "sequence_change_count": 5,
+      "distance_delta_m": 484,
+      "duration_delta_s": 60,
       "assigned_weight_kg": 323.8,
       "before_vehicle_loads": {
         "VEH-001": {
@@ -94,8 +94,8 @@
       "affected_vehicle_count": 1,
       "moved_order_count": 0,
       "sequence_change_count": 16,
-      "distance_delta_m": 418,
-      "duration_delta_s": 53,
+      "distance_delta_m": 443,
+      "duration_delta_s": 56,
       "assigned_weight_kg": 325.0,
       "before_vehicle_loads": {
         "VEH-001": {
@@ -158,9 +158,9 @@
       "mode": "FULL_REPLAN",
       "affected_vehicle_count": 4,
       "moved_order_count": 22,
-      "sequence_change_count": 42,
-      "distance_delta_m": 3973,
-      "duration_delta_s": 497,
+      "sequence_change_count": 41,
+      "distance_delta_m": 11589,
+      "duration_delta_s": 1440,
       "assigned_weight_kg": 368.8,
       "before_vehicle_loads": {
         "VEH-001": {

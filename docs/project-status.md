@@ -153,6 +153,8 @@
 - 本輪仍未執行 Dispatch、正式部署、付費資源、force push 或 main merge；TDX 維持 `OPTIONAL／NOT_CONFIGURED`。修正後需等待 Render 自動部署，再重驗公開頁面。
 - 2026-09-05 最終公開稽核：Render `/health`／`/ready` 成功，OpenAPI 13 paths、CORS、官方 40 單 Google→OR-Tools→Validator、OpenAI Agent、Google Maps 與 ORD-041 preview 均有公開證據；Google Maps Browser key presence 已納入前端 runtime status。公開容量不足插單回傳明確 `FULL_REPLAN`／unassigned 且基準版本不變；CSV 單檔與 TDX 仍分別為契約缺口及加分功能阻塞。未執行 Dispatch，requests=0。
 - 2026-09-05 公開 40 單重跑發現並修正 OR-Tools solver sequence reconstruction 缺口；修正後需重新等待 Render 部署並以公開網址確認 40/40 與 Validator。
+- Render 自動部署後已完成重驗：`PLAN-C932F22FFF36` 為 Google→OR-Tools 40/40、365 kg、Validator valid，Google map 4 routes／40 stops；ORD-041 preview 為 `MINIMAL_CHANGE`（40→41、365→367 kg、換車 0、受影響 1 台車）。公開容量不足、重複 ID、缺欄請求均回傳安全錯誤／unassigned 結果；前端 Google Maps 狀態列已顯示「已設定」。
+- 最新非付費隨機驗收：固定 seeds `260904`–`260913` 共 10 組，Validator violations 全為 0、輸入 hash 可重現；完整 pytest（空白本機 OpenAI key）為 44 passed、3 skipped，另有 1 個既有 Agent API 測試因環境缺少可用 key 回傳預期的 503。
 - 本輪品質：前端 install/typecheck/ESLint/Vitest（2 passed）/Vite build 通過；後端 ruff、mypy 通過。完整 pytest 在刻意清空本機 OpenAI key 下為 43 passed、3 skipped、1 個既有 Agent API 測試因預期 OpenAI 200 而收到安全 503；此為本機憑證條件，不冒稱 Live。
 
 - Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
