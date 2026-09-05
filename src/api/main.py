@@ -1711,13 +1711,12 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             pending_order = None
     try:
         # Agent calls are evidence-only and deterministic tools have no
-        # external side effects, so one bounded retry is safe for transient
-        # provider/model transport failures.  This avoids turning a single
-        # intermittent 502 into a broken conversational turn while keeping
-        # retry count finite and observable.
+        # external side effects, so two bounded retries are safe for transient
+        # provider/model tool-selection failures. This matches the project-wide
+        # three-attempt ceiling without introducing an unbounded retry loop.
         agent_result: tuple[str, Any, Any] | None = None
         last_agent_error: Exception | None = None
-        for _attempt in range(2):
+        for _attempt in range(3):
             try:
                 agent_result = await run_dispatch_agent(
                     agent_message,
