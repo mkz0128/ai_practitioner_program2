@@ -250,7 +250,7 @@ Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend �
 
 ## 本分支 Live 驗收
 
-`frontend/tests/e2e/live-control-tower.spec.ts` 的歷史執行曾在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、Validator、Google Maps、Agent 多輪對話、ORD-041 preview、人工確認、配送任務與配送路線工作區；該歷史結果不代表本輪環境仍具備相同憑證。當前本輪 Google gate 回傳 `GOOGLE_HTTP_403`，Browser key 亦未設定，必須分別標示 BLOCKED。
+`frontend/tests/e2e/live-control-tower.spec.ts` 的歷史執行曾在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、方案檢查、Google Maps、Agent 多輪對話、ORD-041 preview 與人工確認；該歷史結果不代表本輪環境仍具備相同憑證。2026-09-05 本機狀態為 OpenAI 與 Browser key 已設定，Google Server key 的真實 Routes 請求則安全分類為 `API_KEY_RESTRICTED`；公開狀態必須以最新 Render build 的實際呼叫重新判定。
 
 Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`，每張為 1440×900 且不含 credential。TDX 因未設定 OAuth 憑證標示 `OPTIONAL／NOT_CONFIGURED`，不影響本輪後端與前端驗收。
 

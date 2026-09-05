@@ -34,19 +34,6 @@ function routeCoordinates(route: MapRoute, depot: MapData['depot']): google.maps
   return [{ lat: depot.latitude, lng: depot.longitude }, ...route.stops.map((stop) => ({ lat: stop.latitude, lng: stop.longitude })), { lat: depot.latitude, lng: depot.longitude }]
 }
 
-function routeToSvg(route: MapRoute, depot: MapData['depot']): { points: string; dots: Array<{ x: number; y: number; orderId?: string }> } {
-  const stops = [{ latitude: depot.latitude, longitude: depot.longitude, order_id: 'DEPOT-001' }, ...route.stops]
-  const latitudes = stops.map((stop) => stop.latitude)
-  const longitudes = stops.map((stop) => stop.longitude)
-  const minLat = Math.min(...latitudes) - 0.002
-  const maxLat = Math.max(...latitudes) + 0.002
-  const minLon = Math.min(...longitudes) - 0.002
-  const maxLon = Math.max(...longitudes) + 0.002
-  const project = (latitude: number, longitude: number) => ({ x: ((longitude - minLon) / (maxLon - minLon || 1)) * 100, y: (1 - (latitude - minLat) / (maxLat - minLat || 1)) * 100 })
-  const dots = stops.map((stop) => ({ ...project(stop.latitude, stop.longitude), orderId: stop.order_id }))
-  return { points: dots.map((dot) => `${dot.x},${dot.y}`).join(' '), dots }
-}
-
 export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }: MapPanelProps) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -126,17 +113,17 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
   return (
     <section className="panel map-panel" aria-label="配送地圖">
       <div className="panel-heading">
-        <div><div className="eyebrow">路線概覽</div><h2>配送地圖</h2><p>{data ? `${data.routes.reduce((sum, route) => sum + route.stops.length, 0)} 個配送站點 · ${data.provider_mode === 'GOOGLE' ? 'Google 路線資料' : '示意路線預覽'}` : '請先匯入並建立方案'}</p></div>
-        {data && <div className="route-filter"><button className={`filter-pill ${!activeVehicle ? 'active' : ''}`} onClick={() => onSelectVehicle(null)}>全部</button>{data.routes.map((route) => <button className={`filter-pill ${activeVehicle === route.vehicle_id ? 'active' : ''}`} key={route.vehicle_id} onClick={() => onSelectVehicle(route.vehicle_id)}>{route.vehicle_id}</button>)}</div>}
+        <div><h2>配送地圖</h2><p>{data ? `${data.routes.reduce((sum, route) => sum + route.stops.length, 0)} 個配送站點 · ${data.provider_mode === 'GOOGLE' ? '即時道路資料' : '可重現示範資料'}` : '建立方案後顯示配送路線'}</p></div>
+        {data && <div className="route-filter"><button type="button" className={`filter-pill ${!activeVehicle ? 'active' : ''}`} onClick={() => onSelectVehicle(null)}>顯示全部路線</button>{data.routes.map((route) => <button type="button" className={`filter-pill ${activeVehicle === route.vehicle_id ? 'active' : ''}`} key={route.vehicle_id} onClick={() => onSelectVehicle(activeVehicle === route.vehicle_id ? null : route.vehicle_id)}>{route.vehicle_id}</button>)}</div>}
       </div>
       <div className="map-wrap">
         {liveMap && <div className="map-canvas" ref={mapElement} />}
-        {!liveMap && <div className="map-fallback"><div className="map-grid" />{data && visibleRoutes.map((route) => { const svg = routeToSvg(route, data.depot); const selected = !activeVehicle || activeVehicle === route.vehicle_id; return <svg className="map-route" style={{ opacity: selected ? 1 : .2 }} viewBox="0 0 100 100" preserveAspectRatio="none" key={route.vehicle_id}><polyline points={svg.points} stroke={route.color} />{svg.dots.map((dot, index) => <circle key={`${route.vehicle_id}-${index}`} cx={dot.x} cy={dot.y} r={index === 0 ? 2 : 1.4} fill={index === 0 ? '#fff' : route.color} onClick={() => { if (dot.orderId) { onSelectVehicle(route.vehicle_id); if (dot.orderId !== 'DEPOT-001') onSelectOrder?.(dot.orderId) } }} />)}</svg>})}</div>}
+        {!liveMap && <div className="map-unavailable"><strong>道路地圖目前無法顯示</strong><span>配送方案仍可在下方清單查看；路線服務恢復後會自動顯示道路。</span></div>}
         <div className="map-label"><strong>DEPOT-001</strong><span>新北市青年局配送中心</span></div>
-        <div className={`map-status ${liveMap && !mapError ? 'is-live' : ''}`}>{liveMap && !mapError ? 'Google Maps · 即時道路' : browserKey ? '示意路線 · Google 路線資料不可用' : '示意路線 · Browser key 未設定'}</div>
+        <div className={`map-status ${liveMap && !mapError ? 'is-live' : ''}`}>{liveMap && !mapError ? '即時道路地圖' : browserKey ? '路線服務暫時無法使用' : '道路地圖尚未設定'}</div>
         {mapError && <div className="warning-box" style={{ position: 'absolute', left: 16, right: 16, top: 58 }}>{mapError}</div>}
         {!data && <div className="loading">等待配送方案</div>}
-        {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ TDX 路況事件</span>}</div>}
+        {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ 道路事件</span>}</div>}
       </div>
     </section>
   )

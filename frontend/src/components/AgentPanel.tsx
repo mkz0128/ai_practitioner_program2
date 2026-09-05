@@ -30,6 +30,10 @@ const suggestions = ['你可以做什麼？', 'Excel 需要哪些欄位？', '�
 export function friendlyText(text: string, evidence: ChatResponse['evidence'] = []): string {
   const normalized = text
     .replace(/ORTOOLS/g, '最佳化排程')
+    .replace(/BASELINE/g, '快速初步方案')
+    .replace(/UNASSIGNABLE/g, '目前無法安排')
+    .replace(/Validator/gi, '方案檢查')
+    .replace(/Dispatch/gi, '正式派車')
     .replace(/SIMULATED/g, '示範資料')
     .replace(/GOOGLE_LIVE/g, 'Google 即時資料')
     .replace(/FEASIBLE/g, '可行')
@@ -77,7 +81,7 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   if (tool === 'explain_assignment') return '這份說明來自訂單、車輛容量、服務區域與時段驗證結果。'
   if (tool === 'preview_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
   if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
-  if (tool === 'prepare_confirmation') return '已準備確認資訊；請在畫面按下人工確認，Agent 不會執行 Dispatch。'
+  if (tool === 'prepare_confirmation') return '已準備確認資訊；請在畫面按下人工確認，系統不會自動執行派車。'
   if (tool === 'assistant_help') return String(data.message ?? '已取得使用說明。')
   return '已取得後端工具證據。'
 }
@@ -162,7 +166,7 @@ export function AgentPanel({ onChat, onUseExample, onStop, busy }: AgentPanelPro
       onDrop={(event) => { event.preventDefault(); setDragActive(false); if (!busy) selectFile(event.dataTransfer.files?.[0]) }}
     >
       <div className="panel-heading">
-        <div><div className="eyebrow">調度 Copilot</div><h2>AI 調度</h2><p>直接說出需求，或附加今天的訂單</p></div>
+        <div><h2>AI 調度助理</h2></div>
         <span className="status-chip neutral"><span className="online-dot" />在線</span>
       </div>
       <div className="panel-body agent-body">
@@ -181,7 +185,7 @@ export function AgentPanel({ onChat, onUseExample, onStop, busy }: AgentPanelPro
         <form className="chat-form" onSubmit={(event) => { event.preventDefault(); void send() }}>
           <div className="attachment-menu-wrap">
             <button type="button" className="attachment-button" aria-label="附加訂單檔案" aria-expanded={attachmentMenu} onClick={() => setAttachmentMenu((open) => !open)} disabled={busy}>＋</button>
-            {attachmentMenu && <div className="attachment-menu"><button type="button" onClick={() => { fileInputRef.current?.click(); setAttachmentMenu(false) }}>上傳 Excel</button><button type="button" onClick={() => void chooseExample()}>使用 40 張範例訂單</button></div>}
+            {attachmentMenu && <div className="attachment-menu"><button type="button" onClick={() => { fileInputRef.current?.click(); setAttachmentMenu(false) }}>上傳 Excel</button><button type="button" onClick={() => void chooseExample()}>使用 40 張範例訂單</button><a href="/demo-delivery-40-orders.xlsx" download>下載範例格式</a></div>}
           </div>
           <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }} placeholder="輸入你的配送需求…" disabled={busy} aria-label="輸入訊息" rows={1} />
           <button className="control-button" type="submit" disabled={busy || (!message.trim() && !attachment)}>送出</button>

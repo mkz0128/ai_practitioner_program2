@@ -1,5 +1,11 @@
 # 架構決策紀錄
 
+## ADR-009 — 正式方案選擇與可確認性
+
+正式方案的演算法由 service policy 固定為 OR-Tools，不交由 LLM 或前端選擇。Baseline 只在 benchmark／比較流程執行，API 必須拒絕確認 Baseline。Plan response 將 completeness、rule check 與 confirmability 分成獨立結構；確認端點會再次以 server-side plan、unassigned、provider completeness 與 Validator 結果做 fail-closed 檢查。
+
+前端採單一控制塔：Agent 只負責自然語言與工具選擇，地圖、車輛、順序、載重、待處理訂單與換車差異皆使用同一 Plan API evidence。拖拉只是輸入手勢，實際變更一定送到後端 Preview，重新計算並驗證後才可人工確認；地圖失效時保留清單，不使用假道路圖形代替 Google 地圖。
+
 ## 決策摘要
 
 採用單一 FastAPI application 與分層 modular monolith，配置一個 OpenAI Agent、strict function tools、deterministic domain／validation／optimization services、可替換的 external providers、SQLAlchemy／SQLite persistence，以及獨立的 plan validator。

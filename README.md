@@ -70,7 +70,7 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。存在 credentials 時，live gate 使用 `gpt-5-mini`；缺少 Browser／TDX credentials 的環境會明確顯示 fallback 或 `OPTIONAL／NOT_CONFIGURED`，不以此冒充 Live PASS。Backend P0、OpenAI Agent runtime、Google Routes 與 Browser map 已通過本機 Live 驗收；TDX 仍為可選外部依賴，整體專案仍為 `IN_PROGRESS`。
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。存在 credentials 時，live gate 使用 `gpt-5-mini`；缺少或受限的 Provider 會明確顯示降級或阻塞，不以 mock、simulated、fallback 或 skipped test 冒充 Live PASS。Backend deterministic core 與 OpenAI Agent runtime 已通過本機驗證；Google Routes、Google Maps 與 TDX 的 Live 狀態必須以當次環境及實際呼叫結果為準，整體專案仍為 `IN_PROGRESS`。
 
 ## 前端交付快速開始
 

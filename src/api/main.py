@@ -13,11 +13,20 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from agents import InputGuardrailTripwireTriggered
+from agents.exceptions import ModelBehaviorError, ModelTimeoutError, ToolTimeoutError
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.runtime import run_dispatch_agent
@@ -46,6 +55,23 @@ from src.services.validator import PlanValidation, validate_plan
 
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def _classify_agent_error(exc: Exception) -> tuple[int, str, str, bool]:
+    """Return a safe client-facing classification without serializing SDK details."""
+    if isinstance(exc, (ModelTimeoutError, ToolTimeoutError, APITimeoutError)):
+        return 504, "AGENT_TIMEOUT", "AI 助理回應逾時，請稍後重試。", True
+    if isinstance(exc, RateLimitError):
+        return 503, "AGENT_RATE_LIMITED", "AI 服務目前忙碌，請稍後重試。", True
+    if isinstance(exc, APIConnectionError):
+        return 503, "AGENT_PROVIDER_UNAVAILABLE", "AI 服務目前無法連線，請稍後重試。", True
+    if isinstance(exc, (AuthenticationError, PermissionDeniedError)):
+        return 503, "AGENT_CREDENTIALS_REJECTED", "AI 服務授權失敗，請由管理者檢查設定。", False
+    if isinstance(exc, BadRequestError):
+        return 502, "AGENT_REQUEST_REJECTED", "AI 服務無法處理這次要求，請調整內容後重試。", False
+    if isinstance(exc, ModelBehaviorError):
+        return 502, "AGENT_INVALID_RESPONSE", "AI 回覆未通過安全檢查，方案沒有變更。", False
+    return 502, "AGENT_RUN_FAILED", "AI 助理暫時無法完成這次要求，方案沒有變更。", False
 
 
 class CreatePlanRequest(StrictRequest):
@@ -208,9 +234,7 @@ def _session_from_payload(payload: dict[str, Any]) -> AgentSession:
     pending_order = payload.get("pending_order")
     return AgentSession(
         dataset_id=(
-            payload.get("dataset_id")
-            if isinstance(payload.get("dataset_id"), str)
-            else None
+            payload.get("dataset_id") if isinstance(payload.get("dataset_id"), str) else None
         ),
         plan_id=plan_id if isinstance(plan_id, str) else None,
         plan_version=plan_version if isinstance(plan_version, int) else None,
@@ -475,6 +499,13 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
             }
             stops.append(stop_payload)
             previous_node_id = stop.order_id
+        unused_reason = None
+        if not route.order_ids:
+            unused_reason = (
+                "其他車輛已在不違反限制下完成全部訂單，此車保留備援容量。"
+                if record.plan.complete
+                else "目前沒有剩餘訂單能在載重、服務區域與時段限制內合法安排至此車。"
+            )
         routes.append(
             {
                 "vehicle_id": route.vehicle_id,
@@ -488,6 +519,7 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
                 "total_distance_m": route.total_distance_m,
                 "total_duration_s": route.total_duration_s,
                 "route_provider_mode": record.matrix.provider_mode,
+                "unused_reason": unused_reason,
                 "stops": stops,
             }
         )
@@ -505,6 +537,21 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         else 0.0
     )
     current_dataset_hash = dataset_hash(dataset) if dataset else None
+    total_orders = len(orders)
+    is_complete = (
+        record.plan.complete and assigned == total_orders and not record.plan.unassigned_orders
+    )
+    rule_check_passed = record.validation.valid
+    confirmation_blockers: list[str] = []
+    if record.plan.algorithm != "ORTOOLS":
+        confirmation_blockers.append("NOT_FORMAL_OPTIMIZED_PLAN")
+    if not is_complete:
+        confirmation_blockers.append("UNASSIGNED_ORDERS")
+    if not rule_check_passed:
+        confirmation_blockers.append("RULE_CHECK_FAILED")
+    if record.state != "PROPOSED":
+        confirmation_blockers.append("PLAN_STATE_NOT_PROPOSED")
+    can_confirm = not confirmation_blockers
     warnings: list[dict[str, Any]] = []
     if record.matrix.provider_mode == "SIMULATED":
         warnings.append(
@@ -528,6 +575,20 @@ def _plan_payload(record: PlanRecord) -> dict[str, Any]:
         "objective": record.plan.objective,
         "dataset_hash": current_dataset_hash,
         "is_fully_feasible": record.plan.complete and record.validation.valid,
+        "completeness": {
+            "is_complete": is_complete,
+            "assigned_order_count": assigned,
+            "total_order_count": total_orders,
+            "unassigned_order_count": len(record.plan.unassigned_orders),
+        },
+        "rule_check": {
+            "passed": rule_check_passed,
+            "violations": record.validation.violations,
+        },
+        "confirmability": {
+            "can_confirm": can_confirm,
+            "blockers": confirmation_blockers,
+        },
         "requires_human_confirmation": True,
         "summary": {
             "assigned_order_count": assigned,
@@ -1397,6 +1458,7 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
         return _error(request, 409, "PLAN_ALREADY_DISPATCHED", "已出發的規劃不可再次確認。")
     if (
         record.state != "PROPOSED"
+        or record.plan.algorithm != "ORTOOLS"
         or not record.validation.valid
         or not record.plan.complete
         or bool(record.plan.unassigned_orders)
@@ -1660,15 +1722,17 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             "PROMPT_INJECTION_BLOCKED",
             "訊息包含不可執行的規則繞過要求。",
         )
-    except Exception:
+    except Exception as exc:
         # Do not serialize provider requests, headers, keys, or SDK internals.
+        status_code, error_code, message, retryable = _classify_agent_error(exc)
         return _error(
             request,
-            502,
-            "AGENT_RUN_FAILED",
-            "OpenAI Agent 執行失敗, 請查看 provider status 與 request_id。",
+            status_code,
+            error_code,
+            message,
             provider="OPENAI",
             fallback_used=False,
+            retryable=retryable,
         )
 
     # A plan requested through the Agent is persisted here, after the SDK has

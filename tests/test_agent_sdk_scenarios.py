@@ -8,7 +8,7 @@ from src.agent.runtime import run_dispatch_agent
 from src.domain.models import Order, Package, Priority
 from src.services.importer import parse_workbook
 from src.services.matrix import SimulatedRouteProvider
-from src.services.planner import build_baseline
+from src.services.planner import build_baseline, build_ortools
 
 SAMPLE_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-delivery-40-orders.xlsx"
 
@@ -41,12 +41,13 @@ async def test_sdk_daily_dispatch_calls_planner_and_validator() -> None:
     _, context, _ = await _run_tool(
         "Create today's daily dispatch plan.",
         "plan_dispatch",
-        {"algorithm": "BASELINE"},
+        {"objective": "FASTEST"},
     )
     evidence = context.evidence[-1]
     assert evidence["tool"] == "plan_dispatch"
     assert evidence["validator"]["valid"] is True
-    assert evidence["algorithm"] == "BASELINE"
+    assert evidence["algorithm"] == "ORTOOLS"
+    assert evidence["complete"] is True
 
 
 @pytest.mark.asyncio
@@ -54,7 +55,7 @@ async def test_plan_evidence_vehicle_count_counts_non_empty_routes() -> None:
     _, context, _ = await _run_tool(
         "Create today's daily dispatch plan.",
         "plan_dispatch",
-        {"algorithm": "ORTOOLS"},
+        {"objective": "FASTEST"},
     )
     evidence = context.evidence[-1]
     assert evidence["vehicle_count"] == sum(bool(route.order_ids) for route in context.plan.routes)
@@ -74,7 +75,7 @@ async def test_sdk_highest_load_uses_validated_plan_evidence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sdk_explains_unassigned_order_without_llm_reasoning() -> None:
+async def test_sdk_does_not_report_baseline_omission_as_formal_plan_exception() -> None:
     dataset, matrix = _fixture()
     baseline = build_baseline(dataset, matrix)
     assert baseline.unassigned_orders
@@ -97,7 +98,7 @@ async def test_sdk_explains_unassigned_order_without_llm_reasoning() -> None:
     assert evidence == {
         "tool": "explain_unassigned",
         "order_id": order_id,
-        "reason": baseline.unassigned_reasons[order_id],
+        "reason": "ORDER_IS_ASSIGNED",
     }
 
 
@@ -211,7 +212,7 @@ async def test_sdk_multiple_urgent_orders_use_strict_schema_and_validator() -> N
 @pytest.mark.asyncio
 async def test_sdk_frozen_stop_cannot_be_reassigned() -> None:
     dataset, matrix = _fixture()
-    base = build_baseline(dataset, matrix)
+    base = build_ortools(dataset, matrix, time_limit_seconds=10, objective="FASTEST")
     frozen_order = next(order_id for route in base.routes for order_id in route.order_ids)
     target_vehicle = next(
         vehicle.vehicle_id
@@ -250,7 +251,7 @@ async def test_sdk_frozen_stop_cannot_be_reassigned() -> None:
 @pytest.mark.asyncio
 async def test_sdk_freezes_first_n_stops_without_inventing_order_ids() -> None:
     dataset, matrix = _fixture()
-    base = build_baseline(dataset, matrix)
+    base = build_ortools(dataset, matrix)
     expected = [
         order_id
         for route in sorted(base.routes, key=lambda item: item.vehicle_id)
@@ -371,10 +372,10 @@ async def test_sdk_guardrail_blocks_broader_attack_corpus(message: str) -> None:
 @pytest.mark.asyncio
 async def test_sdk_final_answer_cannot_replace_deterministic_evidence() -> None:
     dataset, matrix = _fixture()
-    expected = build_baseline(dataset, matrix)
+    expected = build_ortools(dataset, matrix, time_limit_seconds=10, objective="FASTEST")
     model = ScriptedModel(
         [
-            [function_call("plan_dispatch", {"algorithm": "BASELINE"}, call_id="call-evidence")],
+            [function_call("plan_dispatch", {"objective": "FASTEST"}, call_id="call-evidence")],
             [assistant_message("The model must cite the tool output, not calculate a route.")],
         ]
     )

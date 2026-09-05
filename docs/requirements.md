@@ -1,5 +1,14 @@
 # 需求與覆蓋範圍
 
+## 2026-09-05 正式方案驗收補充
+
+| Requirement ID | 類別 | 工作內容 | 現況 | 實際證據 | 尚缺內容 | 負責角色 | 前置條件 | 驗收方式 | Fallback |
+|---|---|---|---|---|---|---|---|---|---|
+| FR-PLAN-008 | 原始必要 | 一般正式方案只能使用 OR-Tools | 完成 | `src/agent/runtime.py`、`src/api/main.py`、`tests/test_formal_plan_guardrails.py` | 無 | 後端 | 合法 Dataset | API 與 Agent 正式 plan 皆為 ORTOOLS；Baseline confirm 回傳拒絕 | Baseline 僅能比較 |
+| FR-PLAN-009 | 原始必要 | 完整性與規則合法性分開 | 完成 | `_plan_payload`、`DetailsPanel.tsx`、正式方案 regression | 公開最新版本待重驗 | 共同 | Plan、方案檢查證據 | 40／40 與方案檢查分開顯示；38／40 不可確認 | 不完整方案保留人工處理原因 |
+| FR-UI-004 | 原始必要 | 單一控制塔與白話狀態 | 完成（本機） | `frontend/src/App.tsx`、各 Panel、RTL／Playwright | 公開最新 Render 待驗收 | 前端 | REST API | 無重複頁名、主畫面 Raw JSON 或假地圖 | 地圖失敗保留列表 |
+| FR-AGENT-004 | 原始必要 | 多語句 strict tool 選擇驗收 | 完成（本機） | 112 筆 fixture；24 個真實 Runner 案例 | 公開 12 案例待部署後執行 | 共同 | OpenAI credential | 工具、參數、結果及回答依據全部可驗證 | 無 key 回傳 503 |
+
 本文件將已核准的產品需求拆解為可追溯的 requirements；若文字不一致，以 `ACTIVE_SPEC.md` 為準。
 
 ## 功能需求

@@ -3,12 +3,9 @@ import { ApiError, chat, compareStrategies, confirmPlan, getMapData, getPlan, ge
 import { AgentPanel } from './components/AgentPanel'
 import { DetailsPanel } from './components/DetailsPanel'
 import { MapPanel } from './components/MapPanel'
-import { OrderDetailPanel } from './components/OrderDetailPanel'
 import { PlanInsights } from './components/PlanInsights'
-import { RouteTaskList } from './components/RouteTaskList'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
-import { TaskTable } from './components/TaskTable'
 import { VehiclePanel } from './components/VehiclePanel'
 import type { ChatResponse, DelayPreview, MapData, Plan, PlanVersionSummary, ProviderStatus, StrategyComparison, UrgentOrderPayload, UrgentPackagePayload, UrgentPreview, ValidationPayload } from './types'
 import './styles.css'
@@ -20,8 +17,17 @@ const ACTIVE_PLAN_STORAGE_KEY = 'dispatch.active-plan'
 function errorText(error: unknown): string {
   if (error instanceof ApiError) {
     const fields = error.fieldErrors.map((field) => `${field.path}: ${field.message}`).join('；')
-    return fields ? `${error.message} ${fields}` : `${error.message}（${error.code}）`
+    if (fields) return `${error.message} ${fields}`
+    const friendlyErrors: Record<string, string> = {
+      AGENT_RUN_FAILED: 'AI 助理暫時無法完成這次要求，請重試；目前方案沒有變更。',
+      AGENT_UNAVAILABLE: 'AI 助理目前未連線，資料匯入與既有方案仍可查看。',
+      PROVIDER_UNAVAILABLE: '路線服務暫時無法使用，請稍後重試；系統不會把示範資料當成即時結果。',
+      PLAN_NOT_CONFIRMABLE: '這份方案仍有未安排訂單或規則問題，目前不能確認。',
+      REASSIGNMENT_NOT_FEASIBLE: '這次換車不符合載重、服務區域或時段限制，原方案沒有變更。',
+    }
+    return friendlyErrors[error.code] || error.message
   }
+  if (error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message)) return '暫時無法完成這次操作，請重試。'
   return error instanceof Error ? error.message : '發生未預期錯誤。'
 }
 
@@ -114,6 +120,11 @@ export default function App() {
       void getPlan(reference.plan_id, typeof reference.version === 'number' ? reference.version : undefined)
         .then(async (restored) => {
           if (cancelled) return
+          if (restored.algorithm !== 'ORTOOLS') {
+            window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
+            setNotice('先前儲存的是快速初步方案，已停止載入；請建立新的最佳化配送方案。')
+            return
+          }
           setPlan(restored)
           setMapData(await getMapData(restored.plan_id, restored.version))
           setActiveOrderId(restored.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
@@ -164,6 +175,9 @@ export default function App() {
       let activePlan = plan
       if (response.plan_id) {
         activePlan = await getPlan(response.plan_id, response.plan_version ?? undefined)
+        if (activePlan.algorithm !== 'ORTOOLS') {
+          throw new Error('正式方案必須使用最佳化配送方案，快速初步方案只能用於比較。')
+        }
         setPlan(activePlan)
         setActiveDatasetId(activePlan.dataset_id)
         window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: activePlan.plan_id, version: activePlan.version }))
@@ -192,15 +206,16 @@ export default function App() {
   const handleStop = () => { abortRef.current?.abort() }
 
   const handleConfirm = async () => {
-    if (!plan || !preview) return
+    if (!plan || (!preview && !plan.confirmability.can_confirm)) return
     setBusy(true); setError(null)
     try {
-      const confirmed = await confirmPlan(plan.plan_id, preview.preview_version)
+      const confirmed = await confirmPlan(plan.plan_id, preview?.preview_version ?? plan.version)
       setPlan(confirmed)
+      setPreview(null)
       window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: confirmed.plan_id, version: confirmed.version }))
       setMapData(await getMapData(confirmed.plan_id, confirmed.version))
       setPlanVersions(null)
-      setNotice(`已確認方案版本 ${confirmed.version}；本控制塔未執行 Dispatch。`)
+      setNotice(`已確認方案版本 ${confirmed.version}；本控制塔未執行正式派車。`)
     } catch (requestError) { setError(errorText(requestError)) }
     finally { setBusy(false) }
   }
@@ -281,36 +296,26 @@ export default function App() {
   }
 
   return <div className="app-shell">
-    <Sidebar activeView={activeView} onViewChange={setActiveView} />
+    <Sidebar activeView={activeView} onViewChange={(view) => { setActiveView(view); document.getElementById(view === 'assistant' ? 'planning' : view)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />
     <div className="app-content">
-      <StatusBar plan={plan} providers={providers} mapsConfigured={mapsConfigured} activeView={activeView} onViewChange={setActiveView} />
+      <StatusBar plan={plan} providers={providers} mapsConfigured={mapsConfigured} />
       <main className="page-content">
-        {activeView === 'assistant' && <>
-          <div className="assistant-layout">
+          <div className="control-tower-grid" id="planning">
             <AgentPanel onChat={handleChat} onUseExample={handleUseExample} onStop={handleStop} busy={busy} />
             <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} />
+            <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
           </div>
-          <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
-          <DetailsPanel plan={plan} preview={preview} onConfirm={handleConfirm} onCancelPreview={handleCancelPreview} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} />
+          <div id="tasks"><DetailsPanel plan={plan} preview={preview} onConfirm={handleConfirm} onCancelPreview={handleCancelPreview} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} /></div>
+          <div id="tracking">
           <PlanInsights plan={plan} comparison={strategyComparison} delayPreview={delayPreview} versions={planVersions} busy={busy} onCompare={handleCompareStrategies} onDelay={handleDelayPreview} onLoadVersions={handleLoadVersions} onRestore={handleRestoreVersion} />
-        </>}
-        {activeView === 'tasks' && <>
-          <div className="page-title-row"><div><div className="eyebrow">工作區</div><h1>配送任務</h1><p>搜尋訂單、查看配送狀態與 AI 提供的證據摘要。</p></div><button type="button" className="control-button" onClick={() => setActiveView('assistant')}>＋ 匯入新資料</button></div>
-          <div className="task-page-grid"><TaskTable plan={plan} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} /><OrderDetailPanel plan={plan} orderId={activeOrderId} /></div>
-          <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
-        </>}
-        {activeView === 'tracking' && <>
-          <div className="page-title-row"><div><div className="eyebrow">工作區</div><h1>路線追蹤</h1><p>依車輛查看配送順序與目前的路線風險。</p></div><div className="route-date">今日 · {plan ? `${plan.summary.assigned_order_count} 張訂單` : '尚未建立方案'}</div></div>
-          <div className="tracking-page-grid"><MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} /><RouteTaskList data={mapData} plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} /></div>
-          <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
-        </>}
+          </div>
       </main>
       <div className="app-feedback">
       {busy && <div className="hint">正在整理訂單與配送方案…</div>}
       {notice && <div className="success-box">{notice}</div>}
       {validation && !validation.is_valid && <div className="warning-box">資料驗證需要人工複核：{validation.errors.map((item) => item.path).join('、')}</div>}
       {error && <div className="error-box" role="alert">{error}</div>}
-      <div className="hint" style={{ marginTop: 10 }}>安全邊界：本畫面只會執行匯入、驗證、排程、Agent 查詢、插單 preview 與人工確認；不提供自動 Dispatch、部署或正式環境操作。</div>
+      <div className="hint safety-note" style={{ marginTop: 10 }}>所有方案變更都會先預覽，並在人工確認後才會套用。</div>
       </div>
     </div>
   </div>

@@ -57,6 +57,7 @@ export interface VehicleRoute {
   total_distance_m: number
   total_duration_s: number
   route_provider_mode: ProviderMode
+  unused_reason?: string | null
   stops: Stop[]
 }
 
@@ -73,6 +74,14 @@ export interface Plan {
   objective?: 'FASTEST' | 'BALANCED' | 'STABLE'
   dataset_hash?: string
   is_fully_feasible: boolean
+  completeness: {
+    is_complete: boolean
+    assigned_order_count: number
+    total_order_count: number
+    unassigned_order_count: number
+  }
+  rule_check: { passed: boolean; violations: Record<string, number> }
+  confirmability: { can_confirm: boolean; blockers: string[] }
   requires_human_confirmation: boolean
   summary: {
     assigned_order_count: number

@@ -70,8 +70,8 @@ test('AI 調度：附件與文字一次送出並完成 Live 排程', async ({ pa
   await expect.poll(() => importRequests, { timeout: 30_000 }).toBe(1)
   await expect.poll(() => agentRequests, { timeout: 30_000 }).toBe(2)
   await expect(page.getByText(/已匯入 40 張訂單/)).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Google Maps · 即時道路')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('Validator 通過')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('即時道路地圖')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('方案檢查通過').first()).toBeVisible({ timeout: 30_000 })
   const submittedBubble = page.locator('.chat-bubble.user').filter({ hasText: '請用這份資料建立今天的配送方案' })
   await expect(submittedBubble).toHaveCount(1)
   await expect(submittedBubble.locator('.message-attachment')).toContainText('demo-delivery-40-orders.xlsx')
@@ -97,8 +97,8 @@ test('AI 調度：附件與文字一次送出並完成 Live 排程', async ({ pa
   await page.screenshot({ path: path.join(screenshotDir, 'chat-composer-urgent-diff.png') })
 
   await send('好，我確認這個新方案。')
-  await expect(page.getByRole('button', { name: '人工確認預覽' })).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: '人工確認預覽' }).click()
+  await expect(page.getByRole('button', { name: '套用變更' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '套用變更' }).click()
   await expect(page.getByText(/已確認方案版本/)).toBeVisible({ timeout: 60_000 })
   await expect.poll(() => dispatchRequests).toBe(0)
 

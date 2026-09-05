@@ -361,7 +361,9 @@ Request:
 {"version":2,"confirmation":"MARK_DISPATCHED"}
 ```
 
-只有精確的 `CONFIRMED` version 能轉為 `DISPATCHED`，並回傳 audit event ID。此操作只記錄 state，不控制 real fleet。
+此端點只為維持既有契約；`DISPATCH_ENABLED=false` 為固定預設。未啟用時一律回傳
+`403 DISPATCH_DISABLED`，不會建立狀態轉移、呼叫車隊或控制任何車輛。Agent allowlist 與前端
+均沒有此操作。
 
 ### `POST /api/v1/agent/chat`
 

@@ -34,7 +34,6 @@ from src.services.plan_diff import compute_plan_diff
 from src.services.planner import (
     Objective,
     PlanResult,
-    build_baseline,
     build_ortools,
     preview_reassignment,
     try_minimal_insert,
@@ -273,20 +272,21 @@ def prepare_confirmation(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
 @function_tool(strict_mode=True)
 def plan_dispatch(
     ctx: RunContextWrapper[DispatchAgentContext],
-    algorithm: Literal["BASELINE", "ORTOOLS"],
     objective: Objective = "FASTEST",
 ) -> str:
-    """Build and independently validate a deterministic delivery plan."""
-    _tool_started(ctx.context, "plan_dispatch", {"algorithm": algorithm})
-    if algorithm == "BASELINE":
-        plan = build_baseline(ctx.context.dataset, ctx.context.matrix)
-    else:
-        plan = build_ortools(
-            ctx.context.dataset,
-            ctx.context.matrix,
-            time_limit_seconds=10,
-            objective=objective,
-        )
+    """Build a formal OR-Tools plan and independently validate it.
+
+    Baseline is deliberately absent from this tool schema.  It remains a
+    deterministic benchmark, but a language model must never be able to pick
+    it for the operator's confirmable daily plan.
+    """
+    _tool_started(ctx.context, "plan_dispatch", {"objective": objective})
+    plan = build_ortools(
+        ctx.context.dataset,
+        ctx.context.matrix,
+        time_limit_seconds=10,
+        objective=objective,
+    )
     ctx.context.plan = plan
     validation = validate_plan(ctx.context.dataset, plan, ctx.context.matrix)
     evidence = {
@@ -315,7 +315,12 @@ def plan_dispatch(
 def _plan_for_query(context: DispatchAgentContext) -> PlanResult:
     if context.plan is not None:
         return context.plan
-    plan = build_baseline(context.dataset, context.matrix)
+    plan = build_ortools(
+        context.dataset,
+        context.matrix,
+        time_limit_seconds=10,
+        objective=context.strategy,
+    )
     validation = validate_plan(context.dataset, plan, context.matrix)
     if not validation.valid:
         raise ValueError("PLAN_VALIDATION_FAILED")
@@ -679,9 +684,7 @@ def reassign_order_preview(
         evidence = {
             "tool": "reassign_order_preview",
             "status": (
-                "FROZEN_STOP_CONFLICT"
-                if blocked_by_frozen_stop
-                else "REASSIGNMENT_NOT_FEASIBLE"
+                "FROZEN_STOP_CONFLICT" if blocked_by_frozen_stop else "REASSIGNMENT_NOT_FEASIBLE"
             ),
             **request.model_dump(mode="json"),
             "requires_human_confirmation": True,
@@ -927,9 +930,7 @@ def preview_multiple_urgent_insert(
         return {
             "algorithm": plan.algorithm,
             "assigned_order_count": sum(len(route.order_ids) for route in plan.routes),
-            "assigned_weight_kg": round(
-                sum(route.planned_load_kg for route in plan.routes), 3
-            ),
+            "assigned_weight_kg": round(sum(route.planned_load_kg for route in plan.routes), 3),
             "unassigned_orders": plan.unassigned_orders,
             "total_distance_m": plan.total_distance_m,
             "total_duration_s": plan.total_driving_time_s,
@@ -1203,7 +1204,8 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "request semantically and select only the allowlisted strict tool that matches it. "
             "Never use a keyword rule, calculate weights, routes, legality, metrics, risk or "
             "versions yourself. Deterministic tool evidence is the sole source of truth. "
-            "Use plan_dispatch for a new plan, highest_load_vehicle for load queries, "
+            "Use plan_dispatch for a new formal plan; it always uses OR-Tools and Baseline is "
+            "never a selectable formal-plan algorithm. Use highest_load_vehicle for load queries, "
             "explain_assignment for assignment reasons, explain_unassigned for exceptions, "
             "compare_strategies for FASTEST/BALANCED/STABLE comparison, simulate_delay for a "
             "10/20/30 minute delay, change_vehicle_availability for vehicle incidents, "

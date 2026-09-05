@@ -17,6 +17,13 @@ application_agent_count: 1
 
 `APPROVE_IMPLEMENTATION` 本身不包含部署；本輪使用者另行明確核准的 Render Free 測試服務部署，僅限 `feat/frontend-control-tower`，不包含付費資源、IAM、Production、Dispatch、force push 或合併 `main`。
 
+### 2026-09-05 正式方案與介面校正
+
+- 一般使用者的建立方案、重新規劃與 Agent 排程固定使用 OR-Tools；Baseline 僅是「快速初步方案」比較項，不得確認。
+- 可確認方案必須同時滿足：所有有效訂單完成安排、provider 資料完整、獨立方案檢查通過、無超重／跨區／重複／時段違規及缺少必要資料。
+- 介面只呈現「已安排張數」、「方案檢查」及「是否可確認」等白話結果；solver、matrix、provider 與 tool 細節只能收在技術資訊。
+- 單一控制塔整合對話、地圖、車輛、待處理訂單與方案明細，所有正式資料來自 REST API，不由前端重算或寫死。
+
 ## 1. Why — 商業意圖
 
 ### 核心問題

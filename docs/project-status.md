@@ -6,10 +6,10 @@
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
-- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（Render 公開 simulated plan 語意案例）；完整 Windows HTTP gate 仍記錄平台限制
-- Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE；LIFECYCLE_PARTIAL`
-- Live Provider Integration：`OPENAI_LIVE；GOOGLE_BLOCKED_403；BROWSER_CONFIGURED；TDX_OPTIONAL_NOT_CONFIGURED`
-- Frontend Integration status：`PUBLIC_REVALIDATED（simulated route flow）；Google server Matrix 仍受權限阻塞`
+- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`LOCAL_LIVE_PASS`（24 個代表性語意案例）；公開環境待最新 Commit 部署後重驗
+- Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
+- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_LOCAL_BLOCKED_API_KEY_RESTRICTED；BROWSER_CONFIGURED；TDX_MISSING`
+- Frontend Integration status：`LOCAL_REGRESSION_PASS；PUBLIC_REVALIDATION_PENDING`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -41,18 +41,19 @@
 
 ## NOW
 
-完成 `c5fe929` Agent 工具路由修正的 Render 公開驗證，並維持 Google Routes 403、Dispatch=0 的安全閘門。
+提交已通過本機驗證的正式方案與控制塔修正，等待 Render 自動部署後執行公開網站驗收。
 
 ## NEXT
 
-1. 修正 Render Google server key 的 API restriction 後重驗同次 Matrix→OR-Tools。
-2. 若 Browser key 未設定，補上公開網域限制後重驗 Google Maps Live。
-3. 在 Google Live 可用後執行代表性公開 Matrix／Agent E2E；維持 Dispatch requests=0。
+1. 驗證 Render 使用最新 Commit，執行公開健康檢查、主要流程與瀏覽器 Console／Network 檢查。
+2. 以 Render 環境重新驗證 OpenAI、Google Routes 與 Google Maps，禁止用 fallback 冒充 Live。
+3. 將公開驗收證據與唯一外部阻塞同步至驗證報告。
 
 ## BLOCKED
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
-- `REQ-ORIG-003`：Browser key 已在目前 Render runtime 設定；Google Routes 403 使目前無法取得新的真實路線方案，故不將地圖路線標示為 Live PASS。
+- `REQ-ORIG-001／002`：本機 Google Routes 真實請求安全分類為 `API_KEY_RESTRICTED`；需以 Render 最新環境變數重新驗證，失敗時不得啟用 fallback 後宣稱 Live。
+- `REQ-ORIG-003`：本機 frontend Browser key 已設定；公開 Google Maps 狀態須待最新 Render build 實際載入後判定。
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
@@ -82,12 +83,20 @@
 - `P0-AC-001 — Competition Acceptance`：field-level import errors、evidence-grounded Plan reasons、計算後的 order-41 diff、overload redistribution 與 independent Validator evidence 均可執行且已人工驗收；Backend P0 為 DONE。
 - `P0-URG-002 — Regression`：先前 Demo 將 OR-Tools initial output 與 Baseline preview 比較；修正已完成，aligned OR-Tools regression 通過，ORD-041 使用 `MINIMAL_CHANGE`。
 
-- `LIVE-UI-001 — Live Integration`：歷史公開驗收曾顯示 Browser key、Google Maps、Agent 與 ORD-041；本輪本機 Browser key 未設定且 Google live gate 為 403，需重新取得憑證後才能宣稱目前 Live。
+- `LIVE-UI-001 — Live Integration`：歷史公開驗收曾顯示 Browser key、Google Maps、Agent 與 ORD-041；2026-09-05 最新本機 Browser key 已設定，但 Google Routes gate 仍為 403，公開 Maps 與道路路線仍須由最新 Render build 重新驗證。
 - `RANDOM-AUDIT-001 — Acceptance`：固定 seed `260904` 的新 workbook 為 40 張訂單／79 packages／322.8 kg；simulated OR-Tools 40/40、Validator 通過。五類臨時插單與缺欄／重複拒絕均記錄在 `docs/randomized-acceptance-report.json`。
 - `RANDOM-BROWSER-001 — Acceptance`：第二組 workbook 已在 Playwright 以拖放方式匯入；附件與文字單次送出、純附件預設意圖、連續三筆任意 ID 插單均完成預覽／人工確認／重新整理 hydration，Console errors 與 Dispatch requests 皆為 0。該瀏覽器驗收為 `SIMULATED PASS`（路線 provider 為成本受控的 deterministic simulated）；既有代表性 Google Live gate 仍獨立標示 `LIVE PASS`。
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 以 regression-first 強制所有一般正式方案固定使用 `ORTOOLS`；`BASELINE` 僅能作為比較，不能確認。
+- Plan API 新增「完整性」、「規則檢查」與「可確認性」三個獨立證據；有未安排訂單、資料缺漏、provider 不完整或規則違規時皆禁止人工確認。
+- 固定 40 單 simulated regression：正式方案 40／40、使用 4／4 台、載重 93／97／152／23 kg；Baseline 38／40、兩筆未安排與空車僅保留在比較證據。
+- 重構單一「今日配送規劃」控制塔，移除重複頁名、假地圖及主畫面 Raw JSON；空車、待處理訂單與外部服務錯誤皆改為白話原因。
+- 補上拖拉及鍵盤替代的換車 Preview；成功只產生待確認版本，失敗不污染原方案，仍不呼叫正式派車。
+- 建立 112 筆機器可讀 Agent 對話案例與人類可讀說明；另以真實 OpenAI `Runner.run` 執行 24 個代表性案例，全數通過 strict tool 選擇與 evidence assertion。
+- 後端完整測試 `204 passed、28 skipped`；28 項為明確 opt-in provider gates，其中 24 個 OpenAI live corpus 已另外啟用並得到 `24 passed`。Ruff、mypy、TypeScript、ESLint、Vitest（9）與 Vite production build 均通過；本機 Playwright `2 passed、3 skipped`。
 
 - 新增 `FASTEST`、`BALANCED`、`STABLE` 三種 OR-Tools objective、延遲風險燈號、換車／時段／優先順序／凍結站點預覽、批次臨時插單 strict tool，以及版本列舉／復原 API。
 - `/api/v1/agent/chat` 現在可在 dataset context 下由 `Runner.run` 選擇 `plan_dispatch`，並將工具產生的方案保存為不可變 `plan_id/version`；前端附件匯入後只送一次 Agent 對話，不再先直接呼叫 `createPlan`。
@@ -162,6 +171,10 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- 2026-09-05 最新本機權威結果：Backend `204 passed、28 skipped`；OpenAPI／正式方案目標測試 `6 passed`；Ruff 與 mypy 通過。Frontend TypeScript、ESLint、Vitest `9 passed`、Vite production build 通過；Playwright regression `2 passed、3 skipped`，跳過項目皆為需明確啟用的 live／random flows。
+- OpenAI 另以明確 Live 模式執行 24 個 `Runner.run` 代表性案例，結果 `24 passed`；正式 40 單 simulated 方案為 40／40、4／4 台、獨立方案檢查通過。Google Routes 本機真實請求回傳 403 並分類為 `API_KEY_RESTRICTED`，未 fallback；TDX credentials 為 MISSING。
+- Tracked／待提交檔案的高信心 secret pattern 掃描為 0；`.env`、原始明文檔及 `frontend/.env.local` 均由 Git 排除，`.github/workflows` 為 0，正式派車 requests 為 0。
 
 - 2026-09-05 Render 公開稽核：`https://ai-dispatch-control-tower.onrender.com/` 回應 `/health=200`、`/ready=200`；OpenAPI 實際 13 paths；CORS `http://localhost:5173` preflight 通過。官方合成 40 單匯入為 40 orders／80 packages／4 vehicles／5 zones；Google `provider_mode=GOOGLE` Matrix 進入 OR-Tools，同一方案 40/40、365 kg、Validator valid=true，Map data 回傳 4 條非 simulated Google geometry。
 - 2026-09-05（本輪 V2 權威重驗）：Render `/health=200`、`/ready=200`、`/docs=200`；最新部署為 `842da61b0f2b003633e3c839a001a54efa9f647e`。公開 Baseline 與 simulated OR-Tools 端點可回應；Google `AUTO` 方案本輪實際回傳 `502 PROVIDER_UNAVAILABLE`／`GOOGLE_HTTP_403`，安全分類為 `API_KEY_RESTRICTED`，`fallback_used=false`，因此不得將目前 Google Matrix→OR-Tools 或 Browser 地圖標示為 Live Pass。公開 Browser 頁面目前顯示 Browser key 未設定；TDX 為 `OPTIONAL／NOT_CONFIGURED`。

@@ -39,7 +39,7 @@ test('第二組隨機資料可在瀏覽器一次匯入並完成多筆插單驗�
   await input.press('Enter')
   await expect(page.locator('.processing-bubble')).toHaveCount(0, { timeout: 180_000 })
   await expect(page.getByText(/已匯入 40 張訂單/)).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Validator 通過')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('方案檢查通過').first()).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: path.join(screenshotDir, 'random-02-base-plan.png') })
 
   // The API keeps immutable plans for the lifetime of the local server. Use a
@@ -55,7 +55,7 @@ test('第二組隨機資料可在瀏覽器一次匯入並完成多筆插單驗�
   const confirmPreview = async () => {
     await page.getByRole('button', { name: '臨時插單差異' }).click()
     await expect(page.locator('.bottom-panel .success-box').filter({ hasText: /最小變動插入|完整重新排程/ })).toBeVisible({ timeout: 30_000 })
-    const confirm = page.getByRole('button', { name: '人工確認預覽' })
+    const confirm = page.getByRole('button', { name: '套用變更' })
     if (await confirm.count()) {
       await confirm.click()
       await expect(page.getByText('此方案已由調度員確認。')).toBeVisible({ timeout: 60_000 })
@@ -72,8 +72,8 @@ test('第二組隨機資料可在瀏覽器一次匯入並完成多筆插單驗�
   await page.screenshot({ path: path.join(screenshotDir, 'random-05-final-plan.png') })
 
   await page.reload()
-  await expect(page.getByText('Validator 通過')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByLabel('配送任務')).toBeVisible()
+  await expect(page.getByText('方案檢查通過').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByLabel('配送明細')).toBeVisible()
   await expect(dispatchRequests).toHaveLength(0)
   await expect(consoleErrors).toEqual([])
 })
@@ -109,7 +109,7 @@ test('純附件送出會使用預設匯入意圖', async ({ page }) => {
   await page.getByRole('button', { name: '送出' }).click()
   await expect(page.locator('.processing-bubble')).toHaveCount(0, { timeout: 120_000 })
   await expect(page.getByText(/已匯入 40 張訂單/)).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('Validator 通過')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('方案檢查通過').first()).toBeVisible({ timeout: 30_000 })
   const userBubble = page.locator('.chat-bubble.user').last()
   await expect(userBubble).toContainText('請匯入並檢查這份配送資料')
   await expect(userBubble.locator('.message-attachment')).toContainText('random-dispatch-seed-260904.xlsx')

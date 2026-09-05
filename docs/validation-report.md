@@ -1,5 +1,22 @@
 # 規格驗證報告
 
+## 2026-09-05 正式方案與控制塔本機驗證
+
+| 項目 | 證據 | 狀態 |
+|---|---|---|
+| 正式 40 單方案 | 固定 simulated Matrix；ORTOOLS 40／40、4／4 台、載重 93／97／152／23 kg、獨立方案檢查通過 | `SIMULATED PASS` |
+| 快速初步方案隔離 | Baseline 38／40、ORD-022／ORD-023 未安排、VEH-004 空車；API 禁止將其確認為正式方案 | `MOCK／SIMULATED PASS` |
+| Agent 語料 | `tests/fixtures/agent_dialogue_cases.json` 共 112 筆，全部通過 allowlist、資料來源、禁止直接修改及禁止正式派車斷言 | `MOCK PASS` |
+| 真實 OpenAI Runner | `RUN_LIVE_AGENT_CORPUS=1` 執行 24 個代表性案例，全部實際進入 `Runner.run` 並選擇 strict tool | `LOCAL LIVE PASS` |
+| Backend 全量 | `pytest` 204 passed、28 skipped；28 項為明確 opt-in provider gates，24 個 live corpus 已另行實跑通過 | `PASS` |
+| Frontend | TypeScript、ESLint、Vitest 9 tests、Vite build；Playwright regression 2 passed、3 個 live／random opt-in skipped | `PASS` |
+| Google Routes | 本機新憑證實際呼叫回傳 HTTP 403，安全分類 `API_KEY_RESTRICTED`，未 fallback | `BLOCKED` |
+| Google Maps Browser | 本機 frontend Browser key 為 CONFIGURED；公開最新 build 尚待實際載入驗證 | `PENDING` |
+| TDX | `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 均為 MISSING | `BLOCKED` |
+| 正式派車 | Agent allowlist 無正式派車工具，前端與驗收不呼叫正式派車 | `0 requests` |
+
+上述為本輪當前證據；歷史 Live 記錄不得覆蓋這個時間點的真實 Provider 狀態。公開網站結果會在最新 Commit 完成 Render 自動部署後另行補記。
+
 ## 狀態快照
 
 ```yaml
