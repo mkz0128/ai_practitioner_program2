@@ -142,7 +142,8 @@ class FrozenStopChange(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     action: Literal["FREEZE", "UNFREEZE"]
-    order_ids: list[str] = Field(min_length=1, max_length=100)
+    order_ids: list[str] = Field(default_factory=list, max_length=100)
+    stop_count: int | None = Field(default=None, ge=1, le=100)
 
 
 class ReassignmentPreviewInput(BaseModel):
@@ -606,8 +607,26 @@ def change_frozen_stops(
     """Track frozen confirmed stops for a subsequent non-mutating preview."""
     _tool_started(ctx.context, "change_frozen_stops", request.model_dump(mode="json"))
     plan = _plan_for_query(ctx.context)
+    requested_order_ids = list(request.order_ids)
+    if not requested_order_ids and request.stop_count is not None:
+        ordered_stops = [
+            order_id
+            for route in sorted(plan.routes, key=lambda item: item.vehicle_id)
+            for order_id in route.order_ids
+        ]
+        requested_order_ids = ordered_stops[: request.stop_count]
+    if not requested_order_ids:
+        evidence = {
+            "tool": "change_frozen_stops",
+            "status": "MISSING_STOP_SELECTION",
+            "message": "請指定要凍結的訂單或站點數量。",
+            "requires_human_confirmation": False,
+        }
+        ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "change_frozen_stops")
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     known = {order_id for route in plan.routes for order_id in route.order_ids}
-    missing = sorted(set(request.order_ids) - known)
+    missing = sorted(set(requested_order_ids) - known)
     if missing:
         evidence = {
             "tool": "change_frozen_stops",
@@ -618,9 +637,9 @@ def change_frozen_stops(
     else:
         frozen = set(ctx.context.frozen_stop_ids)
         if request.action == "FREEZE":
-            frozen.update(request.order_ids)
+            frozen.update(requested_order_ids)
         else:
-            frozen.difference_update(request.order_ids)
+            frozen.difference_update(requested_order_ids)
         ctx.context.frozen_stop_ids = tuple(sorted(frozen))
         ctx.context.frozen_stop_count = len(ctx.context.frozen_stop_ids)
         evidence = {
@@ -628,6 +647,7 @@ def change_frozen_stops(
             "status": "PREVIEWED",
             "action": request.action,
             "frozen_order_ids": list(ctx.context.frozen_stop_ids),
+            "selected_stop_count": len(requested_order_ids),
             "requires_human_confirmation": True,
         }
     ctx.context.evidence.append(evidence)
@@ -1188,6 +1208,7 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "10/20/30 minute delay, change_vehicle_availability for vehicle incidents, "
             "change_order_constraint for time-slot or priority changes, and "
             "change_frozen_stops for freeze/unfreeze requests, "
+            "using stop_count when the user refers to the first N stops instead of inventing IDs, "
             "reassign_order_preview for a requested vehicle move, and query_plan_version for "
             "version questions. For a new urgent order, extract only supplied fields into the "
             "strict preview_structured_urgent_insert schema; if required fields are absent, call "

@@ -248,6 +248,33 @@ async def test_sdk_frozen_stop_cannot_be_reassigned() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_freezes_first_n_stops_without_inventing_order_ids() -> None:
+    dataset, matrix = _fixture()
+    base = build_baseline(dataset, matrix)
+    expected = [
+        order_id
+        for route in sorted(base.routes, key=lambda item: item.vehicle_id)
+        for order_id in route.order_ids
+    ][:5]
+    model = ScriptedModel(
+        [[
+            function_call(
+                "change_frozen_stops",
+                {"request": {"action": "FREEZE", "stop_count": 5}},
+                call_id="call-freeze-count",
+            )
+        ], [assistant_message("只回報工具證據。")]]
+    )
+    _, context, _ = await run_dispatch_agent(
+        "不要動已經確認的前五站。", dataset, matrix, model=model
+    )
+    model.assert_complete()
+    assert context.evidence[-1]["tool"] == "change_frozen_stops"
+    assert context.evidence[-1]["status"] == "PREVIEWED"
+    assert context.evidence[-1]["frozen_order_ids"] == sorted(expected)
+
+
+@pytest.mark.asyncio
 async def test_sdk_missing_data_prompts_instead_of_guessing() -> None:
     dataset, matrix = _fixture()
     model = ScriptedModel([[assistant_message("Please provide the dataset and order details.")]])
