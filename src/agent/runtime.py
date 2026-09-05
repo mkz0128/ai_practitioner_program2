@@ -408,6 +408,40 @@ def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
 
 
 @function_tool(strict_mode=True)
+def inspect_plan_overview(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
+    """Explain overall assignments, completeness and rule issues from deterministic evidence."""
+    _tool_started(ctx.context, "inspect_plan_overview", {})
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "inspect_plan_overview")
+    plan = _plan_for_query(ctx.context)
+    validation = validate_plan(ctx.context.dataset, plan, ctx.context.matrix)
+    evidence = {
+        "tool": "inspect_plan_overview",
+        "algorithm": plan.algorithm,
+        "complete": plan.complete,
+        "assigned_order_count": sum(len(route.order_ids) for route in plan.routes),
+        "total_order_count": len(ctx.context.dataset.orders),
+        "unassigned_orders": plan.unassigned_orders,
+        "unassigned_reasons": plan.unassigned_reasons,
+        "vehicles": [
+            {
+                "vehicle_id": route.vehicle_id,
+                "order_count": len(route.order_ids),
+                "planned_load_kg": route.planned_load_kg,
+                "max_load_kg": route.max_load_kg,
+                "load_utilization": route.load_utilization,
+            }
+            for route in plan.routes
+        ],
+        "validator": validation.model_dump(mode="json"),
+        "provider_mode": ctx.context.matrix.provider_mode,
+    }
+    ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "inspect_plan_overview")
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+@function_tool(strict_mode=True)
 def explain_unassigned(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Return only the validator-backed reason for an unassigned order."""
     _tool_started(ctx.context, "explain_unassigned", {"order_id": order_id})
@@ -1262,7 +1296,10 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "dataset is present and the user asks to import, use, arrange, or create a plan from "
             "the attached file/current orders, call plan_dispatch; do not reinterpret that request "
             "as adding one urgent order and do not call request_missing_fields. Use "
-            "highest_load_vehicle for load queries, "
+            "highest_load_vehicle only for highest-load or remaining-capacity queries. Use "
+            "inspect_plan_overview for questions about why the fleet is split this way, overall "
+            "completeness, overloads, unresolved orders, or what the operator must handle; do not "
+            "use highest_load_vehicle for a plan-wide issue question. Use "
             "explain_assignment for assignment reasons, explain_unassigned for exceptions, "
             "compare_strategies for FASTEST/BALANCED/STABLE comparison, simulate_delay for a "
             "10/20/30 minute delay, change_vehicle_availability for vehicle incidents, "
@@ -1293,6 +1330,7 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
         tools=[
             plan_dispatch,
             highest_load_vehicle,
+            inspect_plan_overview,
             explain_assignment,
             explain_unassigned,
             compare_strategies,

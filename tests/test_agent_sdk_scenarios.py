@@ -75,6 +75,22 @@ async def test_sdk_highest_load_uses_validated_plan_evidence() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_plan_overview_reports_completeness_rules_and_vehicle_evidence() -> None:
+    _, context, _ = await _run_tool(
+        "Why was the fleet assigned this way, and are any orders unresolved?",
+        "inspect_plan_overview",
+        {},
+    )
+    evidence = context.evidence[-1]
+    assert evidence["tool"] == "inspect_plan_overview"
+    assert evidence["complete"] is True
+    assert evidence["assigned_order_count"] == len(context.dataset.orders)
+    assert evidence["unassigned_orders"] == []
+    assert evidence["validator"]["valid"] is True
+    assert len(evidence["vehicles"]) == len(context.dataset.vehicles)
+
+
+@pytest.mark.asyncio
 async def test_sdk_does_not_report_baseline_omission_as_formal_plan_exception() -> None:
     dataset, matrix = _fixture()
     baseline = build_baseline(dataset, matrix)
