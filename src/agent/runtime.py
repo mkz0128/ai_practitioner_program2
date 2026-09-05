@@ -948,7 +948,26 @@ def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_na
     }
     context.evidence.append(evidence)
     _tool_finished(context, tool_name)
-    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    # Keep the complete before/after evidence for the API and UI, but do not
+    # send every route/stop back through the model a second time. The compact
+    # result contains every fact needed for a grounded human-readable answer
+    # and avoids model failures caused by a large live-route tool payload.
+    compact_result = {
+        "tool": tool_name,
+        "status": evidence["status"],
+        "order_id": order_id,
+        "mode": mode,
+        "feasible": evidence["feasible"],
+        "affected_vehicle_count": evidence["affected_vehicle_count"],
+        "moved_order_count": evidence["moved_order_count"],
+        "assigned_order_count": evidence["after"]["assigned_order_count"],
+        "unassigned_orders": evidence["unassigned_orders"],
+        "total_distance_delta_m": diff["total_distance_delta_m"],
+        "total_duration_delta_s": diff["total_duration_delta_s"],
+        "validator_valid": validation.valid,
+        "requires_human_confirmation": True,
+    }
+    return json.dumps(compact_result, ensure_ascii=False, sort_keys=True)
 
 
 @function_tool(strict_mode=True)
