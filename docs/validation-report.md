@@ -218,6 +218,26 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 | Validator、地圖／車輛／順序／差異同步 | `DONE`（Live／simulated 分開） | Validator violations=0；既有 Google Live map gate 與 randomized screenshots。 |
 | 缺欄、超重、時段衝突、重複與無法安排 | `DONE` | competition acceptance、structured API validation、randomized impossible/duplicate/missing cases。 |
 | 人工確認後不得 Dispatch | `DONE` | Playwright request gate：Dispatch requests=0；確認只更新 plan state。 |
+
+## 2026-09-05 本輪矛盾修正與 Render 公開驗收
+
+| 項目 | 實際證據 | 狀態 |
+|---|---|---|
+| 三策略目標一致性 | Render `391a4fb` 使用同一 simulated dataset／matrix；FASTEST `19,463s`、BALANCED `35,732s` 且 load spread `9kg`、STABLE `21,742s` 且 min slack `177.4min`；三者 Validator 均通過 | `PUBLIC LIVE PASS`（路由資料為 SIMULATED，未冒稱 Google Live） |
+| 通用自然語言 Agent | 公開 `/api/v1/agent/chat` 六則語意案例均回傳 `RunResult`，工具依序包含 `request_missing_fields`、`change_vehicle_availability`、`simulate_delay`、`change_frozen_stops`；無資料問答使用 `assistant_help` | `PUBLIC LIVE PASS` |
+| 缺少急單欄位 | 「幫我插入一張急單」回傳 `request_missing_fields`；未猜測訂單或重量 | `PUBLIC LIVE PASS` |
+| 前 N 站凍結 | 新增 strict `stop_count`，工具依目前方案路線解析前五站；公開案例回傳 `change_frozen_stops`，未依固定訂單 ID 路由 | `PUBLIC LIVE PASS` |
+| Prompt injection | 公開訊息回傳 `400 PROMPT_INJECTION_BLOCKED`，evidence 不含 Dispatch tool | `PUBLIC LIVE PASS` |
+| 換車 Preview | 公開合法案例回傳 `200`，包含 `reassigned_orders`、`sequence_changes`、`vehicle_load_changes`、距離 `+4003m`、時間 `+501s`；未套用 | `PUBLIC LIVE PASS` |
+| 延遲風險 | 公開 10／20／30 分鐘均回傳 40 筆 deterministic risks；本 fixture 皆為 GREEN，未捏造機率 | `PUBLIC LIVE PASS` |
+| 版本生命週期 | 公開虛構插單 `MINIMAL_CHANGE` V1→V2，人工確認 V2；復原 V1 建立新 V3 並重新驗證 | `PUBLIC LIVE PASS` |
+| Google Routes AUTO | Render AUTO 實際回傳 HTTP `502 PROVIDER_UNAVAILABLE`、`GOOGLE_HTTP_403`，安全分類 `API_KEY_RESTRICTED`，`fallback_used=false` | `BLOCKED` |
+| Browser／Google Maps | 公開首頁目前顯示 Browser key 未設定；本輪未將 simulated map 宣稱 Live | `BLOCKED` |
+| TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
+
+本輪完整 backend suite：`83 passed, 4 skipped`；skipped 為明確的 OpenAI／Agent HTTP／Google provider／Responses opt-in gates。`ruff` 與 `mypy` 通過；tracked-file 高信心 secret scan 為 0，`.github/workflows` 為 0。前端 typecheck 與 ESLint 通過；Vitest／Vite 在目前 Windows sandbox 的非 ASCII 工作路徑遇到工具層路徑解析限制，既有上輪 `2 files／4 tests passed` 與 production build 證據保留，未將工具層失敗誤判為程式通過。
+
+Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-dispatch-control-tower`，Last successfully deployed commit `391a4fb6b85fa18012ae8e4c7488ff0936a33dbb`。本輪所有請求均未呼叫 Dispatch；Dispatch requests = `0`。
 | API 契約與前端錯誤狀態 | `DONE` | 13/13/13 contract coverage、OpenAPI snapshot、錯誤 envelope 與 UI fallback。 |
 | 部署前設定 | `BLOCKED` | 尚未執行正式部署；Linux runtime、TDX credentials 與正式環境設定仍需人工／環境準備。 |
 

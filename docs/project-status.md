@@ -6,10 +6,10 @@
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
-- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`LOCAL_LIVE_PASS`；HTTP live gate：`BLOCKED`（Windows in-process OR-Tools native abort，未冒稱通過）
+- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（Render 公開 simulated plan 語意案例）；完整 Windows HTTP gate 仍記錄平台限制
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE；LIFECYCLE_PARTIAL`
 - Live Provider Integration：`OPENAI_LIVE；GOOGLE_BLOCKED_403；BROWSER_MISSING；TDX_OPTIONAL_NOT_CONFIGURED`
-- Frontend Integration status：`LOCAL_VERIFIED；PUBLIC_REVALIDATION_PENDING`
+- Frontend Integration status：`PUBLIC_REVALIDATED（simulated route flow）；Google server Matrix 仍受權限阻塞`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -41,15 +41,15 @@
 
 ## NOW
 
-修正三策略主要速度指標與公開 Live 驗收缺口（不執行真實 Dispatch）
+修正 Google server key 權限後重驗 Live Matrix→OR-Tools；不執行真實 Dispatch
 
-- 本輪通用 Agent、五項進階功能與安全護欄已完成本機 deterministic 驗證；目前 HTTP Agent 受 Windows OR-Tools 原生 abort 阻塞，Google Routes 受 HTTP 403 阻塞，未將其冒稱為 Live PASS。
+- 本輪已完成三策略指標修正與 Render 公開 Agent 語意驗收；Google Routes AUTO 請求實際回傳 `GOOGLE_HTTP_403`／`API_KEY_RESTRICTED`，未 fallback 或冒稱 Live PASS。
 
 ## NEXT
 
-1. 以隔離環境執行代表性 OpenAI／Google Live Agent E2E。
-2. 由前端串接三策略、延遲風險與換車預覽端點。
-3. 在具備憑證的環境執行公開網站驗收並記錄 Live／Blocked。
+1. 修正 Render Google server key 的 API restriction 後重驗同次 Matrix→OR-Tools。
+2. 若 Browser key 未設定，補上公開網域限制後重驗 Google Maps Live。
+3. 在 Google Live 可用後執行代表性公開 Matrix／Agent E2E；維持 Dispatch requests=0。
 
 ## BLOCKED
 
@@ -63,6 +63,7 @@
 - `EXT-002 — External Provider Issue`：local environment 尚未設定 TDX credentials；core planning 仍可使用。
 - `ENV-001 — Environment Issue`：dependency lock 已在 Windows CPython 3.12 驗證；未來 Linux deployment 前仍需進行 Linux wheel／lock verification。
 - `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix gate 實際回傳 `GOOGLE_HTTP_403`，未 fallback；需修正 key 權限後再驗收 Matrix、geometry 與 OR-Tools 同次求解。
+- `REQ-ORIG-001／002 — Google error classification`：Render 公開 AUTO 回應安全分類為 `API_KEY_RESTRICTED`（HTTP 403）；未記錄 response body、headers 或 key。Server key 應在 Google Cloud 將 Routes API 加入 API restriction，且不要使用 HTTP referrer restriction；修改後需重新部署。
 - `REQ-ORIG-003／006／007 — Frontend Integration`：控制塔已通過 typecheck／lint／unit build 與 Live Playwright；TDX 仍為可選外部依賴，這些是原始必要功能，不是 P1。
 - `REQ-ORIG-005 — External Provider Issue`：TDX correlation/risk model 已建立，但尚無 live event evidence。
 - `CORE-STATE-001 — Resolved`：confirm 現在會回寫 SQLite plan state 並更新 current-version pointer；repository regression 已驗證，Dispatch 仍不在本輪範圍。
@@ -213,6 +214,10 @@
 - 本輪前端對話體驗：AI 調度改為可直接輸入的 ChatGPT 風格訊息區；`.xlsx` 可由附件按鈕或整個對話區拖放，附件與文字在同一則使用者訊息一次送出，背景完成匯入、驗證、排程、地圖更新與 Agent 回覆。
 - 本輪對話安全與可讀性：加入附件檢查、附件移除／重選、附件-only 預設意圖、Enter／Shift+Enter、停止回覆、進度步驟與收合的「查看計算依據」；主畫面不再顯示 Raw JSON、provider code 或內部識別資訊，計算摘要改為繁體中文。
 - 本輪插單可靠性修正：urgent preview 的最小變動候選會精確保留既有路線相對順序，避免將合法插入誤判為不可行；Live ORD-041 preview、人工確認與 Dispatch request=0 均通過。
+
+- 本輪策略與公開 Agent 驗收（Render `391a4fb`）：同一 simulated dataset／matrix 的 `FASTEST` 為 19,463s／155,485m、`BALANCED` 為 35,732s／285,839m／load spread 9kg、`STABLE` 為 21,742s／173,702m／min slack 177.4min；三者 Validator 均通過。
+- 本輪公開 Agent 六則語意案例均回傳 `RunResult` 並選到 strict tools：`request_missing_fields`、`change_vehicle_availability`、`simulate_delay`、`change_frozen_stops`；無資料一般問答使用 `assistant_help`，prompt injection 回傳 `400 PROMPT_INJECTION_BLOCKED`。
+- 公開生命週期驗收：合法換車 Preview `200` 並回傳換車／順序／載重／距離／時間差；延遲 10／20／30 分鐘均回傳 deterministic risks；虛構插單 `MINIMAL_CHANGE` 後確認 V2，再由 V1 復原建立 V3，Validator 通過。以上均未呼叫 Dispatch。
 - 修正 Agent provider 的單次暫時性失敗處理：`/api/v1/agent/chat` 對無副作用的 `Runner.run` 增加一次有限重試，仍保留錯誤封裝、無限重試防護與 evidence-only 邊界；隨機瀏覽器驗收重跑通過。
 - 本輪瀏覽器驗證：`frontend/tests/e2e/live-control-tower.spec.ts` 實際完成無資料聊天、無效格式恢復、拖放／單次送出、40 單 Live Google Matrix → OR-Tools、Validator、Google Maps、Agent 多輪、ORD-041 preview、人工確認與停止回覆，保存 `chat-composer-empty.png`、`chat-composer-attached.png`、`chat-composer-completed.png`。
 - 新增第二組可重現 workbook：`data/samples/random-dispatch-seed-260904.xlsx`，由 `scripts/generate_random_fixture.mjs` 以 seed `260904` 產生；檔案 hash、資料摘要與生成規則已記錄。
