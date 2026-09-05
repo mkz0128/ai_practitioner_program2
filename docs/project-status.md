@@ -41,11 +41,7 @@
 
 ## NOW
 
-修正公開 Agent 在無資料的臨時訂單請求中選錯工具的問題，並完成 Render 重新驗證。
-
-修正 Google server key 權限後重驗 Live Matrix→OR-Tools；不執行真實 Dispatch
-
-- 本輪已完成三策略指標修正與 Render 公開 Agent 語意驗收；Google Routes AUTO 請求實際回傳 `GOOGLE_HTTP_403`／`API_KEY_RESTRICTED`，未 fallback 或冒稱 Live PASS。
+完成 `c5fe929` Agent 工具路由修正的 Render 公開驗證，並維持 Google Routes 403、Dispatch=0 的安全閘門。
 
 ## NEXT
 
