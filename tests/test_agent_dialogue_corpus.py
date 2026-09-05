@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from agents.testing import ScriptedModel
 
+from src.agent import runtime as agent_runtime
 from src.agent.runtime import create_dispatch_agent
 
 CORPUS = Path(__file__).parent / "fixtures" / "agent_dialogue_cases.json"
@@ -60,6 +61,17 @@ def test_all_expected_tools_are_allowlisted_or_guardrail_outcomes() -> None:
     expected = {item["expected_tool"] for item in cases}
     assert expected - {"PROMPT_INJECTION_BLOCKED"} <= allowlist
     assert "dispatch" not in {name.lower() for name in allowlist}
+
+
+def test_live_agent_reserves_output_budget_for_long_strict_tool_arguments(monkeypatch) -> None:
+    monkeypatch.setattr(agent_runtime.get_settings(), "openai_api_key", "test-key")
+    agent = create_dispatch_agent()
+    assert agent.model_settings.tool_choice == "required"
+    assert agent.model_settings.parallel_tool_calls is False
+    assert agent.model_settings.max_tokens == 4096
+    assert agent.model_settings.reasoning is not None
+    assert agent.model_settings.reasoning.effort == "minimal"
+    assert agent.model_settings.verbosity == "low"
 
 
 @pytest.mark.parametrize("case", CASES, ids=[item["case_id"] for item in CASES])

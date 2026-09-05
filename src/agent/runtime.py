@@ -1381,9 +1381,16 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
         # The tool result is compact, but Responses reasoning plus the final
         # evidence-only answer needs more than the 256-token smoke-test cap.
         model_settings=ModelSettings(
-            max_tokens=2048,
+            # Long structured orders can require several hundred JSON tokens
+            # after the model's internal reasoning. A 2K cap intermittently
+            # ended before the required tool call was emitted. Minimal
+            # reasoning plus a 4K ceiling keeps the same low-cost model while
+            # leaving enough room for strict arguments.
+            max_tokens=4096,
             parallel_tool_calls=False,
             tool_choice="required",
+            reasoning={"effort": "minimal"},
+            verbosity="low",
         ),
     )
 

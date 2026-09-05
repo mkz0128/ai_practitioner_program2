@@ -25,7 +25,7 @@ async function waitForPublicHealth(page: Page) {
 type AgentResponseBody = {
   runner_result_type?: string
   evidence?: Array<{ tool?: string; data?: Record<string, unknown> }>
-  error?: { code?: string; message?: string }
+  error?: { code?: string; message?: string; details?: { exception_type?: string } }
 }
 
 async function send(page: Page, message: string, expectedTool?: string) {
@@ -38,7 +38,7 @@ async function send(page: Page, message: string, expectedTool?: string) {
   const agentResponse = await response
   const body = await agentResponse.json() as AgentResponseBody
   if (expectedTool) {
-    expect(agentResponse.status(), body.error?.code ?? 'UNKNOWN_AGENT_ERROR').toBe(200)
+    expect(agentResponse.status(), `${body.error?.code ?? 'UNKNOWN_AGENT_ERROR'}:${body.error?.details?.exception_type ?? 'UNKNOWN_EXCEPTION'}`).toBe(200)
     expect(body.runner_result_type).toBe('RunResult')
     expect(body.evidence?.some((item) => item.tool === expectedTool)).toBeTruthy()
   }

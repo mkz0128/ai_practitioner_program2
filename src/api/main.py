@@ -59,6 +59,8 @@ class StrictRequest(BaseModel):
 
 def _classify_agent_error(exc: Exception) -> tuple[int, str, str, bool]:
     """Return a safe client-facing classification without serializing SDK details."""
+    if isinstance(exc, RuntimeError) and str(exc) == "AGENT_DID_NOT_CALL_PLAN_TOOL":
+        return 502, "AGENT_TOOL_SELECTION_FAILED", "AI 助理未能完成必要的工具選擇，請重試。", True
     if isinstance(exc, (ModelTimeoutError, ToolTimeoutError, APITimeoutError)):
         return 504, "AGENT_TIMEOUT", "AI 助理回應逾時，請稍後重試。", True
     if isinstance(exc, RateLimitError):

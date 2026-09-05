@@ -28,3 +28,12 @@ def test_unknown_agent_error_remains_safe_and_generic() -> None:
     assert (status, code, retryable) == (502, "AGENT_RUN_FAILED", False)
     assert "headers" not in message
     assert "credential" not in message
+
+
+def test_missing_required_tool_call_has_specific_safe_retryable_error() -> None:
+    status, code, message, retryable = _classify_agent_error(
+        RuntimeError("AGENT_DID_NOT_CALL_PLAN_TOOL")
+    )
+
+    assert (status, code, retryable) == (502, "AGENT_TOOL_SELECTION_FAILED", True)
+    assert "工具選擇" in message
