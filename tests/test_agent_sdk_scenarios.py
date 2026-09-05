@@ -6,11 +6,24 @@ from agents.testing import ScriptedModel, assistant_message, function_call
 
 from src.agent.runtime import run_dispatch_agent
 from src.domain.models import Order, Package, Priority
+from src.services.demo_orders import get_demo_urgent_order
 from src.services.importer import parse_workbook
 from src.services.matrix import SimulatedRouteProvider
 from src.services.planner import build_baseline, build_ortools
 
 SAMPLE_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-delivery-40-orders.xlsx"
+
+
+def test_demo_urgent_order_is_colocated_with_a_serviceable_existing_stop() -> None:
+    """Keep the fixed showcase insert stable while live travel times change."""
+    dataset, _ = _fixture()
+    anchor = next(order for order in dataset.orders if order.order_id == "ORD-001")
+    pending = get_demo_urgent_order("ORD-041")
+
+    assert pending is not None
+    assert pending.zone_code == anchor.zone_code
+    assert pending.time_slot == anchor.time_slot
+    assert (pending.latitude, pending.longitude) == (anchor.latitude, anchor.longitude)
 
 
 def _fixture():
@@ -173,6 +186,9 @@ async def test_sdk_demo_urgent_insert_resolves_known_fixture_without_pending_con
     assert evidence["status"] == "PREVIEWED"
     assert evidence["order_id"] == "ORD-041"
     assert evidence["structured_order"]["order_id"] == "ORD-041"
+    assert evidence["mode"] == "MINIMAL_CHANGE"
+    assert evidence["affected_vehicle_count"] == 1
+    assert evidence["moved_order_count"] == 0
     assert evidence["validator"]["valid"] is True
 
 

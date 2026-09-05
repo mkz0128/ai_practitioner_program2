@@ -14,13 +14,18 @@ def get_demo_urgent_order(order_id: str) -> Order | None:
     fixtures = {
         "ORD-041": Order(
             order_id="ORD-041",
-            zone_code="Z4",
-            city="臺北市",
-            district="信義",
+            # Anchor the public demo stop to the existing ORD-001 location.  This
+            # keeps the fixed showcase deterministic across changing live traffic:
+            # at least one already-valid Z1 route can insert the colocated stop
+            # without moving unrelated orders.  Arbitrary structured orders still
+            # use their caller-provided zone and coordinates.
+            zone_code="Z1",
+            city="新北市",
+            district="板橋",
             location_label="示範臨時配送點",
-            latitude=25.033,
-            longitude=121.565,
-            time_slot="PM",
+            latitude=25.0114,
+            longitude=121.4618,
+            time_slot="AM",
             declared_package_count=1,
             priority=Priority.HIGH,
             note="公開展示用合成訂單",
