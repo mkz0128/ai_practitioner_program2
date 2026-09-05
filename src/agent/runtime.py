@@ -1295,6 +1295,7 @@ def evidence_grounded_answer(final_output: str, evidence: list[dict[str, Any]]) 
 
 
 def create_dispatch_agent(model_override: Model | None = None) -> Agent[DispatchAgentContext]:
+    live_model = model_override is None
     if model_override is None:
         settings = get_settings()
         if not settings.openai_api_key:
@@ -1370,6 +1371,13 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             prepare_confirmation,
         ],
         input_guardrails=[reject_prompt_injection],
+        # In production the model's job ends after semantic tool selection and
+        # strict argument generation. The API keeps the complete tool evidence
+        # and the UI renders its Traditional-Chinese explanation
+        # deterministically, so a second model call cannot turn a successful
+        # calculation into AGENT_RUN_FAILED or introduce unsupported claims.
+        # Scripted models retain the default second turn for SDK contract tests.
+        tool_use_behavior="stop_on_first_tool" if live_model else "run_llm_again",
         # The tool result is compact, but Responses reasoning plus the final
         # evidence-only answer needs more than the 256-token smoke-test cap.
         model_settings=ModelSettings(max_tokens=2048, parallel_tool_calls=False),
