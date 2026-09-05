@@ -15,7 +15,7 @@ LIVE_CASES = [
     ("你可以協助調度員做哪些事？", "assistant_help"),
     ("今天的 Excel 要有哪些欄位才可以排車？", "assistant_help"),
     ("你如何避免貨物超過車輛載重？", "assistant_help"),
-    ("臨時插單會怎麼處理？", "assistant_help"),
+    ("幫我插入 ORD-041。", "preview_urgent_insert"),
     ("目前哪一台車裝得最重？", "highest_load_vehicle"),
     ("請用目前方案說明 ORD-001 為什麼分到這台車。", "explain_assignment"),
     ("ORD-001 有沒有沒排到？請查目前方案。", "explain_unassigned"),
