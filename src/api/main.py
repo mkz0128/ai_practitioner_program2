@@ -203,7 +203,11 @@ async def request_validation_exception_handler(
         path = ".".join(location) or "request"
         error_type = str(item.get("type", ""))
         code = "MISSING_REQUIRED_FIELD" if error_type == "missing" else "FIELD_VALIDATION_ERROR"
-        message = "缺少必要欄位，請補齊後再試。" if error_type == "missing" else "欄位格式不正確，請修正後再試。"
+        message = (
+            "缺少必要欄位，請補齊後再試。"
+            if error_type == "missing"
+            else "欄位格式不正確，請修正後再試。"
+        )
         field_errors.append(
             {
                 "path": path,
@@ -928,16 +932,31 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             fallback_used=False,
             retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
         )
-    preview_plan = try_minimal_insert(base_record.plan, new_dataset, preview_matrix, new_order)
-    mode = "MINIMAL_CHANGE"
-    full_replan_reason: str | None = None
-    if preview_plan is None:
-        mode = "FULL_REPLAN"
-        full_replan_reason = "NO_LEGAL_SINGLE_ROUTE_INSERTION"
-        preview_plan = (
-            build_ortools(new_dataset, preview_matrix, settings.solver_time_limit_seconds)
-            if base_record.plan.algorithm == "ORTOOLS"
-            else build_baseline(new_dataset, preview_matrix)
+    try:
+        preview_plan = try_minimal_insert(base_record.plan, new_dataset, preview_matrix, new_order)
+        mode = "MINIMAL_CHANGE"
+        full_replan_reason: str | None = None
+        if preview_plan is None:
+            mode = "FULL_REPLAN"
+            full_replan_reason = "NO_LEGAL_SINGLE_ROUTE_INSERTION"
+            preview_plan = (
+                build_ortools(new_dataset, preview_matrix, settings.solver_time_limit_seconds)
+                if base_record.plan.algorithm == "ORTOOLS"
+                else build_baseline(new_dataset, preview_matrix)
+            )
+    except Exception:
+        # A provider matrix or solver edge case must never become an opaque
+        # HTTP 500.  No preview record has been persisted yet, so the current
+        # plan remains untouched and the dispatcher receives a safe, actionable
+        # unassignable response instead.
+        return _error(
+            request,
+            409,
+            "URGENT_INSERT_UNASSIGNABLE",
+            "插單無法在目前方案中合法安排，原方案未變更。",
+            plan_id=plan_id,
+            order_id=new_order.order_id,
+            reason="PLANNER_NO_FEASIBLE_CANDIDATE",
         )
     preview_validation = validate_plan(new_dataset, preview_plan, preview_matrix)
     if not preview_validation.valid:
