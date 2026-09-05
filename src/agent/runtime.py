@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -41,6 +42,8 @@ from src.services.planner import (
 )
 from src.services.risk import calculate_plan_risks, summarize_delay
 from src.services.validator import validate_plan
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -1428,6 +1431,11 @@ async def run_dispatch_agent(
         )
         raise
     except Exception as exc:
+        logger.error(
+            "dispatch_agent_error exception_type=%s evidence_count=%d",
+            type(exc).__name__,
+            len(context.evidence),
+        )
         context.recorder.record("error_observed", error_type=type(exc).__name__)
         raise
     if require_tool and not context.evidence:
