@@ -27,7 +27,7 @@ async function send(page: Page, message: string, expectedTool?: string) {
   const agentResponse = await response
   const body = await agentResponse.json() as AgentResponseBody
   if (expectedTool) {
-    expect(agentResponse.status()).toBe(200)
+    expect(agentResponse.status(), body.error?.code ?? 'UNKNOWN_AGENT_ERROR').toBe(200)
     expect(body.runner_result_type).toBe('RunResult')
     expect(body.evidence?.some((item) => item.tool === expectedTool)).toBeTruthy()
   }
@@ -126,7 +126,7 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
   await capture(page, '08-missing-fields.png')
   await send(
     page,
-    '新增急單 ORD-OVER-901，Z1、新北市板橋區、超重測試點，座標 25.0114,121.4618，上午配送，1 件、500 公斤、包裹 PKG-OVER-901、高優先，請只預覽不要套用。',
+    '新增急單 ORD-OVER-901，配送區域 Z1，城市是新北市，行政區填板橋，地點標示超重測試點，座標 25.0114,121.4618，上午配送，共 3 件包裹、每件 50 公斤；包裹編號 PKG-OVER-901-A、PKG-OVER-901-B、PKG-OVER-901-C 都屬於 ORD-OVER-901，高優先，請只預覽不要套用。',
     'preview_structured_urgent_insert',
   )
   await expect(page.locator('.chat-bubble.agent').last()).toContainText('這筆訂單目前無法合法安排')
