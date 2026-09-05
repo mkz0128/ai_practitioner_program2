@@ -33,7 +33,7 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 `POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 
-`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 存在時，`MapPanel` 載入 Google Maps JavaScript API、depot／stop Markers 與 Google 路線 polylines；沒有 key 時顯示 deterministic map preview 並明確標示 `SIMULATED`。本分支已在具備 Browser key 的本機環境通過 Live 瀏覽器驗收；TDX 仍為可選外部依賴，mock、fallback 或 skipped test 不得替代 Live 證據。
+`VITE_GOOGLE_MAPS_BROWSER_API_KEY` 存在時，`MapPanel` 載入 Google Maps JavaScript API、depot／stop Markers 與 Google 路線 polylines；沒有 key 時顯示 deterministic map preview 並明確標示 `SIMULATED`。尚未匯入資料時只顯示「尚未匯入訂單」與「尚未使用」，不把尚未呼叫誤報成 Google 故障。TDX 本次明確排除並顯示「本版本未啟用」；mock、fallback 或 skipped test 不得替代 Google／OpenAI Live 證據。
 
 本輪分支為 `feat/frontend-control-tower`，完成後只推送該分支，不自動合併 `main`。
 
@@ -252,7 +252,7 @@ Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend �
 
 `frontend/tests/e2e/live-control-tower.spec.ts` 的歷史執行曾在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、方案檢查、Google Maps、Agent 多輪對話、ORD-041 preview 與人工確認；該歷史結果不代表本輪環境仍具備相同憑證。2026-09-05 本機狀態為 OpenAI 與 Browser key 已設定，Google Server key 的真實 Routes 請求則安全分類為 `API_KEY_RESTRICTED`；公開狀態必須以最新 Render build 的實際呼叫重新判定。
 
-Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`，每張為 1440×900 且不含 credential。TDX 因未設定 OAuth 憑證標示 `OPTIONAL／NOT_CONFIGURED`，不影響本輪後端與前端驗收。
+Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`；本輪最終公開線性驗收截圖位於 `docs/screenshots/public-final/`，每張為 1440×900 且不含 credential。TDX 顯示為「本版本未啟用」，不列入本次競賽 Demo 驗收。
 
 ## Agent-first 與進階功能串接
 

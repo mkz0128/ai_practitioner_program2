@@ -39,7 +39,7 @@ LIVE_CASES = [
         "下午配送，1 件、2 公斤、包裹 TMP-PKG-901、一般優先，請先預覽。",
         "preview_structured_urgent_insert",
     ),
-    ("請為目前資料建立正式的最快配送方案。", "plan_dispatch"),
+    ("請匯入這份訂單並建立今天的配送方案。", "plan_dispatch"),
 ]
 
 

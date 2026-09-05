@@ -49,7 +49,22 @@ describe('方案明細', () => {
       diff: { inserted_order_id: 'ORD-001', reassigned_orders: [{}], sequence_changes: [], vehicle_load_changes: [], total_distance_delta_m: 20, total_duration_delta_s: 3 },
     } satisfies UrgentPreview
     render(<DetailsPanel plan={plan} preview={preview} onConfirm={vi.fn()} onCancelPreview={vi.fn()} busy={false} />)
-    expect(screen.getByText(/影響 2 台車/)).toBeInTheDocument()
+    expect(screen.getByText('影響範圍').closest('tr')).toHaveTextContent('局部變更 · 2 台車')
     expect(screen.getByRole('button', { name: '取消變更' })).toBeInTheDocument()
+  })
+
+  it('不合法或不完整的預覽不得套用並顯示白話原因', () => {
+    const preview = {
+      plan_id: 'PLAN-1', base_version: 1, preview_version: 2, feasible: false,
+      requires_human_confirmation: true, mode: 'FULL_REPLAN', affected_vehicle_count: 2,
+      moved_order_count: 1, before: plan.summary,
+      after: { ...plan.summary, assigned_order_count: 11, unassigned_order_count: 1, unassigned_orders: ['ORD-012'] },
+      comparison: { base_algorithm: 'ORTOOLS', preview_algorithm: 'ORTOOLS', base_dataset_hash: 'a', preview_dataset_hash: 'a' },
+      diff: { inserted_order_id: 'ORD-X', reassigned_orders: [{}], sequence_changes: [], vehicle_load_changes: [], total_distance_delta_m: 0, total_duration_delta_s: 0 },
+    } satisfies UrgentPreview
+    render(<DetailsPanel plan={plan} preview={preview} onConfirm={vi.fn()} onCancelPreview={vi.fn()} busy={false} />)
+
+    expect(screen.getByText(/目前不可套用/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '套用變更' })).toBeDisabled()
   })
 })

@@ -1,5 +1,24 @@
 # 規格驗證報告
 
+## 2026-09-06 明晚 Demo 最終本機閘門
+
+| 項目 | 實際證據 | 狀態 |
+|---|---|---|
+| 空白首頁語意 | `MapPanel.test.tsx`、`StatusBar.test.tsx` 與 Playwright：顯示「尚未匯入訂單／尚未使用」，不在尚未呼叫 Google 時誤報故障 | `PASS` |
+| Excel＋文字單次送出 | 第二組固定 seed workbook 以真正瀏覽器拖放；匯入、驗證、Agent、OR-Tools、方案檢查與畫面更新只需一次送出 | `LOCAL LIVE PASS`（OpenAI）／`SIMULATED PASS`（路線） |
+| Agent 建立方案語意 | 真實 `gpt-5-mini` `Runner.run` 對「請匯入這份訂單並建立今天的配送方案」選擇 `plan_dispatch`，不再誤選 `request_missing_fields` | `LOCAL LIVE PASS` |
+| Agent 語料 | `tests/fixtures/agent_dialogue_cases.json` 112 筆；測試檔共 `115 passed`（112 cases＋3 個完整性檢查） | `MOCK PASS` |
+| OpenAI Runner 語料 | `RUN_LIVE_AGENT_CORPUS=1`：24 筆代表案例全部實際進入 `Runner.run` | `24 passed`／`LOCAL LIVE PASS` |
+| Backend 全量 | `pytest -q --basetemp=.pytest-final-demo` | `216 passed、28 skipped` |
+| Python 品質 | `ruff check src tests scripts`、`mypy src`、`git diff --check` | `PASS` |
+| Frontend 品質 | TypeScript、ESLint、Vitest 6 files／16 tests、Vite production build | `PASS` |
+| Browser regression | keyless core `2 passed`；第二組隨機資料與純附件 `2 passed` | `PASS` |
+| Preview 安全 | 不完整或有未安排訂單時，「套用變更」停用並顯示白話原因 | `PASS` |
+| TDX | 本輪依範圍決策排除，UI 顯示「本版本未啟用」 | `EXCLUDED` |
+| Secret／正式派車 | 高信心 secret pattern 0、GitHub Actions 0；測試未執行正式派車 | `PASS` |
+
+28 個 skipped 全是明確 opt-in 的外部 Live gates：`test_agent_e2e.py` 2 個、`test_live_agent_dialogue_corpus.py` 24 個、`test_live_integrations.py` 1 個、`test_responses_api.py` 1 個。其中 24 個 Runner 語料已另以 Live 模式實跑並全數通過；最新公開 Render 線性 E2E 必須在本次 Commit 完成自動部署後執行，部署前不預先標示公開通過。
+
 ## 2026-09-05 最新公開驗證（Commit `cb53615c25b0732d4243bd8470e3c9dc1356dc26`）
 
 | 項目 | 實際證據 | 狀態 |

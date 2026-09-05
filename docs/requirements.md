@@ -93,10 +93,10 @@
 | REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 部分完成（strict wiring；當前 Live 需憑證） | `src/providers/google_routes.py`、`_build_matrix`、provider wiring tests | 需在當前環境重新取得 provider response 才能標示 Live | 後端 | Google server key、terms／quota review | real matrix response 可追蹤且失敗明確；不得以 simulated 宣稱 live | 缺 key 明確標示 `SIMULATED`；已設定 key 失敗回傳 provider error |
 | REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 完成（可執行 strict path；Live 依憑證） | `_build_matrix`、`create_plan`、matrix hash/version consistency test | 公開驗收仍需當前 provider evidence | 後端 | REQ-ORIG-001 | 同一 MatrixResult identity 傳入 solver 並由 Validator 通過 | provider 失敗不得靜默降級 |
 | REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 部分完成（前端已建置，Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx`、MUI control tower、simulated map fallback | Browser key 與實際瀏覽器 Live 驗收 | 前端 | Browser key、frontend origin | 瀏覽器實際顯示 Google map／Marker／polyline | 無 key 顯示 `SIMULATED` preview |
-| REQ-ORIG-004 | 原始必要 | TDX OAuth、真實路況與道路事件查詢 | 部分完成（adapter + keyless mock，Live BLOCKED） | `src/providers/tdx.py` OAuth/status/event models、provider wiring tests | 尚缺 TDX credentials 與 real response evidence | 後端 | TDX credentials、服務條款 | 真實 response 與授權錯誤可驗證 | `CREDENTIALS_MISSING`／`UNAVAILABLE` |
-| REQ-ORIG-005 | 原始必要 | TDX 指出受影響路線與配送風險 | 部分完成（deterministic correlation） | `correlate_events_to_plan`、mock event projection test、`map-data.traffic.route_risks` | 尚缺 live TDX event-to-route evidence | 後端／共同 | REQ-ORIG-004、路線資料 | 風險可追溯至 TDX evidence，需人工確認 | 無 live data 時明確標示 unavailable |
+| REQ-EXT-TDX-001 | 未來可選擴充 | TDX OAuth、真實路況與道路事件查詢 | 本版本未啟用 | 既有 `src/providers/tdx.py` 與 mock tests 保留 | 本輪不申請憑證、不做 Live 驗收 | 後端 | 未來產品決策與 TDX credentials | 若未來啟用，須以真實 response 與授權錯誤驗收 | 主畫面顯示「本版本未啟用」，不阻塞核心 Demo |
+| REQ-EXT-TDX-002 | 未來可選擴充 | TDX 指出受影響路線與配送風險 | 本版本未啟用 | 既有 `correlate_events_to_plan` 與 mock coverage 保留 | 尚未排入本輪 | 後端／共同 | REQ-EXT-TDX-001、路線資料 | 未來須讓風險可追溯至真實 TDX evidence | 不參與本輪完成判定 |
 | REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 完成（控制塔 UI；Provider 狀態依環境） | `frontend/`、RTL tests、`docs/frontend-handoff.md` | 當前公開環境仍需再次確認 credentials 與瀏覽器流程 | 前端 | REST API、Browser key | 三條操作流程與 evidence 畫面可在瀏覽器完成 | provider 降級狀態必須明確顯示 |
-| REQ-ORIG-007 | 原始必要 | Google／TDX／OR-Tools／OpenAI Agent／前端整合驗證 | 部分完成（TDX／當前 Live 依環境） | backend／frontend tests、`tests/test_top5_features.py` | 尚需當前公開網站 Live evidence；mock／skip 不可替代 | 共同 | 上述 A 類功能與 credentials | 瀏覽器到真實 provider 的完整流程通過 | 僅可標示 BLOCKED／SKIPPED |
+| REQ-ORIG-007 | 原始必要 | Google／OR-Tools／OpenAI Agent／前端整合驗證 | 公開重驗中 | backend／frontend tests、`tests/test_top5_features.py`、公開 Playwright 線性流程 | 等待最新 Commit 部署後由公開空白首頁完整重跑 | 共同 | Google／OpenAI credentials | 瀏覽器到真實 provider 的完整流程通過且 Dispatch requests 為 0 | Live 失敗須明確標示，不以 simulated 取代 |
 
 ### 企業級擴充功能（B 類）
 
@@ -144,7 +144,7 @@
 | 40 orders／350–380 kg／concentration | Fixed-seed sample | sample audit | demo workbook |
 | Working hours／lunch／service time | Hard time dimensions | time tests | `ACTIVE_SPEC.md` §5 |
 | Google Routes | Provider interface、field mask、split keys、fallback | provider tests | `architecture.md` |
-| TDX | provider status／fallback 骨架；OAuth、真實路況、路線風險仍屬原始必要整合缺口 | provider tests；待補 live query／risk tests | `implementation-plan.md`、`architecture.md` |
+| TDX | 既有 provider adapter 保留；本版本不啟用，列為未來可選擴充 | 既有 mock/provider tests，不納入本輪 Live gate | `implementation-plan.md`、`architecture.md` |
 | SQLite | Versioned persistence／audit | repository tests | `architecture.md` |
 | REST／OpenAPI／CORS | Contract-first API | 13-route contract tests plus OpenAPI hash snapshot | `api-contract.md`、`openapi-snapshot.sha256` |
 | Observability／cost | Structured logs、tracing、limits | schema／limit tests | `observability.config` |
@@ -174,10 +174,10 @@
 1. Google Routes 提供真實 distance／duration。
 2. Google Routes Matrix 真正進入 OR-Tools 排程。
 3. Google Maps Browser API 在瀏覽器顯示地圖、Marker 與車輛路線。
-4. TDX 完成 OAuth、真實路況／道路事件查詢。
-5. TDX evidence 指出受影響路線或配送風險。
-6. 前端完整顯示訂單、車輛、載重、路線與 Agent。
-7. Google、TDX、OR-Tools、OpenAI Agent 與前端完成整合驗證及 Live E2E。
+4. 前端完整顯示訂單、車輛、載重、路線與 Agent。
+5. Google、OR-Tools、OpenAI Agent 與前端完成整合驗證及 Live E2E。
+
+TDX OAuth、真實路況與路線風險已移至未來可選擴充，不列入本次競賽 Demo 完成條件。
 
 第 1 至第 6 項已完成 keyless wiring 或 local UI 的部分範圍，但仍需相應 credentials 與瀏覽器證據；第 7 項尚未完成。simulated、mock、fallback 或 skipped test 不能作為 A 類 Live Integration 完成證據。
 

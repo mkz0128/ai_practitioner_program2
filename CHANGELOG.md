@@ -1,5 +1,14 @@
 # 變更紀錄
 
+## 2026-09-06 — 明晚 Demo 穩定性與公開線性驗收
+
+- regression-first 修正空白首頁把「尚未使用」誤顯示為 Google 路線故障；Google Maps 的「已連線」只在地圖實際載入後成立，TDX 依本輪範圍顯示「本版本未啟用」。
+- 修正有 validated dataset 的自然語言「請匯入這份訂單並建立今天的配送方案」被 Agent 誤選為臨時插單缺欄流程；真實 `gpt-5-mini` `Runner.run` 已選用 strict `plan_dispatch`。
+- 車輛清單可展開所有訂單，保留真正的 drag-and-drop 與「移至其他車輛」無障礙替代操作；不完整 Preview 現在會停用「套用變更」並顯示白話原因。
+- 新增可重複的 `playwright.public.config.ts` 與公開網站單一路徑驗收，從空白首頁涵蓋 Excel、40／40、4／4、地圖、Agent、拖拉、ORD-041、三策略、延遲、版本、人工確認、Console 與零正式派車請求。
+- 本機品質閘門：Backend `216 passed、28 skipped`、Ruff、mypy；Frontend TypeScript、ESLint、Vitest `16 passed`、production build；Playwright core `2 passed`、第二組隨機資料／純附件 `2 passed`。24 個明確 Live Runner 語料另行實跑為 `24 passed`。
+- 新增 `docs/demo-runbook.md`，統一競賽流程、亮點流程、現場十題、按鈕驗收與外部服務備用流程；TDX 移至未來可選擴充，不阻塞本輪。
+
 ## 2026-09-05 — 公開 ORD-041、Google 與人工確認最終回歸
 
 - `preview_urgent_insert` 在 Agents SDK 選定工具後，可從 deterministic 示範資料註冊表解析 ORD-041；任意新訂單仍使用 strict structured schema，不新增 Regex 或關鍵字意圖路由。

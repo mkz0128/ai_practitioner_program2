@@ -30,7 +30,7 @@ One Agent     |             |
                     |-- SimulatedRouteProvider (keyless 預設)
                     |-- GoogleRoutesProvider (AUTO plan／map-data strict wiring)
                     |-- SimulatedTrafficProvider
-                    |-- TDXTrafficProvider (OAuth、事件 projection、risk correlation)
+                    |-- TDXTrafficProvider (既有可選 adapter；本次 Demo 不啟用)
 ```
 
 相依方向一律朝內。Domain、validation、optimizer 與 plan validator 不得 import Agent 或 provider implementations。
@@ -197,9 +197,9 @@ Reproducibility controls 包含：pinned OR-Tools／runtime versions；committed
 
 ## ADR-007 — 前端控制塔與 Provider 邊界
 
-`frontend/` 是 React + TypeScript + Vite + MUI 的單一控制塔。畫面只透過原有 13 組 REST routes 與 5 組進階 routes 取得 dataset、plan、map、provider status、Agent evidence、策略比較、風險、版本與 urgent preview；不在前端重算重量、路線或合法性，也不提供自動 Dispatch。Google Maps JavaScript API 只接受 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`，Server key、OpenAI 與 TDX credentials 永遠留在後端。
+`frontend/` 是 React + TypeScript + Vite + MUI 的單一控制塔。畫面只透過原有 13 組 REST routes 與 5 組進階 routes 取得 dataset、plan、map、provider status、Agent evidence、策略比較、風險、版本與 urgent preview；不在前端重算重量、路線或合法性，也不提供自動 Dispatch。Google Maps JavaScript API 只接受 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`，Server key 與 OpenAI credentials 永遠留在後端。TDX 本次不啟用，只在系統連線細節顯示「本版本未啟用」。
 
-後端 provider 狀態與每個 response 的 `provider_mode`／`traffic.data_status` 必須直接呈現。缺少 Browser key 時控制塔顯示可用的 deterministic map preview 並標記 `SIMULATED`；這不是 Google live map。缺少 Google Routes 或 TDX credentials 時顯示 `BLOCKED`／`CREDENTIALS_MISSING`，不把 fallback 當作 live 通過。
+後端 provider 狀態與每個 response 的 `provider_mode` 必須誠實呈現。尚未建立方案時 Google 狀態為「尚未使用」，只有實際呼叫失敗才顯示連線失敗；缺少 Browser key 時控制塔顯示可用的 deterministic map preview 並標記 `SIMULATED`，這不是 Google live map。TDX 為本版本未啟用的未來可選擴充，不影響核心流程。
 
 Provider 狀態採執行期生命週期：`configured` 只表示憑證存在，第一次成功呼叫後才成為 `connected`，Provider 拒絕或傳輸失敗則為 `failed`。三策略比較若已有目前方案，必須重用該版本保存的 Matrix，避免重複計費與資料來源漂移。
 

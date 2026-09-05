@@ -91,7 +91,7 @@ test('AI 調度：附件與文字一次送出並完成 Live 排程', async ({ pa
   await send('預覽 ORD-041 插單')
   await send('只告訴我受影響的部分。')
   await page.getByRole('button', { name: '變更差異' }).click()
-  const previewMode = page.locator('.bottom-panel .success-box').filter({ hasText: /最小變動插入|完整重新排程/ })
+  const previewMode = page.locator('.bottom-panel .preview-heading').filter({ hasText: /局部變更預覽|完整重新安排預覽/ })
   await expect(previewMode).toBeVisible({ timeout: 60_000 })
   await expect(previewMode).toContainText(/影響 1 台車|換車 0 張/)
   await page.screenshot({ path: path.join(screenshotDir, 'chat-composer-urgent-diff.png') })

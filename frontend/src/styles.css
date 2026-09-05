@@ -62,6 +62,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .order-move-row { display: flex; align-items: center; gap: 4px; width: 100%; cursor: grab; }
 .order-move-row select { min-width: 0; flex: 1; border: 1px solid #e0e3e5; border-radius: 4px; padding: 3px 4px; background: #fff; color: #6b7178; font-size: 8px; }
 .unused-reason { display: block; padding: 7px; border-radius: 5px; background: #f4f5f5; color: #737980; font-size: 9px; line-height: 1.45; }
+.expand-orders { width: 100%; border: 0; padding: 5px 2px; background: transparent; color: #555c64; cursor: pointer; text-align: left; font-size: 9px; text-decoration: underline; }
 .exception p { margin: 4px 0; }
 .exception small { color: #98721e; }
 .map-unavailable { position: absolute; inset: 0; display: grid; place-content: center; gap: 7px; padding: 30px; background: #eef1f0; color: #3e4549; text-align: center; }

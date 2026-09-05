@@ -103,4 +103,14 @@ describe('控制塔主流程', () => {
     expect(window.localStorage.getItem('dispatch.active-plan')).toBeNull()
     expect(api.getMapData).not.toHaveBeenCalled()
   })
+
+  it('重新開始只清除目前畫面與未確認狀態', async () => {
+    window.localStorage.setItem('dispatch.active-plan', JSON.stringify({ plan_id: 'PLAN-001', version: 1 }))
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('40／40')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '重新開始' }))
+    expect(window.localStorage.getItem('dispatch.active-plan')).toBeNull()
+    expect(screen.getByText('尚未匯入訂單')).toBeInTheDocument()
+    expect(screen.getByText(/已清除目前畫面與未確認變更/)).toBeInTheDocument()
+  })
 })

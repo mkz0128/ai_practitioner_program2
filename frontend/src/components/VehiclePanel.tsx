@@ -10,6 +10,7 @@ interface VehiclePanelProps {
 
 export function VehiclePanel({ plan, activeVehicle, onSelectVehicle, onReassignPreview }: VehiclePanelProps) {
   const [draggedOrder, setDraggedOrder] = useState<string | null>(null)
+  const [expandedVehicles, setExpandedVehicles] = useState<Record<string, boolean>>({})
   const vehicleIds = plan?.vehicles.map((vehicle) => vehicle.vehicle_id) ?? []
   const humanReason = (reason: string | undefined) => reason === 'UNASSIGNABLE'
     ? '可服務此區域的車輛目前沒有足夠載重或合法時段。'
@@ -26,8 +27,8 @@ export function VehiclePanel({ plan, activeVehicle, onSelectVehicle, onReassignP
             <div className="progress"><span style={{ width: `${Math.min(100, vehicle.load_utilization * 100)}%` }} /></div>
             <div className="vehicle-stats"><span>{vehicle.planned_load_kg.toFixed(1)} / {vehicle.max_load_kg.toFixed(1)} kg</span><span>{vehicle.total_distance_m.toLocaleString()} m</span></div>
             <div className="vehicle-orders" aria-label={`${vehicle.vehicle_id} 訂單`}>
-              {vehicle.stops.slice(0, 6).map((stop) => <div key={stop.order_id} className="order-move-row" draggable onDragStart={(event) => { setDraggedOrder(stop.order_id); event.dataTransfer.setData('text/plain', stop.order_id) }}><span className="order-chip">{stop.order_id}</span><select aria-label={`將 ${stop.order_id} 移至其他車輛`} defaultValue="" onChange={(event) => { if (event.target.value) onReassignPreview?.(stop.order_id, event.target.value); event.currentTarget.value = '' }}><option value="">移至其他車輛</option>{vehicleIds.filter((id) => id !== vehicle.vehicle_id).map((id) => <option key={id} value={id}>{id}</option>)}</select></div>)}
-              {vehicle.stops.length > 6 && <span className="muted">另有 {vehicle.stops.length - 6} 張訂單</span>}
+              {vehicle.stops.slice(0, expandedVehicles[vehicle.vehicle_id] ? vehicle.stops.length : 6).map((stop) => <div key={stop.order_id} className="order-move-row" draggable onDragStart={(event) => { setDraggedOrder(stop.order_id); event.dataTransfer.setData('text/plain', stop.order_id) }}><span className="order-chip">{stop.order_id}</span><select aria-label={`將 ${stop.order_id} 移至其他車輛`} defaultValue="" onChange={(event) => { if (event.target.value) onReassignPreview?.(stop.order_id, event.target.value); event.currentTarget.value = '' }}><option value="">移至其他車輛</option>{vehicleIds.filter((id) => id !== vehicle.vehicle_id).map((id) => <option key={id} value={id}>{id}</option>)}</select></div>)}
+              {vehicle.stops.length > 6 && <button type="button" className="expand-orders" onClick={() => setExpandedVehicles((current) => ({ ...current, [vehicle.vehicle_id]: !current[vehicle.vehicle_id] }))}>{expandedVehicles[vehicle.vehicle_id] ? '收合訂單' : `查看全部 ${vehicle.stops.length} 張訂單`}</button>}
               {vehicle.stops.length === 0 && <span className="unused-reason">{vehicle.unused_reason || '此車目前沒有配送任務。'}</span>}
             </div>
           </article>)}

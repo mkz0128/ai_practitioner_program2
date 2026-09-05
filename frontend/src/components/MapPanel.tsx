@@ -7,6 +7,7 @@ interface MapPanelProps {
   activeVehicle: string | null
   onSelectVehicle: (vehicleId: string | null) => void
   onSelectOrder?: (orderId: string) => void
+  onMapStatus?: (status: 'missing' | 'configured' | 'connected' | 'failed') => void
 }
 
 function decodePolyline(encoded: string): google.maps.LatLngLiteral[] {
@@ -34,7 +35,7 @@ function routeCoordinates(route: MapRoute, depot: MapData['depot']): google.maps
   return [{ lat: depot.latitude, lng: depot.longitude }, ...route.stops.map((stop) => ({ lat: stop.latitude, lng: stop.longitude })), { lat: depot.latitude, lng: depot.longitude }]
 }
 
-export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }: MapPanelProps) {
+export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder, onMapStatus }: MapPanelProps) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const overlaysRef = useRef<Array<google.maps.Marker | google.maps.Polyline>>([])
@@ -60,6 +61,10 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
   const liveMap = Boolean(browserKey && data?.provider_mode === 'GOOGLE' && data.routes.every((route) => !route.encoded_polyline.startsWith('simulated:')))
 
   useEffect(() => {
+    onMapStatus?.(browserKey ? 'configured' : 'missing')
+  }, [browserKey, onMapStatus])
+
+  useEffect(() => {
     if (!browserKey || !data || !mapElement.current) return
     let cancelled = false
     const loader = new Loader({ apiKey: browserKey, version: 'weekly' })
@@ -77,9 +82,13 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
       infoWindowRef.current = new google.maps.InfoWindow()
       setMapReady(true)
       setMapError(null)
-    }).catch(() => setMapError('Google Maps 載入失敗，請檢查 Browser key 與 API 限制。'))
+      onMapStatus?.('connected')
+    }).catch(() => {
+      setMapError('道路地圖載入失敗，請稍後重試。')
+      onMapStatus?.('failed')
+    })
     return () => { cancelled = true; setMapReady(false) }
-  }, [browserKey, data])
+  }, [browserKey, data, onMapStatus])
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !data) return
@@ -118,11 +127,11 @@ export function MapPanel({ data, activeVehicle, onSelectVehicle, onSelectOrder }
       </div>
       <div className="map-wrap">
         {liveMap && <div className="map-canvas" ref={mapElement} />}
-        {!liveMap && <div className="map-unavailable"><strong>道路地圖目前無法顯示</strong><span>配送方案仍可在下方清單查看；路線服務恢復後會自動顯示道路。</span></div>}
+        {!data && <div className="map-unavailable"><strong>尚未匯入訂單</strong><span>建立配送方案後，這裡會顯示各車的道路路線。</span></div>}
+        {data && !liveMap && <div className="map-unavailable"><strong>道路地圖目前無法顯示</strong><span>配送方案仍可在下方清單查看；路線服務恢復後會自動顯示道路。</span></div>}
         <div className="map-label"><strong>DEPOT-001</strong><span>新北市青年局配送中心</span></div>
-        <div className={`map-status ${liveMap && !mapError ? 'is-live' : ''}`}>{liveMap && !mapError ? '即時道路地圖' : browserKey ? '路線服務暫時無法使用' : '道路地圖尚未設定'}</div>
+        <div className={`map-status ${liveMap && !mapError ? 'is-live' : ''}`}>{!data ? '尚未使用' : liveMap && !mapError ? '即時道路地圖' : browserKey ? '路線服務暫時無法使用' : '道路地圖尚未設定'}</div>
         {mapError && <div className="warning-box" style={{ position: 'absolute', left: 16, right: 16, top: 58 }}>{mapError}</div>}
-        {!data && <div className="loading">等待配送方案</div>}
         {data && <div className="map-legend">{data.routes.map((route) => <span className="legend-item" key={route.vehicle_id}><i className="legend-dot" style={{ background: route.color }} />{route.vehicle_id}</span>)}{data.traffic?.data_status === 'EVENTS_FOUND' && <span className="legend-item">⚠ 道路事件</span>}</div>}
       </div>
     </section>

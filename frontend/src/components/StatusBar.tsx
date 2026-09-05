@@ -3,7 +3,8 @@ import type { Plan, ProviderStatus } from '../types'
 interface StatusBarProps {
   plan: Plan | null
   providers: ProviderStatus[]
-  mapsConfigured: boolean
+  mapsStatus: 'missing' | 'configured' | 'connected' | 'failed'
+  onReset?: () => void
 }
 
 function providerLabel(providers: ProviderStatus[], name: string, activeMode?: string): { label: string; tone: 'live' | 'simulated' | 'blocked' | 'neutral' } {
@@ -17,12 +18,20 @@ function providerLabel(providers: ProviderStatus[], name: string, activeMode?: s
   return { label: provider.status, tone: 'neutral' }
 }
 
-export function StatusBar({ plan, providers, mapsConfigured }: StatusBarProps) {
-  const google = providerLabel(providers, 'google_routes', plan?.provider_mode)
-  const maps = mapsConfigured
-    ? { label: '已設定', tone: 'live' as const }
-    : { label: '未設定', tone: 'blocked' as const }
-  const tdx = providerLabel(providers, 'tdx')
+export function StatusBar({ plan, providers, mapsStatus, onReset }: StatusBarProps) {
+  const google = !plan
+    ? { label: '尚未使用', tone: 'neutral' as const }
+    : providerLabel(providers, 'google_routes', plan.provider_mode)
+  const maps = !plan && mapsStatus !== 'missing'
+    ? { label: '尚未使用', tone: 'neutral' as const }
+    : mapsStatus === 'connected'
+      ? { label: '已連線', tone: 'live' as const }
+      : mapsStatus === 'configured'
+        ? { label: '已設定', tone: 'neutral' as const }
+        : mapsStatus === 'failed'
+          ? { label: '連線失敗', tone: 'blocked' as const }
+          : { label: '未設定', tone: 'blocked' as const }
+  const tdx = { label: '本版本未啟用', tone: 'neutral' as const }
   const openai = providerLabel(providers, 'openai')
   const source = plan?.provider_mode === 'GOOGLE'
     ? { label: 'Google 即時資料', tone: 'live' as const }
@@ -42,7 +51,7 @@ export function StatusBar({ plan, providers, mapsConfigured }: StatusBarProps) {
   ] as const
   return (
     <header className="topbar">
-      <div className="topbar-main"><div><h1>今日配送規劃</h1><p>匯入訂單、查看路線，確認後才會套用方案。</p></div><div className="topbar-actions"><span className="provider-source"><span className={`source-dot ${source.tone}`} />資料來源：{source.label}</span><details className="connection-details"><summary>系統連線</summary><div>{providersSummary.map(([label, state]) => <span key={label} className="provider-badge"><span className={`source-dot ${state.tone}`} />{label}<b className={`provider-text ${state.tone}`}>{state.label}</b></span>)}</div></details></div></div>
+      <div className="topbar-main"><div><h1>今日配送規劃</h1><p>匯入訂單、查看路線，確認後才會套用方案。</p></div><div className="topbar-actions"><span className="provider-source"><span className={`source-dot ${source.tone}`} />資料來源：{source.label}</span>{onReset && <button type="button" className="control-button ghost" onClick={onReset}>重新開始</button>}<details className="connection-details"><summary>系統連線</summary><div>{providersSummary.map(([label, state]) => <span key={label} className="provider-badge"><span className={`source-dot ${state.tone}`} />{label}<b className={`provider-text ${state.tone}`}>{state.label}</b></span>)}</div></details></div></div>
       <div className="metrics" aria-label="系統狀態">
         {metrics.map(([label, value, caption]) => (
           <div className="metric kpi-card" key={label}>

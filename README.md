@@ -51,7 +51,7 @@ REST response 一律以 JSON arrays 暴露這些值；delimiter strings 不會�
 
 - 預設 Demo 模式：`SimulatedRouteProvider` 加上可重現的 simulated congestion。
 - Google Routes：`AUTO` plan 會在 `GOOGLE_ROUTES_SERVER_API_KEY` 存在時以 strict adapter 取得 Matrix，並將同一份 Matrix 傳入 OR-Tools；缺少 key 時明確使用 `SIMULATED`，已設定 key 但 provider 失敗時回傳 `PROVIDER_UNAVAILABLE`，不靜默 fallback。Map data 也會以 Google Routes 取得 route geometry。
-- TDX：後端已提供 OAuth、traffic event projection 與 route-risk correlation adapter；沒有 `TDX_CLIENT_ID`／`TDX_CLIENT_SECRET` 時回傳 `CREDENTIALS_MISSING`，不可將 simulated 或 status-only 結果標示為 live。
+- TDX：既有 OAuth／traffic adapter 保留供未來擴充；本次競賽 Demo 明確不啟用，主畫面顯示「本版本未啟用」，不影響 Google、OR-Tools、Agent、插單、換車或人工確認。
 - OpenAI 不可用時：REST import、validation、planning、confirmation 與 queries 仍可使用；只有 `/agent/chat` 降級。
 
 本機 `.env` 僅供已核准的開發環境使用，永不提交；`.env.example` 只保留空白變數與 `gpt-5-mini` 預設模型。

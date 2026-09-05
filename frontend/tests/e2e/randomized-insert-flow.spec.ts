@@ -54,11 +54,11 @@ test('第二組隨機資料可在瀏覽器一次匯入並完成多筆插單驗�
   }
   const confirmPreview = async () => {
     await page.getByRole('button', { name: '變更差異' }).click()
-    await expect(page.locator('.bottom-panel .success-box').filter({ hasText: /最小變動插入|完整重新排程/ })).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('.bottom-panel .preview-heading').filter({ hasText: /局部變更預覽|完整重新安排預覽/ })).toBeVisible({ timeout: 30_000 })
     const confirm = page.getByRole('button', { name: '套用變更' })
     if (await confirm.count()) {
       await confirm.click()
-      await expect(page.getByText('此方案已由調度員確認。')).toBeVisible({ timeout: 60_000 })
+      await expect(page.getByText(/已確認方案版本/)).toBeVisible({ timeout: 60_000 })
     }
   }
   await sendAndWait(`預覽臨時訂單 TMP-RND-${runSuffix}-001：Z4、臺北市信義、信義臨時站、座標 25.033,121.565、PM、1 件、1 公斤、NORMAL；package_id=TPK-RND-${runSuffix}-001、order_id=TMP-RND-${runSuffix}-001、weight_kg=1`)

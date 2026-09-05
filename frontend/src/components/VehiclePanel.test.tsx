@@ -39,4 +39,18 @@ describe('車輛換車互動', () => {
     expect(preview).toHaveBeenCalledWith('ORD-001', 'VEH-004')
     expect(screen.getByText(/保留備援容量/)).toBeInTheDocument()
   })
+
+  it('訂單超過六張時可展開，確保指定訂單可拖拉或用鍵盤換車', () => {
+    const manyStops = Array.from({ length: 8 }, (_, index) => ({
+      ...plan.vehicles[0].stops[0],
+      sequence: index + 1,
+      order_id: `ORD-${String(index + 1).padStart(3, '0')}`,
+    }))
+    render(<VehiclePanel plan={{ ...plan, vehicles: [{ ...plan.vehicles[0], order_count: 8, stops: manyStops }, plan.vehicles[1]] }} activeVehicle={null} onSelectVehicle={vi.fn()} />)
+    expect(screen.queryByText('ORD-008')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '查看全部 8 張訂單' }))
+    expect(screen.getByText('ORD-008')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '收合訂單' }))
+    expect(screen.queryByText('ORD-008')).not.toBeInTheDocument()
+  })
 })

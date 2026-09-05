@@ -47,9 +47,9 @@ export default function App() {
   const [plan, setPlan] = useState<Plan | null>(null)
   const [mapData, setMapData] = useState<MapData | null>(null)
   const [providers, setProviders] = useState<ProviderStatus[]>([])
-  const [mapsConfigured, setMapsConfigured] = useState(Boolean(
-    import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY || window.__DISPATCH_RUNTIME_CONFIG__?.googleMapsBrowserApiKey,
-  ))
+  const [mapsStatus, setMapsStatus] = useState<'missing' | 'configured' | 'connected' | 'failed'>(() =>
+    import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY || window.__DISPATCH_RUNTIME_CONFIG__?.googleMapsBrowserApiKey ? 'configured' : 'missing',
+  )
   const [preview, setPreview] = useState<UrgentPreview | null>(null)
   const [strategyComparison, setStrategyComparison] = useState<StrategyComparison | null>(null)
   const [delayPreview, setDelayPreview] = useState<DelayPreview | null>(null)
@@ -106,7 +106,13 @@ export default function App() {
     // for status display; the value is never rendered or logged here.
     void fetch('/api/v1/runtime-config')
       .then((response) => (response.ok ? response.json() as Promise<{ google_maps_browser_api_key?: string }> : null))
-      .then((config) => { if (config) setMapsConfigured(Boolean(config.google_maps_browser_api_key)) })
+      .then((config) => {
+        if (config) {
+          setMapsStatus((current) => current === 'connected'
+            ? current
+            : config.google_maps_browser_api_key ? 'configured' : 'missing')
+        }
+      })
       .catch(() => undefined)
   }, [])
 
@@ -205,6 +211,14 @@ export default function App() {
 
   const handleStop = () => { abortRef.current?.abort() }
 
+  const handleReset = () => {
+    abortRef.current?.abort()
+    window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
+    setValidation(null); setActiveDatasetId(null); setPlan(null); setMapData(null); setPreview(null)
+    setStrategyComparison(null); setDelayPreview(null); setPlanVersions(null); setActiveVehicle(null); setActiveOrderId(null)
+    setBusy(false); setError(null); setNotice('已清除目前畫面與未確認變更，可以重新匯入訂單。')
+  }
+
   const handleConfirm = async () => {
     if (!plan || (!preview && !plan.confirmability.can_confirm)) return
     setBusy(true); setError(null)
@@ -298,11 +312,11 @@ export default function App() {
   return <div className="app-shell">
     <Sidebar activeView={activeView} onViewChange={(view) => { setActiveView(view); document.getElementById(view === 'assistant' ? 'planning' : view)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />
     <div className="app-content">
-      <StatusBar plan={plan} providers={providers} mapsConfigured={mapsConfigured} />
+      <StatusBar plan={plan} providers={providers} mapsStatus={mapsStatus} onReset={handleReset} />
       <main className="page-content">
           <div className="control-tower-grid" id="planning">
             <AgentPanel onChat={handleChat} onUseExample={handleUseExample} onStop={handleStop} busy={busy} />
-            <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} />
+            <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} onMapStatus={setMapsStatus} />
             <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
           </div>
           <div id="tasks"><DetailsPanel plan={plan} preview={preview} onConfirm={handleConfirm} onCancelPreview={handleCancelPreview} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} /></div>

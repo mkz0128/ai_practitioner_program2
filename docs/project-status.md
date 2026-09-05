@@ -8,7 +8,7 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE；GOOGLE_MAPS_PUBLIC_LIVE；TDX_MISSING`
+- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE；GOOGLE_MAPS_PUBLIC_LIVE；TDX_EXCLUDED`
 - Frontend Integration status：`PUBLIC_LIVE_PASS`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
@@ -33,31 +33,30 @@
 | Google Routes 真實距離／時間 | 原始必要 | 完成 | 公開 `provider_mode=GOOGLE`，Matrix 與道路 geometry 均實際取得 | 無核心缺口 |
 | Google Matrix 進入 OR-Tools | 原始必要 | 完成 | 公開 Matrix hash、40／40 OR-Tools plan、方案檢查與策略比較 hash 一致 | 無核心缺口 |
 | Google Maps Browser 地圖 | 原始必要 | 完成 | 公開 Google 地圖實例、40 個站點、4 條非 simulated 道路路線，Console error 0 | 無核心缺口 |
-| TDX OAuth／真實路況查詢 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth/event models、mock test | TDX credentials 與 live response |
-| TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
+| TDX OAuth／真實路況查詢 | 未來可選擴充 | 本版本未啟用 | 既有 adapter 保留，但不列入本次 Demo 流程 | 未排入本輪 |
+| TDX 路線風險判斷 | 未來可選擴充 | 本版本未啟用 | 既有 deterministic correlation 保留 | 未排入本輪 |
 | 前端完整操作流程 | 原始必要 | 完成 | 公開 Excel→Agent→Plan→Map→拖拉 Preview→ORD-041→人工確認驗收 | 無核心缺口 |
-| 全整合前後端 Live E2E | 原始必要 | 部分完成 | OpenAI、Google Routes、Google Maps、OR-Tools、方案檢查與人工確認均公開 Live 通過 | TDX credentials 尚未設定 |
+| 全整合前後端 Live E2E | 原始必要 | 公開重驗中 | OpenAI、Google Routes、Google Maps、OR-Tools、方案檢查與人工確認具既有公開證據 | 等待本輪最新 Commit 部署後，從空白首頁完整重跑 |
 | 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-等待 TDX 憑證；其餘競賽核心功能維持公開環境回歸監測。
+推送本輪已通過本機閘門的修正，等待 Render 自動部署後，從公開空白首頁完成單次線性 Demo 驗收。
 
 ## NEXT
 
-1. 取得 TDX 憑證後執行 OAuth、雙北路況與路線風險 Live 驗收。
-2. 前往正式營運前，另行決定持久化資料庫與正式派車整合範圍。
-3. 持續保留 Google／OpenAI Provider 的明確 Live gate。
+1. 推送本輪修正並等待 Render 自動部署。
+2. 從公開空白首頁完成單次線性 Demo 與 1440×900 截圖。
+3. 依公開證據更新最終驗證紀錄。
 
 ## BLOCKED
 
-- `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
 
 - `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
-- `EXT-002 — External Provider Issue`：local environment 尚未設定 TDX credentials；core planning 仍可使用。
+- `EXT-002 — Scope Decision`：TDX 已由本輪明確排除並移至未來可選擴充，不影響核心 Demo 或完成判定。
 
 ## 2026-09-05 V2 最新公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
 
@@ -87,6 +86,12 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 以 regression-first 新增空白首頁狀態、Google／TDX 顯示與不完整 Preview 禁止套用測試，並完成對應修正。
+- 修正 validated dataset 的自然語言建立方案被誤選為臨時插單缺欄流程；真實 `gpt-5-mini` `Runner.run` 已驗證選用 `plan_dispatch`。
+- 車輛清單可展開全部訂單，讓 `ORD-002` 等非前六筆訂單能真正拖拉；後端 Preview、取消與無障礙替代操作沿用同一驗證流程。
+- 新增 `docs/demo-runbook.md` 與公開網站單一路徑 Playwright；TDX 已依最新範圍決策移至未來可選擴充。
+- 本機 Backend `216 passed、28 skipped`、Ruff／mypy 通過；Frontend TypeScript／ESLint／Vitest 16 tests／build 通過；Playwright core 2 tests 與隨機資料 2 tests 通過。
 
 - 修正公開 Agent 選到 `preview_urgent_insert` 後找不到 ORD-041 合成示範資料的缺口；示範資料改由 deterministic tool boundary 查詢，不以 Regex、關鍵字或前端固定路由判斷意圖。
 - 新增 regression-first 測試；完整後端結果為 `216 passed、28 skipped`，skipped 全為需明確開啟的外部 Live gates；Ruff 與 mypy 通過。
@@ -179,6 +184,12 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- 2026-09-06 本機最終閘門：`pytest 216 passed、28 skipped`；28 個 skipped 全是明確 opt-in 外部 gates，其中 24 個 OpenAI Runner corpus 已另行以 Live 模式得到 `24 passed`。
+- 112 筆機器可讀 Agent corpus 全數通過；測試檔總計 `115 passed`（含 3 個資料集完整性檢查）。
+- Frontend：TypeScript、ESLint、Vitest `16 passed`、Vite production build、核心 Playwright `2 passed`、第二組隨機資料／純附件 Playwright `2 passed`。
+- 空白首頁顯示「尚未匯入訂單／尚未使用」；TDX 顯示「本版本未啟用」。尚未呼叫 Google 時不再誤報故障。
+- 公開 Render 最終線性 E2E 等待本輪 Commit 自動部署後執行；部署前不預先宣稱通過。
 
 - 2026-09-05 最新本機權威結果：Backend `204 passed、28 skipped`；OpenAPI／正式方案目標測試 `6 passed`；Ruff 與 mypy 通過。Frontend TypeScript、ESLint、Vitest `9 passed`、Vite production build 通過；Playwright regression `2 passed、3 skipped`，跳過項目皆為需明確啟用的 live／random flows。
 - OpenAI 另以明確 Live 模式執行 24 個 `Runner.run` 代表性案例，結果 `24 passed`；正式 40 單 simulated 方案為 40／40、4／4 台、獨立方案檢查通過。Google Routes 本機真實請求回傳 403 並分類為 `API_KEY_RESTRICTED`，未 fallback；TDX credentials 為 MISSING。

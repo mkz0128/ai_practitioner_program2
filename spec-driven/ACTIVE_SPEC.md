@@ -72,7 +72,7 @@ application_agent_count: 1
 - Initial plan、map data、explanations、urgent order preview、confirmation 與 dispatch state。
 - 使用 strict tools 的 Single Agent，以及 graceful OpenAI degradation。
 - Simulated route matrix／polyline／congestion fallback。
-- Google／TDX provider interface、settings、health/status、timeout/fallback；Google strict Matrix／geometry wiring、TDX OAuth event projection 與 route-risk correlation 已實作，Live 狀態仍依 credentials 判定。
+- Google provider interface、settings、health/status、timeout/fallback 與 strict Matrix／geometry wiring；既有 TDX adapter 保留，但 TDX 明確排除於本次競賽 Demo，僅屬未來可選擴充。
 - REST、OpenAPI/Swagger、sample payloads，以及由 environment 設定的 CORS。
 
 以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍與已測試的 provider wiring。SQLite 的 confirm／version state 會回寫 repository；Render Free 跨重啟永久保存仍受本地檔案系統限制。HTTP `/api/v1/agent/chat` 已接入相同的 SDK `Runner.run` runtime，並在 Agent 執行 `plan_dispatch` 後保存 plan；OpenAI／Google 的當前 Live 狀態仍須依環境憑證判定。`frontend/` 已提供 control tower 與 provider 降級提示。
@@ -81,9 +81,9 @@ application_agent_count: 1
 
 - Google Routes 提供真實距離與行駛時間，且 live Matrix 必須真正進入 OR-Tools 排程。
 - Google Maps Browser API 必須在瀏覽器實際顯示地圖、Marker 與配送路線。
-- TDX 必須完成 OAuth、真實路況／道路事件查詢，並指出受影響路線或配送風險。
+- TDX OAuth、真實路況／道路事件與路線風險為未來可選擴充，不列入本次競賽 Demo 完成條件。
 - 前端必須完整顯示訂單、車輛、載重、路線、例外與 Agent 對話。
-- Google、TDX、OR-Tools、OpenAI Agent 與前端必須完成整合驗證與前後端 Live E2E。
+- Google、OR-Tools、OpenAI Agent 與前端必須完成整合驗證與公開網站 Live E2E；TDX 不在本次驗收鏈中。
 
 上述項目屬原始必要功能，不得重新分類為 P1 或可選功能。現況與證據詳見 `docs/requirements.md` 與 `docs/project-status.md`。
 
@@ -92,8 +92,8 @@ application_agent_count: 1
 | Google Routes live distance／duration | 部分完成（Live BLOCKED） | `src/providers/google_routes.py` strict adapter 與 `tests/test_live_provider_wiring.py`；本環境缺 server key，無 LIVE PASS。 |
 | Google Matrix 進入 OR-Tools | 部分完成（wiring verified） | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性 test；尚缺真實 provider E2E。 |
 | Google Maps Browser 地圖 | 部分完成（Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx` 可載入 Google Maps、Marker、polyline，無 key 時為 simulated fallback。 |
-| TDX OAuth／真實路況／道路事件 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth、事件 models、mock provider test；缺 TDX credentials。 |
-| TDX 受影響路線／配送風險 | 部分完成（deterministic） | `correlate_events_to_plan` 與 `map-data.traffic.route_risks`；尚缺 live event evidence。 |
+| TDX OAuth／真實路況／道路事件 | 未來可選擴充（本版本未啟用） | 既有 `src/providers/tdx.py` 與 mock coverage 保留；本輪不申請憑證、不做 Live 驗收。 |
+| TDX 受影響路線／配送風險 | 未來可選擴充（本版本未啟用） | 既有 `correlate_events_to_plan` 保留，不影響 Google／OR-Tools／Agent 核心 Demo。 |
 | 前端完整操作與 Agent 顯示 | 完成（控制塔 UI；Live 依環境） | `frontend/` React/Vite/MUI、API client、Agent-first attachment flow、RTL tests；公開 Live 需當前憑證。 |
 | 全整合前後端 Live E2E | 部分完成 | keyless/provider-neutral/contract gates 與 runtime tool tests 通過；仍需在當前公開環境重新執行完整 provider E2E。 |
 
@@ -322,10 +322,10 @@ Application dependencies 不得使用 `latest`、caret、tilde 或 open-ended de
 
 Reference: https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix
 
-### TDX
+### TDX（未來可選擴充）
 
 - 已完成 provider interface、Client ID/Secret settings、OAuth token exchange、traffic event projection、city／zone／coordinate correlation 與明確 fallback。
-- 真實 TDX response 仍需 credentials 與服務條款／配額確認；沒有 credentials 時回傳 `CREDENTIALS_MISSING`，不視為 Live 完成。
+- 本次競賽 Demo 明確排除 TDX，不申請或驗證 credentials；一般使用者介面顯示「本版本未啟用」，不得顯示阻塞核心流程的紅色警告。
 - TDX 是 enrichment，不是 optimization；Auth/data failure 不得使 core planning 失敗。
 
 Reference: https://tdx.transportdata.tw/api-service/swagger/basic/

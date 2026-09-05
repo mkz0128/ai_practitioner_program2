@@ -20,6 +20,7 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 - `POST /api/v1/datasets/import-excel` 僅正規化資料；`POST /api/v1/plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 會由 `GoogleRoutesProvider` strict 取得 Matrix，並把同一 hash/version 的 `MatrixResult` 注入 OR-Tools。缺 key 時回傳 `provider_mode=SIMULATED` 與 warning；已設定 key 但呼叫失敗回傳 `502 PROVIDER_UNAVAILABLE`，不靜默 fallback。
 - `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
 - `/api/v1/agent/chat` 會將每則訊息交給 `src/agent/runtime.py` 的 `Runner.run`；Agent 以 strict allowlist 選擇 deterministic tool，API 只回傳工具 evidence 與 evidence-grounded 摘要。OpenAI 憑證缺少或 provider 失敗時，回傳明確錯誤，不產生假回答。
+- 本次競賽 Demo 的 Live 鏈為 Google Routes／Maps、OR-Tools、OpenAI Agent 與前端；TDX 介面保持向後相容，但屬未來可選擴充，不參與本輪完成判定或阻塞核心 API。
 - 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
 
 ## 錯誤封套
