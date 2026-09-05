@@ -1,19 +1,21 @@
 # 規格驗證報告
 
-## 2026-09-05 最新提交前驗證
+## 2026-09-05 最新公開驗證（Commit `cb53615c25b0732d4243bd8470e3c9dc1356dc26`）
 
 | 項目 | 實際證據 | 狀態 |
 |---|---|---|
-| 後端完整回歸 | `pytest -q`：`215 passed、28 skipped`；28 個 skipped 全為需明確開啟的外部 Live gates | `PASS` |
+| 後端完整回歸 | `pytest -q`：`216 passed、28 skipped`；28 個 skipped 全為需明確開啟的外部 Live gates | `PASS` |
 | OpenAI Live 語意 | `RUN_LIVE_AGENT_CORPUS=1`：24 個案例實際進入 Agents SDK `Runner.run`，`24 passed` | `LOCAL LIVE PASS` |
-| Google Routes 本機 | Key 為 `CONFIGURED`，實際請求回傳 HTTP 403，安全分類 `API_KEY_RESTRICTED`，未 fallback | `BLOCKED` |
+| Google Routes 公開環境 | 公開方案為 `provider_mode=GOOGLE`；Matrix hash 存在，40／40 訂單由同一 Matrix 送入 OR-Tools，未 fallback | `PUBLIC LIVE PASS` |
 | 前端品質 | TypeScript、ESLint、Vitest `11 passed`、Vite production build；Playwright `2 passed、3 skipped` | `PASS`／Live gates 另列 |
-| 拖拉換車 | Chromium 送出 `dragstart／dragover／drop`，實際收到 `/reassign/preview` 成功回應，顯示差異並可取消 | `SIMULATED PASS` |
+| 拖拉換車 | 公開 Chromium 送出 `dragstart／dragover／drop`，實際收到 `/reassign/preview` HTTP 200，顯示差異並取消；目前版本未變 | `PUBLIC LIVE PASS` |
 | 策略比較矩陣 | 帶入目前 `plan_id`／`version` 時不重建 Matrix；回應 hash 與目前方案一致 | `PASS` |
 | Provider 狀態 | 程式與 UI 分開顯示已設定、已連線、連線失敗與未設定 | `PASS` |
+| ORD-041 與人工確認 | Agent `RunResult` 選 `preview_urgent_insert`；公開預覽 40→41、365→367 kg、換車 0、影響 1 台車，確認後新版本為 `CONFIRMED` | `PUBLIC LIVE PASS` |
+| Google Maps Browser | 公開頁面實際建立 Google 地圖、4 條非 simulated 道路 geometry 與 40 個站點；Console 未處理錯誤 0 | `PUBLIC LIVE PASS` |
 | Secret／正式派車 | 高信心 secret pattern `0`、敏感檔案 tracked `0`、GitHub Actions `0`、Dispatch requests `0` | `PASS` |
 
-公開網站證據必須等本次 Commit 完成 Render 自動部署後重新取得；本節不以本機或歷史結果冒充最新公開驗收。
+Render Dashboard 顯示 `cb53615` 為 `Live`。公開三策略使用同一 Google Matrix：最快方案的主要速度指標為 485 分鐘、均衡方案載重差為 9 kg、穩定方案以時段餘裕為主要目標；三者資料來源與目前方案 Matrix hash 一致。TDX credentials 仍未設定，因此僅 TDX Live 維持 `BLOCKED`。
 
 ## 2026-09-05 公開 Agent 原生崩潰回歸
 

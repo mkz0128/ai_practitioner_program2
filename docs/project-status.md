@@ -6,10 +6,10 @@
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
-- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`LOCAL_LIVE_PASS`（24 個代表性語意案例）；公開環境待最新 Commit 部署後重驗
+- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_LOCAL_BLOCKED_API_KEY_RESTRICTED；PUBLIC_REVALIDATION_PENDING；TDX_MISSING`
-- Frontend Integration status：`LOCAL_REGRESSION_PASS；PUBLIC_REVALIDATION_PENDING`
+- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE；GOOGLE_MAPS_PUBLIC_LIVE；TDX_MISSING`
+- Frontend Integration status：`PUBLIC_LIVE_PASS`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -23,37 +23,35 @@
 | Excel 匯入與欄位驗證 | 原始必要 | 完成 | `src/services/importer.py`、`tests/test_import_validation.py`、`tests/test_competition_acceptance.py` | 無核心缺口 |
 | 包裹件數與單件重量加總 | 原始必要 | 完成 | `Order.total_weight_kg`、import／planning tests | 無核心缺口 |
 | 車輛載重與服務區域 | 原始必要 | 完成 | `src/services/planner.py`、`src/services/validator.py`、競賽驗收 | 無核心缺口 |
-| OR-Tools 分車與順序 | 原始必要 | 部分完成（Google live gate 目前受 403 阻塞） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`；Live gate 實際回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗同次 Matrix→OR-Tools |
+| OR-Tools 分車與順序 | 原始必要 | 完成 | `build_ortools`、規劃測試；公開 Google Matrix→OR-Tools 為 40／40 且方案檢查通過 | 無核心缺口 |
 | 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成（simulated） | planner／validator time-window tests | 尚未以 live duration 驗證 |
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
-| 超重重新分配 | 原始必要 | 完成（deterministic／simulated；Google live 目前阻塞） | Z4 112 kg acceptance、Validator evidence；Google AUTO gate 實際回傳 403 並未 fallback | Google server key 權限修正後重驗 live Matrix |
-| 臨時插單 Preview 與差異 | 原始必要 | 部分完成（deterministic；Google live gate 阻塞） | `try_minimal_insert`、`compute_plan_diff`、本輪 deterministic regression | 需在 Google live Matrix 可用時重驗代表性插單 |
+| 超重重新分配 | 原始必要 | 完成 | Z4 112 kg acceptance、獨立方案檢查與公開最佳化方案證據 | 無核心缺口 |
+| 臨時插單 Preview 與差異 | 原始必要 | 完成 | `try_minimal_insert`、`compute_plan_diff`；公開 ORD-041 Google Live 預覽與人工確認 | 無核心缺口 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Local Live；HTTP gate blocked） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 需在不觸發 Windows in-process OR-Tools abort 的 HTTP harness／公開環境重驗 |
-| Google Routes 真實距離／時間 | 原始必要 | 部分完成（Live blocked） | `src/providers/google_routes.py`；本輪 live gate 回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 的權限／API 或配額設定 |
-| Google Matrix 進入 OR-Tools | 原始必要 | 部分完成（Live gate blocked） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator；本輪 Google gate 為 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗 |
-| Google Maps Browser 地圖 | 原始必要 | 部分完成（Browser key configured；路線資料受 Google server provider 阻塞） | `frontend/src/components/MapPanel.tsx`、runtime key gate；公開 runtime-config 僅回報設定狀態 | 需先解除 Google Routes 403，再重驗真實路線與站點 |
+| Google Routes 真實距離／時間 | 原始必要 | 完成 | 公開 `provider_mode=GOOGLE`，Matrix 與道路 geometry 均實際取得 | 無核心缺口 |
+| Google Matrix 進入 OR-Tools | 原始必要 | 完成 | 公開 Matrix hash、40／40 OR-Tools plan、方案檢查與策略比較 hash 一致 | 無核心缺口 |
+| Google Maps Browser 地圖 | 原始必要 | 完成 | 公開 Google 地圖實例、40 個站點、4 條非 simulated 道路路線，Console error 0 | 無核心缺口 |
 | TDX OAuth／真實路況查詢 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth/event models、mock test | TDX credentials 與 live response |
 | TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
-| 前端完整操作流程 | 原始必要 | 部分完成（本機回歸通過；公開 Live 需重驗） | `frontend/tests/e2e/live-control-tower.spec.ts`、本機 Playwright regression | 目前 Browser key／Google live provider gate 受環境限制 |
-| 全整合前後端 Live E2E | 原始必要 | 部分完成 | Excel → matrix → OR-Tools → Map → Agent → preview → confirm 的 deterministic／歷史公開證據 | 目前 Google Routes 403、HTTP Agent Windows native abort，TDX credentials 尚未設定 |
+| 前端完整操作流程 | 原始必要 | 完成 | 公開 Excel→Agent→Plan→Map→拖拉 Preview→ORD-041→人工確認驗收 | 無核心缺口 |
+| 全整合前後端 Live E2E | 原始必要 | 部分完成 | OpenAI、Google Routes、Google Maps、OR-Tools、方案檢查與人工確認均公開 Live 通過 | TDX credentials 尚未設定 |
 | 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-提交 Provider 狀態、策略比較矩陣重用、Prompt injection 與控制塔明細修正，等待 Render 自動部署後重新執行公開網站驗收。
+等待 TDX 憑證；其餘競賽核心功能維持公開環境回歸監測。
 
 ## NEXT
 
-1. 驗證 Render 使用最新修正 Commit，重新執行公開 Agent、Excel、拖拉換車與方案比較流程。
-2. 以 Render 環境重驗 Google Routes、Google Maps、Console 與 Network，禁止用 fallback 冒充 Live。
-3. 同步公開驗收證據，確認正式派車請求維持 0。
+1. 取得 TDX 憑證後執行 OAuth、雙北路況與路線風險 Live 驗收。
+2. 前往正式營運前，另行決定持久化資料庫與正式派車整合範圍。
+3. 持續保留 Google／OpenAI Provider 的明確 Live gate。
 
 ## BLOCKED
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
-- `REQ-ORIG-001／002`：本機 Google Routes 真實請求安全分類為 `API_KEY_RESTRICTED`；需以 Render 最新環境變數重新驗證，失敗時不得啟用 fallback 後宣稱 Live。
-- `REQ-ORIG-003`：本機 frontend Browser key 已設定；公開 Google Maps 狀態須待最新 Render build 實際載入後判定。
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
@@ -89,6 +87,12 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 修正公開 Agent 選到 `preview_urgent_insert` 後找不到 ORD-041 合成示範資料的缺口；示範資料改由 deterministic tool boundary 查詢，不以 Regex、關鍵字或前端固定路由判斷意圖。
+- 新增 regression-first 測試；完整後端結果為 `216 passed、28 skipped`，skipped 全為需明確開啟的外部 Live gates；Ruff 與 mypy 通過。
+- Render `cb53615` 已部署為 Live。公開 Excel→OpenAI `Runner.run`→Google Matrix→OR-Tools→方案檢查→Google Maps 流程為 40／40、四車均使用，並以同一 Google Matrix 完成三策略比較。
+- 公開 ORD-041 預覽為 40→41 張、365→367 kg、換車 0 張、影響 1 台車；人工確認建立新版本，10／20／30 分鐘延遲預覽均重新驗證通過。
+- 公開瀏覽器實際換車 Preview 成功並取消，原方案版本未變；Prompt injection 回傳 400，Console 未處理錯誤 0，正式派車請求 0。
 
 - 從 Render runtime log 定位 HTTP 502 根因：無資料對話誤選規劃型工具後，零車輛資料進入 OR-Tools 並觸發原生 assertion。
 - 所有可能進入求解器的 Agent 工具加入資料就緒的 fail-closed 防線；沒有訂單、車輛或完整 Matrix 時改回覆需要資料，不執行求解器。

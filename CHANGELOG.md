@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 2026-09-05 — 公開 ORD-041、Google 與人工確認最終回歸
+
+- `preview_urgent_insert` 在 Agents SDK 選定工具後，可從 deterministic 示範資料註冊表解析 ORD-041；任意新訂單仍使用 strict structured schema，不新增 Regex 或關鍵字意圖路由。
+- 新增「沒有 pending context 也能解析文件化示範訂單」回歸測試；完整後端為 `216 passed、28 skipped`，Ruff、mypy 與 secret scan 通過。
+- Render `cb53615` 公開驗收通過 40／40 Google Matrix→OR-Tools、真實 Google 地圖、三策略同 Matrix、拖拉換車 Preview、ORD-041 40→41、人工確認及 10／20／30 分鐘延遲預覽。
+- 公開 Agent 回傳 `RunResult` 與 strict tool evidence；Prompt injection 被拒絕，Console 未處理錯誤與正式派車請求皆為 0。TDX 因憑證未設定維持外部阻塞。
+
 ## 2026-09-05 — 公開驗收前的控制塔與 Provider 狀態修正
 
 - 方案明細新增搜尋、車輛／時段篩選與每頁十筆分頁，並將插單與換車統一呈現為「變更差異」。
