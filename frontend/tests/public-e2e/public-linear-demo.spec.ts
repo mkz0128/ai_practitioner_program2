@@ -124,6 +124,16 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
   await send(page, '幫我插入一張急單', 'request_missing_fields')
   await expect(page.locator('.chat-bubble.agent').last()).toContainText(/還需要補充|配送欄位/)
   await capture(page, '08-missing-fields.png')
+  await send(
+    page,
+    '新增急單 ORD-OVER-901，Z1、新北市板橋區、超重測試點，座標 25.0114,121.4618，上午配送，1 件、500 公斤、包裹 PKG-OVER-901、高優先，請只預覽不要套用。',
+    'preview_structured_urgent_insert',
+  )
+  await expect(page.locator('.chat-bubble.agent').last()).toContainText('這筆訂單目前無法合法安排')
+  await page.getByRole('button', { name: '變更差異' }).click()
+  await expect(page.getByText('目前不可套用')).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByRole('button', { name: '套用變更' })).toBeDisabled()
+  await capture(page, '08b-overweight-unassignable.png')
   await send(page, '三號車今天不能出車，其他車先幫忙重新安排，但不要直接套用。', 'change_vehicle_availability')
   await capture(page, '09-vehicle-unavailable-preview.png')
 

@@ -53,6 +53,21 @@ describe('Agent 對外訊息格式', () => {
     expect(text).not.toContain('確定性工具')
   })
 
+  it('通用結構化插單不可行時明確告知不能套用', () => {
+    const text = friendlyText('已完成確定性工具計算。', [{
+      tool: 'preview_structured_urgent_insert',
+      data: {
+        order_id: 'ORD-OVER-901', affected_vehicle_count: 0, moved_order_count: 0,
+        diff: { total_distance_delta_m: 0, total_duration_delta_s: 0 },
+        validator: { valid: true }, feasible: false, unassigned_orders: ['ORD-OVER-901'],
+      },
+    }])
+
+    expect(text).toContain('ORD-OVER-901')
+    expect(text).toContain('不能套用')
+    expect(text).not.toContain('preview_structured_urgent_insert')
+  })
+
   it('無對應格式器時也不直接顯示 JSON', () => {
     const text = friendlyText('{"internal_status":"SOMETHING"}', [{ tool: 'unknown_tool', data: {} }])
     expect(text).toBe('已完成處理；詳細的計算依據已收合，請展開查看。')

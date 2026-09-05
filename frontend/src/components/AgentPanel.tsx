@@ -41,7 +41,8 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
   const highestLoadEvidence = evidence.find((item) => item.tool === 'highest_load_vehicle')?.data
   const missingFieldsEvidence = evidence.find((item) => item.tool === 'request_missing_fields')?.data
   const vehicleAvailabilityEvidence = evidence.find((item) => item.tool === 'change_vehicle_availability')?.data
-  const urgentInsertEvidence = evidence.find((item) => item.tool === 'preview_urgent_insert')?.data
+  const urgentInsertEvidence = evidence.find((item) =>
+    item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert')?.data
   const delayEvidence = evidence.find((item) => item.tool === 'simulate_delay')?.data
   if (missingFieldsEvidence && Array.isArray(missingFieldsEvidence.missing_fields)) {
     const labels: Record<string, string> = {
@@ -77,7 +78,10 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
     const validator = urgentInsertEvidence.validator && typeof urgentInsertEvidence.validator === 'object'
       ? urgentInsertEvidence.validator as Record<string, unknown>
       : undefined
-    parts.push(validator?.valid === true ? '方案檢查通過，尚未套用，請由調度員確認。' : '方案尚未通過檢查，不能套用。')
+    const feasible = urgentInsertEvidence.feasible === true
+    parts.push(validator?.valid === true && feasible
+      ? '方案檢查通過，尚未套用，請由調度員確認。'
+      : '這筆訂單目前無法合法安排，不能套用，原方案沒有變更。')
     return parts.join(' ')
   }
   if (delayEvidence?.delay && typeof delayEvidence.delay === 'object') {
@@ -117,7 +121,7 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   }
   if (tool === 'highest_load_vehicle') return `已從驗證方案找出載重最高的車輛：${String(data.vehicle_id ?? '—')}。`
   if (tool === 'explain_assignment') return '這份說明來自訂單、車輛容量、服務區域與時段驗證結果。'
-  if (tool === 'preview_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
+  if (tool === 'preview_urgent_insert' || tool === 'preview_structured_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
   if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
   if (tool === 'change_vehicle_availability') return `已建立 ${String(data.vehicle_id ?? '指定車輛')} 的可用狀態變更預覽，尚未套用。`
   if (tool === 'inspect_plan_overview') return '已依目前方案確認訂單完整性、車輛載重與需要人工處理的項目。'
