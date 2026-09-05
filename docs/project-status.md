@@ -41,7 +41,7 @@
 
 ## NOW
 
-在隔離的 Linux／公開執行環境重新驗證 HTTP Agent 與 Google Routes Live provider（不執行真實 Dispatch）
+取得可用的 Google Routes 權限後，重新驗證公開 HTTP Agent 與 Google Live Matrix→OR-Tools（不執行真實 Dispatch）
 
 - 本輪通用 Agent、五項進階功能與安全護欄已完成本機 deterministic 驗證；目前 HTTP Agent 受 Windows OR-Tools 原生 abort 阻塞，Google Routes 受 HTTP 403 阻塞，未將其冒稱為 Live PASS。
 
@@ -249,3 +249,4 @@
 
 - 最新修正：資料集進入新 Agent 方案時，`agent_chat` 先以 `prefer_live=True` 解析一次矩陣，再將同一 `MatrixResult` 交給 `Runner.run` 選出的 deterministic tool；回歸測試確認不會回退到匯入時的 simulated matrix。
 - 最新驗證：後端 `78 passed、4 skipped`；前端 TypeScript／ESLint／Vitest `3 passed`／Vite build／Playwright regression `2 passed、3 skipped`；OpenAI Responses 與 direct Agents SDK 各 `1 passed`，Google Routes `GOOGLE_HTTP_403`、HTTP Agent Windows native abort 維持 `BLOCKED`。
+- 本輪公開 Render 重新核對：`/health=200`、`/openapi.json=200` 且註冊 18 個 paths；公開 `/api/v1/agent/chat` 回傳 `RunResult` 與 1 筆 evidence。以虛構 40 單執行 simulated plan 時 40/40、Validator valid；同一公開網址的 `AUTO` Google plan 回傳 `502 PROVIDER_UNAVAILABLE`，因此 Google Live Matrix→OR-Tools 仍為 `BLOCKED`，未使用 fallback 冒稱通過。
