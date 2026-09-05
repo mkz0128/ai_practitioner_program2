@@ -450,6 +450,55 @@ def preview_reassignment(
     return min(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
+def _activate_idle_serviceable_vehicles(
+    plan: PlanResult, dataset: Dataset, matrix: MatrixResult
+) -> PlanResult:
+    """Give each available, serviceable vehicle one legal stop when possible.
+
+    OR-Tools may minimize driving time by packing the whole day into fewer
+    vehicles. For the daily control-tower plan, an idle vehicle that can legally
+    serve an order is activated with the smallest deterministic route delta.
+    The move preserves all unaffected routes and is independently validated by
+    the caller with every other formal plan.
+    """
+    current = plan
+    serviceable = {
+        vehicle.vehicle_id
+        for vehicle in dataset.vehicles
+        if vehicle.status == VehicleStatus.AVAILABLE
+        and any(_eligible(order, vehicle) for order in dataset.orders)
+    }
+    idle = [
+        route.vehicle_id
+        for route in current.routes
+        if route.vehicle_id in serviceable and not route.order_ids
+    ]
+    for target_vehicle_id in idle:
+        candidates: list[tuple[tuple[int, int, str], PlanResult]] = []
+        for source_route in current.routes:
+            if len(source_route.order_ids) <= 1:
+                continue
+            for order_id in source_route.order_ids:
+                candidate = preview_reassignment(
+                    current, dataset, matrix, order_id, target_vehicle_id
+                )
+                if candidate is None:
+                    continue
+                candidates.append(
+                    (
+                        (
+                            candidate.total_driving_time_s - current.total_driving_time_s,
+                            candidate.total_distance_m - current.total_distance_m,
+                            order_id,
+                        ),
+                        candidate,
+                    )
+                )
+        if candidates:
+            current = min(candidates, key=lambda item: item[0])[1]
+    return current
+
+
 def build_ortools(
     dataset: Dataset,
     matrix: MatrixResult,
@@ -517,6 +566,7 @@ def build_ortools(
         )
         time_dimension.CumulVar(node).SetRange(start, end)
         routing.AddDisjunction([node], sum(sum(row) for row in matrix.duration_s) + 1)
+
     parameters = pywrapcp.DefaultRoutingSearchParameters()
     if objective == "BALANCED":
         # Balance the actual load dimension rather than stop count alone. A
@@ -615,7 +665,7 @@ def build_ortools(
     reasons.update(
         {order_id: "UNASSIGNED_BY_SOLVER" for order_id in dropped if order_id not in reasons}
     )
-    return PlanResult(
+    plan = PlanResult(
         algorithm="ORTOOLS",
         complete=not reasons,
         routes=routes,
@@ -627,3 +677,9 @@ def build_ortools(
         optimality_not_proven=True,
         objective=objective,
     )
+    serviceable_vehicle_count = len(
+        {index for eligible in eligible_by_order.values() for index in eligible}
+    )
+    if plan.complete and len(orders) >= serviceable_vehicle_count:
+        plan = _activate_idle_serviceable_vehicles(plan, dataset, matrix)
+    return plan

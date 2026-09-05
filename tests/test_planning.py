@@ -2,7 +2,7 @@ from pathlib import Path
 
 import src.services.planner as planner_module
 from src.services.importer import parse_workbook
-from src.services.matrix import SimulatedRouteProvider
+from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.planner import build_baseline, build_ortools
 from src.services.validator import validate_plan
 
@@ -39,6 +39,25 @@ def test_ortools_returns_reconciled_valid_plan() -> None:
     assigned = {order_id for route in plan.routes for order_id in route.order_ids}
     assert assigned.isdisjoint(plan.unassigned_orders)
     assert assigned | set(plan.unassigned_orders) == {order.order_id for order in dataset.orders}
+
+
+def test_formal_demo_plan_uses_every_serviceable_vehicle_when_feasible() -> None:
+    dataset, source = _dataset_and_matrix()
+    size = len(source.node_ids)
+    compact = MatrixResult(
+        node_ids=source.node_ids,
+        distance_m=tuple(tuple(0 if i == j else 100 for j in range(size)) for i in range(size)),
+        duration_s=tuple(tuple(0 if i == j else 60 for j in range(size)) for i in range(size)),
+        provider_mode="GOOGLE",
+        matrix_version="regression-live-shape-v1",
+    )
+
+    plan = build_ortools(dataset, compact, time_limit_seconds=2)
+    validation = validate_plan(dataset, plan, compact)
+
+    assert validation.valid, validation.model_dump()
+    assert plan.complete
+    assert len([route for route in plan.routes if route.order_ids]) == 4
 
 
 def test_fixed_matrix_is_shared_for_comparison() -> None:
