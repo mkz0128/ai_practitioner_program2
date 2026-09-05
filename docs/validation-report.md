@@ -308,7 +308,7 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 
 ### 品質閘門（本輪）
 
-- Backend：`43 passed, 3 skipped, 1 failed`（唯一失敗是刻意清空本機 OpenAI key 後，既有 API test 預期 200 而收到安全的 503；不冒稱 Live）；skipped 為 Agents SDK、Google live key、Responses smoke 的條件式 gates。`ruff check src tests scripts PASS`、`mypy src PASS`。
+- Backend：完整 pytest 為 `44 passed, 3 skipped, 1 failed`（唯一失敗是刻意清空本機 OpenAI key 後，既有 API test 預期 200 而收到安全的 503；不冒稱 Live）；排除該環境相依案例後為 `44 passed, 3 skipped, 1 deselected`。skipped 為 Agents SDK、Google live key、Responses smoke 的條件式 gates。`ruff check src tests scripts PASS`、`mypy src PASS`。
 - Frontend：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest `2 passed`、Vite production build PASS。
 - Render 公開網址：健康檢查、13-path OpenAPI／CORS、40 單 Google→OR-Tools→Validator、Agent、Google Maps 與 ORD-041 preview 均有實際回應；TDX 為 `OPTIONAL／NOT_CONFIGURED`。
 
