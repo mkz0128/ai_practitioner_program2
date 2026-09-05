@@ -72,6 +72,21 @@ def test_auto_plan_reports_google_failure_without_simulated_fallback(monkeypatch
     assert body["error"]["details"]["fallback_used"] is False
 
 
+def test_provider_status_distinguishes_configured_from_connected(monkeypatch) -> None:
+    monkeypatch.setattr(api_main.settings, "google_routes_server_api_key", "test-google-key")
+    monkeypatch.setattr(api_main.settings, "openai_api_key", "test-openai-key")
+    monkeypatch.setitem(api_main.provider_runtime_state, "google_routes", "configured")
+    monkeypatch.setitem(api_main.provider_runtime_state, "openai", "configured")
+
+    response = client.get("/api/v1/providers/status")
+
+    assert response.status_code == 200
+    statuses = {item["name"]: item["status"] for item in response.json()["providers"]}
+    assert statuses["google_routes"] == "configured"
+    assert statuses["openai"] == "configured"
+    assert "healthy" not in {statuses["google_routes"], statuses["openai"]}
+
+
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [

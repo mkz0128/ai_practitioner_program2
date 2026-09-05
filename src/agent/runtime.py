@@ -1181,6 +1181,7 @@ def reject_prompt_injection(
         ),
         r"(?:假裝|假設).{0,16}(?:validator|驗證).{0,16}(?:通過|成功).{0,24}(?:dispatch|出車|送出)",
         r"(?:假裝|假設).{0,16}(?:人工).{0,16}(?:確認).{0,24}(?:dispatch|出車|送出)",
+        r"(?:忽略|跳過).{0,20}(?:規則|驗證|檢查|確認).{0,32}(?:dispatch|派車|出車|送出)",
         r"(?:base64|編碼).{0,24}(?:api[ _-]?key|金鑰|密鑰)",
     )
     triggered = any(marker in compact for marker in phrase_markers) or any(

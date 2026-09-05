@@ -96,6 +96,8 @@ class DispatchRequest(StrictRequest):
 
 class CompareStrategiesRequest(StrictRequest):
     dataset_id: str
+    plan_id: str | None = None
+    version: int | None = Field(default=None, ge=1)
     route_provider_preference: Literal["AUTO", "SIMULATED"] = "AUTO"
     traffic_mode: Literal["AUTO", "SIMULATED"] = "AUTO"
 
@@ -299,9 +301,15 @@ def _build_matrix(dataset: Dataset, *, prefer_live: bool) -> MatrixResult:
         return SimulatedRouteProvider().build(dataset)
     if not settings.google_routes_server_api_key:
         return replace(SimulatedRouteProvider().build(dataset), warning="GOOGLE_KEY_MISSING")
-    return GoogleRoutesProvider(settings.google_routes_server_api_key).build(
-        dataset, allow_fallback=False
-    )
+    try:
+        matrix = GoogleRoutesProvider(settings.google_routes_server_api_key).build(
+            dataset, allow_fallback=False
+        )
+    except GoogleRoutesProviderError:
+        provider_runtime_state["google_routes"] = "failed"
+        raise
+    provider_runtime_state["google_routes"] = "connected"
+    return matrix
 
 
 def _dataset_matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
@@ -316,6 +324,10 @@ store = InMemoryStore()
 agent_sessions: dict[str, AgentSession] = {}
 app = FastAPI(title="AI Delivery Dispatch Agent", version="0.1.0")
 settings = get_settings()
+provider_runtime_state: dict[str, str] = {
+    "google_routes": "configured" if settings.google_routes_server_api_key else "disabled",
+    "openai": "configured" if settings.openai_api_key else "disabled",
+}
 repository = SQLiteRepository(settings.database_url)
 app.add_middleware(
     CORSMiddleware,
@@ -933,20 +945,30 @@ def compare_plan_strategies(payload: CompareStrategiesRequest, request: Request)
     dataset_record = store.get_dataset(payload.dataset_id)
     if dataset_record is None:
         return _error(request, 404, "DATASET_NOT_FOUND", "找不到資料集。")
-    prefer_live = payload.route_provider_preference == "AUTO" and payload.traffic_mode == "AUTO"
-    try:
-        matrix = _build_matrix(dataset_record.dataset, prefer_live=prefer_live)
-    except GoogleRoutesProviderError as exc:
-        return _error(
-            request,
-            502,
-            "PROVIDER_UNAVAILABLE",
-            "Google Routes 即時矩陣無法取得。",
-            provider="GOOGLE",
-            provider_error=exc.code,
-            provider_error_category=exc.category,
-            fallback_used=False,
+    if payload.plan_id is not None:
+        plan_record = store.get_plan(payload.plan_id, payload.version)
+        if plan_record is None:
+            return _error(request, 404, "PLAN_NOT_FOUND", "找不到策略比較使用的方案版本。")
+        if plan_record.dataset_id != payload.dataset_id:
+            return _error(request, 409, "PLAN_DATASET_MISMATCH", "方案與資料集不一致。")
+        matrix = plan_record.matrix
+    else:
+        prefer_live = (
+            payload.route_provider_preference == "AUTO" and payload.traffic_mode == "AUTO"
         )
+        try:
+            matrix = _build_matrix(dataset_record.dataset, prefer_live=prefer_live)
+        except GoogleRoutesProviderError as exc:
+            return _error(
+                request,
+                502,
+                "PROVIDER_UNAVAILABLE",
+                "Google Routes 即時矩陣無法取得。",
+                provider="GOOGLE",
+                provider_error=exc.code,
+                provider_error_category=exc.category,
+                fallback_used=False,
+            )
     strategy_goals: dict[str, tuple[str, str]] = {
         "FASTEST": (
             "最小化總行駛時間（秒）",
@@ -1528,7 +1550,7 @@ def provider_status(request: Request) -> dict[str, Any]:
             {
                 "name": "google_routes",
                 "enabled": status_map["GOOGLE_ROUTES_SERVER_API_KEY"] == "CONFIGURED",
-                "status": "healthy"
+                "status": provider_runtime_state["google_routes"]
                 if status_map["GOOGLE_ROUTES_SERVER_API_KEY"] == "CONFIGURED"
                 else "disabled",
                 "mode": "GOOGLE"
@@ -1539,7 +1561,9 @@ def provider_status(request: Request) -> dict[str, Any]:
             {
                 "name": "openai",
                 "enabled": status_map["OPENAI_API_KEY"] == "CONFIGURED",
-                "status": "healthy" if status_map["OPENAI_API_KEY"] == "CONFIGURED" else "degraded",
+                "status": provider_runtime_state["openai"]
+                if status_map["OPENAI_API_KEY"] == "CONFIGURED"
+                else "disabled",
                 "mode": "OPENAI" if status_map["OPENAI_API_KEY"] == "CONFIGURED" else "UNAVAILABLE",
             },
         ],
@@ -1724,6 +1748,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         )
     except Exception as exc:
         # Do not serialize provider requests, headers, keys, or SDK internals.
+        provider_runtime_state["openai"] = "failed"
         status_code, error_code, message, retryable = _classify_agent_error(exc)
         return _error(
             request,
@@ -1734,6 +1759,8 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             fallback_used=False,
             retryable=retryable,
         )
+
+    provider_runtime_state["openai"] = "connected"
 
     # A plan requested through the Agent is persisted here, after the SDK has
     # selected and executed plan_dispatch.  This keeps the conversation as the

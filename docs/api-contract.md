@@ -395,9 +395,9 @@ Response:
 {
   "providers": [
     {"name":"simulated_routes","enabled":true,"status":"healthy","mode":"SIMULATED"},
-    {"name":"google_routes","enabled":false,"status":"disabled","mode":"UNAVAILABLE"},
+    {"name":"google_routes","enabled":true,"status":"configured","mode":"GOOGLE"},
     {"name":"tdx","enabled":false,"status":"disabled","mode":"UNAVAILABLE"},
-    {"name":"openai","enabled":false,"status":"degraded","mode":"UNAVAILABLE"}
+    {"name":"openai","enabled":true,"status":"connected","mode":"OPENAI"}
   ],
   "request_id": "REQ-01J..."
 }
@@ -405,11 +405,13 @@ Response:
 
 絕不暴露 credential values 或 raw auth failures。TDX status／map data 另包含 `data_status`（例如 `CREDENTIALS_MISSING`、`NO_EVENTS`、`EVENTS_FOUND`）；`traffic.route_risks` 只引用已投影且可關聯至 route/order 的事件 evidence。
 
+`configured` 僅代表環境變數存在；只有目前程序實際呼叫成功後才回傳 `connected`，呼叫失敗回傳 `failed`。前端不得把 `configured` 翻譯為「已連線」。
+
 ## 進階預覽與版本端點
 
 下列端點為向後相容的非破壞性擴充，所有方案變更仍需人工確認：
 
-- `POST /api/v1/plans/compare`：以同一 `dataset_id` 與 Matrix 回傳 `FASTEST`、`BALANCED`、`STABLE` 三組 Validator-backed summaries；每組包含 `primary_goal`、`tradeoff`、`total_duration_s`、`load_spread_kg` 與 `min_slack_minutes`，前端不得以名稱推測主要目標。
+- `POST /api/v1/plans/compare`：以同一 `dataset_id` 與 Matrix 回傳 `FASTEST`、`BALANCED`、`STABLE` 三組 Validator-backed summaries；可選帶入目前 `plan_id`／`version` 以重用該方案的 Matrix。每組包含 `primary_goal`、`tradeoff`、`total_duration_s`、`load_spread_kg` 與 `min_slack_minutes`，前端不得以名稱推測主要目標。
 - `GET /api/v1/plans/{plan_id}/versions`：列出版本、建立時間、狀態、objective、完整性及未安排訂單。
 - `POST /api/v1/plans/{plan_id}/restore`：以 `source_version` 建立新的 `PROPOSED` 版本，復原後重新執行 Validator。
 - `POST /api/v1/plans/{plan_id}/delay-preview`：接受 `delay_minutes` 為 10、20 或 30，回傳 ETA 餘裕與風險燈號。

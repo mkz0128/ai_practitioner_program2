@@ -87,6 +87,30 @@ def test_strategy_comparison_uses_three_objectives_and_one_matrix() -> None:
     )
 
 
+def test_strategy_comparison_can_reuse_the_current_plan_matrix(monkeypatch) -> None:
+    plan_id, plan = _plan()
+
+    def fail_if_matrix_is_rebuilt(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("目前方案已有矩陣，策略比較不應重新呼叫 Provider")
+
+    monkeypatch.setattr("src.api.main._build_matrix", fail_if_matrix_is_rebuilt)
+    response = client.post(
+        "/api/v1/plans/compare",
+        json={
+            "dataset_id": plan["dataset_id"],
+            "plan_id": plan_id,
+            "version": plan["version"],
+            "route_provider_preference": "AUTO",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["matrix_hash"] == plan["matrix_hash"]
+    assert body["provider_mode"] == plan["provider_mode"]
+
+
 def test_delay_preview_returns_deterministic_slack_and_simulation() -> None:
     plan_id, _ = _plan()
     response = client.post(

@@ -201,6 +201,8 @@ Reproducibility controls 包含：pinned OR-Tools／runtime versions；committed
 
 後端 provider 狀態與每個 response 的 `provider_mode`／`traffic.data_status` 必須直接呈現。缺少 Browser key 時控制塔顯示可用的 deterministic map preview 並標記 `SIMULATED`；這不是 Google live map。缺少 Google Routes 或 TDX credentials 時顯示 `BLOCKED`／`CREDENTIALS_MISSING`，不把 fallback 當作 live 通過。
 
+Provider 狀態採執行期生命週期：`configured` 只表示憑證存在，第一次成功呼叫後才成為 `connected`，Provider 拒絕或傳輸失敗則為 `failed`。三策略比較若已有目前方案，必須重用該版本保存的 Matrix，避免重複計費與資料來源漂移。
+
 Tests 只能檢查 required variable 是否存在。絕不可將 secret 讀入 assertions、output、serialization、exception text、logs、traces、snapshots、fixtures 或 Git。Provider clients 必須 redact authorization headers 與 query credentials。Missing／rejected key 依測試分層降級為穩定的 skip／fallback result，絕不破壞 keyless suite。
 
 ## Runtime 驗收閘門

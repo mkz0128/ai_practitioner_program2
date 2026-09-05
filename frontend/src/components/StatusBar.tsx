@@ -11,7 +11,10 @@ function providerLabel(providers: ProviderStatus[], name: string, activeMode?: s
   if (!provider || !provider.enabled) return { label: '未設定', tone: 'blocked' }
   if (provider.mode === 'SIMULATED') return { label: '模擬', tone: 'simulated' }
   if (name === 'google_routes' && activeMode && activeMode !== 'GOOGLE') return { label: '未採用', tone: 'neutral' }
-  return { label: provider.status === 'healthy' ? '已連線' : provider.status, tone: 'live' }
+  if (provider.status === 'connected' || provider.status === 'healthy') return { label: '已連線', tone: 'live' }
+  if (provider.status === 'configured') return { label: '已設定', tone: 'neutral' }
+  if (provider.status === 'failed' || provider.status === 'degraded') return { label: '連線失敗', tone: 'blocked' }
+  return { label: provider.status, tone: 'neutral' }
 }
 
 export function StatusBar({ plan, providers, mapsConfigured }: StatusBarProps) {

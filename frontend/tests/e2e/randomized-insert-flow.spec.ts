@@ -53,7 +53,7 @@ test('第二組隨機資料可在瀏覽器一次匯入並完成多筆插單驗�
     await expect(page.locator('.processing-bubble')).toHaveCount(0, { timeout: 120_000 })
   }
   const confirmPreview = async () => {
-    await page.getByRole('button', { name: '臨時插單差異' }).click()
+    await page.getByRole('button', { name: '變更差異' }).click()
     await expect(page.locator('.bottom-panel .success-box').filter({ hasText: /最小變動插入|完整重新排程/ })).toBeVisible({ timeout: 30_000 })
     const confirm = page.getByRole('button', { name: '套用變更' })
     if (await confirm.count()) {

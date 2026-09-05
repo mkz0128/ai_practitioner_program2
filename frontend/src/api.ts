@@ -76,11 +76,11 @@ export function createPlan(datasetId: string, signal?: AbortSignal): Promise<Pla
   })
 }
 
-export function compareStrategies(datasetId: string, signal?: AbortSignal): Promise<StrategyComparison> {
+export function compareStrategies(datasetId: string, planId?: string, version?: number, signal?: AbortSignal): Promise<StrategyComparison> {
   return request<StrategyComparison>('/api/v1/plans/compare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dataset_id: datasetId, route_provider_preference: 'AUTO', traffic_mode: 'AUTO' }),
+    body: JSON.stringify({ dataset_id: datasetId, plan_id: planId, version, route_provider_preference: 'AUTO', traffic_mode: 'AUTO' }),
     signal,
   })
 }

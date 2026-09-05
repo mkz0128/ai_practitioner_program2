@@ -8,7 +8,7 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`LOCAL_LIVE_PASS`（24 個代表性語意案例）；公開環境待最新 Commit 部署後重驗
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_LOCAL_BLOCKED_API_KEY_RESTRICTED；BROWSER_CONFIGURED；TDX_MISSING`
+- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_LOCAL_BLOCKED_API_KEY_RESTRICTED；PUBLIC_REVALIDATION_PENDING；TDX_MISSING`
 - Frontend Integration status：`LOCAL_REGRESSION_PASS；PUBLIC_REVALIDATION_PENDING`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
@@ -41,11 +41,11 @@
 
 ## NOW
 
-提交公開 Agent 空資料原生崩潰修正，等待 Render 自動部署後重新執行公開網站驗收。
+提交 Provider 狀態、策略比較矩陣重用、Prompt injection 與控制塔明細修正，等待 Render 自動部署後重新執行公開網站驗收。
 
 ## NEXT
 
-1. 驗證 Render 使用最新修正 Commit，重新執行公開 Agent 與 Excel 流程。
+1. 驗證 Render 使用最新修正 Commit，重新執行公開 Agent、Excel、拖拉換車與方案比較流程。
 2. 以 Render 環境重驗 Google Routes、Google Maps、Console 與 Network，禁止用 fallback 冒充 Live。
 3. 同步公開驗收證據，確認正式派車請求維持 0。
 

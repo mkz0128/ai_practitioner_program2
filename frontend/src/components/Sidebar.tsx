@@ -8,7 +8,7 @@ interface SidebarProps {
 const items: Array<{ view: WorkspaceView; label: string; icon: string }> = [
   { view: 'assistant', label: 'AI 調度', icon: '✦' },
   { view: 'tasks', label: '配送任務', icon: '▣' },
-  { view: 'tracking', label: '路線追蹤', icon: '⌖' },
+  { view: 'tracking', label: '配送路線', icon: '⌖' },
 ]
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {

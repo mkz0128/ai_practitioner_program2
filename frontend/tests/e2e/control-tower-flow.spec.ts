@@ -7,7 +7,7 @@ test('控制塔 local simulated flow 可展示主要交付畫面', async ({ page
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '今日配送規劃' })).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, '01-empty-control-tower.png'), fullPage: true })
+  await page.screenshot({ path: path.join(screenshotDir, '01-empty-control-tower.png') })
 
   // 讓截圖測試保持 keyless、可重現；正式 UI 預設仍送 AUTO 以啟用 Google strict path。
   await page.route('**/api/v1/plans', async (route) => {
@@ -71,20 +71,62 @@ test('控制塔 local simulated flow 可展示主要交付畫面', async ({ page
   await page.getByRole('textbox', { name: '輸入訊息' }).press('Enter')
   await expect(page.getByText(/已匯入 40 張訂單/)).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('方案檢查通過').first()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: path.join(screenshotDir, '02-imported-plan.png'), fullPage: true })
-  await page.screenshot({ path: path.join(screenshotDir, '03-map-and-vehicles.png'), fullPage: true })
+  await page.screenshot({ path: path.join(screenshotDir, '02-imported-plan.png') })
+  await page.screenshot({ path: path.join(screenshotDir, '03-map-and-vehicles.png') })
+
+  const currentPlan = simulatedPlan as unknown as {
+    plan_id: string
+    version: number
+    vehicles: Array<{ vehicle_id: string; stops: Array<{ order_id: string }> }>
+  }
+  let dragOrderId = ''
+  let dragTargetId = ''
+  for (const source of currentPlan.vehicles) {
+    for (const stop of source.stops.slice(0, 6)) {
+      for (const target of currentPlan.vehicles) {
+        if (target.vehicle_id === source.vehicle_id) continue
+        const candidate = await page.request.post(
+          `http://127.0.0.1:8000/api/v1/plans/${currentPlan.plan_id}/reassign/preview`,
+          { data: { base_plan_version: currentPlan.version, order_id: stop.order_id, target_vehicle_id: target.vehicle_id } },
+        )
+        if (candidate.ok()) {
+          dragOrderId = stop.order_id
+          dragTargetId = target.vehicle_id
+          break
+        }
+      }
+      if (dragOrderId) break
+    }
+    if (dragOrderId) break
+  }
+  expect(dragOrderId, '至少應有一組可合法預覽的換車組合').not.toBe('')
+  const sourceOrder = page.locator('.order-move-row').filter({ hasText: dragOrderId }).first()
+  const targetVehicleIndex = currentPlan.vehicles.findIndex((vehicle) => vehicle.vehicle_id === dragTargetId)
+  const targetVehicle = page.locator('.vehicle-card').nth(targetVehicleIndex)
+  const reassignResponsePromise = page.waitForResponse((response) => response.url().includes('/reassign/preview'))
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await sourceOrder.dispatchEvent('dragstart', { dataTransfer })
+  await targetVehicle.dispatchEvent('dragover', { dataTransfer })
+  await targetVehicle.dispatchEvent('drop', { dataTransfer })
+  const reassignResponse = await reassignResponsePromise
+  expect(reassignResponse.ok(), await reassignResponse.text()).toBeTruthy()
+  await expect(page.getByText(/局部變更預覽/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: '取消變更' })).toBeVisible()
+  await page.getByRole('button', { name: '取消變更' }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: path.join(screenshotDir, '04-reassignment-preview.png') })
+  await page.getByRole('button', { name: '取消變更' }).click()
 
   await page.getByRole('textbox', { name: '輸入訊息' }).fill('哪台車的載重最高？')
   await page.getByRole('textbox', { name: '輸入訊息' }).press('Enter')
   await expect(page.locator('.chat-bubble.agent').last()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: path.join(screenshotDir, '04-agent-blocked.png'), fullPage: true })
+  await page.screenshot({ path: path.join(screenshotDir, '05-agent-answer.png') })
 
   await page.getByRole('textbox', { name: '輸入訊息' }).fill('預覽 ORD-041 插單')
   await page.getByRole('textbox', { name: '輸入訊息' }).press('Enter')
-  await expect(page.getByText(/臨時插單差異/)).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: '臨時插單差異' }).click()
-  await expect(page.getByText(/最小變動插入|完整重新排程/)).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: path.join(screenshotDir, '05-urgent-preview.png'), fullPage: true })
+  await expect(page.getByText(/變更差異/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(/局部變更預覽|完整重新安排/)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '套用變更' }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: path.join(screenshotDir, '06-urgent-preview.png') })
   await expect(page.getByRole('button', { name: '套用變更' })).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, '06-human-confirmation.png'), fullPage: true })
+  await page.screenshot({ path: path.join(screenshotDir, '07-human-confirmation.png') })
 })

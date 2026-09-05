@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 2026-09-05 — 公開驗收前的控制塔與 Provider 狀態修正
+
+- 方案明細新增搜尋、車輛／時段篩選與每頁十筆分頁，並將插單與換車統一呈現為「變更差異」。
+- 拖拉換車的 Playwright 案例現在等待實際 `/reassign/preview` 回應，驗證後端差異、取消與人工確認邊界，而非只檢查前端外觀。
+- 三策略比較可帶入目前 `plan_id`／`version`，重用該版本的同一份 Matrix，避免重複呼叫 Provider 或混用資料來源。
+- Provider 狀態分開表示 `configured`、`connected`、`failed` 與 `disabled`；Key 存在不再直接顯示「已連線」。
+- 補強正式派車規則繞過語句的 Prompt injection guardrail；此 regex 僅做安全阻擋，不參與一般意圖或工具選擇。
+
 ## 2026-09-05 — 公開 Agent 空資料安全修正
 
 - 修正公開網站尚未匯入訂單時，Agent 誤選規劃型工具會把零車輛資料送入 OR-Tools，導致 Render 程序中止與後續 HTTP 502 的問題。

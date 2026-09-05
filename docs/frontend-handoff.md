@@ -108,7 +108,7 @@ pnpm run build
 | `GET /api/v1/plans/{plan_id}/map-data` | optional `?version=1` | Map payload with `depot`, `routes`, `stops`, `legs`, `provider_mode` |
 | `POST /api/v1/plans/{plan_id}/urgent-insert/preview` | `{"base_plan_version":1,"order":{...},"packages":[...]}` | `200 {"base_version":1,"preview_version":2,"mode":"MINIMAL_CHANGE","before":{...},"after":{...},"diff":{...}}` |
 | `POST /api/v1/plans/{plan_id}/confirm` | `{"version":2,"confirmation":"CONFIRM_PLAN","dispatcher_reference":"frontend-user"}` | `200 {"state":"CONFIRMED","version":2,"audit_event_id":"AUD-*"}` |
-| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | `200 {"state":"DISPATCHED",...}`; never call in the demo |
+| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | 預設 `403 DISPATCH_DISABLED`；前端不得呼叫 |
 | `POST /api/v1/agent/chat` | `{"session_id":"SESSION-001","message":"為什麼 ORD-032 改派？","context":{"plan_id":"PLAN-*","plan_version":2,"order_id":"ORD-032"}}` | `200 {"message":"...","evidence":[{"tool":"explain_assignment","data":{...}}]}` |
 | `GET /api/v1/providers/status` | none | `{"providers":[{"name":"simulated_routes","status":"healthy","mode":"SIMULATED"},...]}` |
 
@@ -259,5 +259,7 @@ Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-r
 前端附件匯入只負責建立並驗證 `dataset_id`；使用者訊息會連同 `dataset_id` 一次送至 `/api/v1/agent/chat`。Agent 透過 `Runner.run` 選擇 `plan_dispatch`，後端在同一輪保存不可變的 `plan_id`／version，前端再讀取 plan 與 map-data。沒有附件時仍可直接聊天；需要資料的問題由 Agent 說明需補充 Excel 或範例資料。
 
 控制塔可選擇呼叫下列非破壞性端點：`/api/v1/plans/compare` 顯示三種策略、`/api/v1/plans/{plan_id}/delay-preview` 顯示 10／20／30 分鐘風險、`/api/v1/plans/{plan_id}/reassign/preview` 顯示拖拉換車差異、`/versions` 列舉版本及 `/restore` 建立復原草稿。所有回應都必須以 `validator.valid` 與 `requires_human_confirmation` 控制畫面按鈕；不得自行呼叫 `/dispatch`。
+
+方案比較應同時傳入目前 `plan_id` 與 `version`，讓後端重用當前方案的 Matrix；服務狀態的 `configured` 只顯示「已設定」，只有 `connected` 才顯示「已連線」。
 
 拖拉換車提供滑鼠與鍵盤／按鈕替代操作。失敗時保留原 plan version，不更新地圖或目前確認指標；成功 preview 只顯示影響車輛、順序、重量、距離及時間差異，人工確認後才切換版本。

@@ -145,7 +145,7 @@ VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 | `GET /api/v1/plans/{plan_id}/map-data` | optional query `?version=1` | `{"plan_id":"PLAN-*","version":1,"provider_mode":"SIMULATED","depot":{...},"routes":[...]}` |
 | `POST /api/v1/plans/{plan_id}/urgent-insert/preview` | `{"base_plan_version":1,"order":{...},"packages":[...]}` | `200 {"base_version":1,"preview_version":2,"mode":"MINIMAL_CHANGE","diff":{...},"requires_human_confirmation":true}` |
 | `POST /api/v1/plans/{plan_id}/confirm` | `{"version":2,"confirmation":"CONFIRM_PLAN","dispatcher_reference":"demo-dispatcher"}` | `200 {"plan_id":"PLAN-*","version":2,"state":"CONFIRMED","audit_event_id":"AUD-*"}` |
-| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | `200 {"plan_id":"PLAN-*","version":2,"state":"DISPATCHED","audit_event_id":"AUD-*"}`；Demo 不呼叫 |
+| `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | 預設 `403 DISPATCH_DISABLED`；本產品前端不呼叫 |
 | `POST /api/v1/agent/chat` | `{"session_id":"SESSION-001","message":"為什麼 ORD-032 改派？","context":{"plan_id":"PLAN-*","plan_version":2,"order_id":"ORD-032"}}` | `200 {"message":"...","evidence":[{"tool":"explain_assignment","data":{...}}],"requires_human_confirmation":false}` |
 | `GET /api/v1/providers/status` | none | `{"providers":[{"name":"simulated_routes","status":"healthy","mode":"SIMULATED"},...]}` |
 

@@ -1,5 +1,20 @@
 # 規格驗證報告
 
+## 2026-09-05 最新提交前驗證
+
+| 項目 | 實際證據 | 狀態 |
+|---|---|---|
+| 後端完整回歸 | `pytest -q`：`215 passed、28 skipped`；28 個 skipped 全為需明確開啟的外部 Live gates | `PASS` |
+| OpenAI Live 語意 | `RUN_LIVE_AGENT_CORPUS=1`：24 個案例實際進入 Agents SDK `Runner.run`，`24 passed` | `LOCAL LIVE PASS` |
+| Google Routes 本機 | Key 為 `CONFIGURED`，實際請求回傳 HTTP 403，安全分類 `API_KEY_RESTRICTED`，未 fallback | `BLOCKED` |
+| 前端品質 | TypeScript、ESLint、Vitest `11 passed`、Vite production build；Playwright `2 passed、3 skipped` | `PASS`／Live gates 另列 |
+| 拖拉換車 | Chromium 送出 `dragstart／dragover／drop`，實際收到 `/reassign/preview` 成功回應，顯示差異並可取消 | `SIMULATED PASS` |
+| 策略比較矩陣 | 帶入目前 `plan_id`／`version` 時不重建 Matrix；回應 hash 與目前方案一致 | `PASS` |
+| Provider 狀態 | 程式與 UI 分開顯示已設定、已連線、連線失敗與未設定 | `PASS` |
+| Secret／正式派車 | 高信心 secret pattern `0`、敏感檔案 tracked `0`、GitHub Actions `0`、Dispatch requests `0` | `PASS` |
+
+公開網站證據必須等本次 Commit 完成 Render 自動部署後重新取得；本節不以本機或歷史結果冒充最新公開驗收。
+
 ## 2026-09-05 公開 Agent 原生崩潰回歸
 
 | 項目 | 證據 | 狀態 |

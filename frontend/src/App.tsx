@@ -223,7 +223,7 @@ export default function App() {
   const handleCompareStrategies = async () => {
     if (!plan || busy) return
     setBusy(true); setError(null)
-    try { setStrategyComparison(await compareStrategies(plan.dataset_id)) }
+    try { setStrategyComparison(await compareStrategies(plan.dataset_id, plan.plan_id, plan.version)) }
     catch (requestError) { setError(errorText(requestError)) }
     finally { setBusy(false) }
   }
