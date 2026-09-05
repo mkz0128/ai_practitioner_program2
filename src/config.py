@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     demo_access_password: str | None = Field(
         default=None, validation_alias="DEMO_ACCESS_PASSWORD"
     )
+    dispatch_enabled: bool = Field(default=False, validation_alias="DISPATCH_ENABLED")
 
     @property
     def cors_origins(self) -> list[str]:

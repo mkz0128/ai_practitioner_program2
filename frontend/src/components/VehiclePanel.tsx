@@ -1,23 +1,30 @@
+import { useState } from 'react'
 import type { Plan } from '../types'
 
 interface VehiclePanelProps {
   plan: Plan | null
   activeVehicle: string | null
   onSelectVehicle: (vehicleId: string) => void
+  onReassignPreview?: (orderId: string, targetVehicleId: string) => void
 }
 
-export function VehiclePanel({ plan, activeVehicle, onSelectVehicle }: VehiclePanelProps) {
+export function VehiclePanel({ plan, activeVehicle, onSelectVehicle, onReassignPreview }: VehiclePanelProps) {
+  const [draggedOrder, setDraggedOrder] = useState<string | null>(null)
   return (
     <section className="panel vehicle-panel" aria-label="車輛與例外案件">
       <div className="panel-heading"><div><div className="eyebrow">配送資源</div><h2>車輛與例外案件</h2><p>點選車輛可同步地圖與路線</p></div>{plan && <span className={`status-chip ${plan.validation.valid ? 'live' : 'blocked'}`}>{plan.validation.valid ? 'Validator 通過' : '需人工複核'}</span>}</div>
       <div className="panel-body">
         {!plan && <p className="hint">建立方案後顯示車輛卡片與例外。</p>}
         <div className="vehicle-list vehicle-list-horizontal">
-          {plan?.vehicles.map((vehicle) => <button className={`vehicle-card ${activeVehicle === vehicle.vehicle_id ? 'active' : ''}`} key={vehicle.vehicle_id} onClick={() => onSelectVehicle(vehicle.vehicle_id)}>
+          {plan?.vehicles.map((vehicle) => <button className={`vehicle-card ${activeVehicle === vehicle.vehicle_id ? 'active' : ''}`} key={vehicle.vehicle_id} onClick={() => onSelectVehicle(vehicle.vehicle_id)} onDragOver={(event) => { event.preventDefault() }} onDrop={(event) => { event.preventDefault(); if (draggedOrder) onReassignPreview?.(draggedOrder, vehicle.vehicle_id); setDraggedOrder(null) }}>
             <div className="vehicle-title"><span><i className="vehicle-status-dot" />{vehicle.vehicle_id}</span><span>{(vehicle.load_utilization * 100).toFixed(1)}%</span></div>
             <div className="vehicle-meta">{vehicle.vehicle_name} · {vehicle.order_count} 張訂單</div>
             <div className="progress"><span style={{ width: `${Math.min(100, vehicle.load_utilization * 100)}%` }} /></div>
             <div className="vehicle-stats"><span>{vehicle.planned_load_kg.toFixed(1)} / {vehicle.max_load_kg.toFixed(1)} kg</span><span>{vehicle.total_distance_m.toLocaleString()} m</span></div>
+            <div className="vehicle-orders" aria-label={`${vehicle.vehicle_id} 訂單`}>
+              {vehicle.stops.slice(0, 6).map((stop) => <span key={stop.order_id} draggable onDragStart={(event) => { event.stopPropagation(); setDraggedOrder(stop.order_id); event.dataTransfer.setData('text/plain', stop.order_id) }} className="order-chip">{stop.order_id}</span>)}
+              {vehicle.stops.length > 6 && <span className="muted">＋{vehicle.stops.length - 6}</span>}
+            </div>
           </button>)}
         </div>
         {plan && plan.unassigned_orders.length > 0 && <div className="exception-list"><div className="exception"><span>⚠</span><div><strong>未安排訂單 {plan.unassigned_orders.length} 張</strong><br />{plan.unassigned_orders.map((orderId) => `${orderId}：${plan.unassigned_reasons[orderId] || '請查看 Validator evidence'}`).join('；')}</div></div></div>}

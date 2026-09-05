@@ -1,8 +1,8 @@
 ---
 spec_id: AI-DISPATCH-MVP
 spec_version: 1.0.0-spec
-status: DEPLOYMENT_IN_PROGRESS
-current_phase: PHASE_3_RENDER_FREE_TEST_DEPLOYMENT
+status: IMPLEMENTATION_IN_PROGRESS
+current_phase: PHASE_2_FEATURE_IMPLEMENTATION
 feature_code_allowed: true
 required_approval_command: APPROVE_IMPLEMENTATION
 approved_product_input_date: 2026-09-01
@@ -67,7 +67,7 @@ application_agent_count: 1
 - Google／TDX provider interface、settings、health/status、timeout/fallback；Google strict Matrix／geometry wiring、TDX OAuth event projection 與 route-risk correlation 已實作，Live 狀態仍依 credentials 判定。
 - REST、OpenAPI/Swagger、sample payloads，以及由 environment 設定的 CORS。
 
-以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍與已測試的 provider wiring。SQLite 的 confirm／dispatch durable state 仍有重啟後回寫缺口；HTTP `/api/v1/agent/chat` 維持 evidence explanation path，SDK `Runner.run` 由 runtime／E2E gate 驗證；Google／TDX 真實資料、Browser live map 與 full Live E2E 均不應由此清單推論為完成。`frontend/` 已提供 local control tower，但缺少 Browser key 時只顯示 simulated map preview。
+以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍與已測試的 provider wiring。SQLite 的 confirm／version state 會回寫 repository；Render Free 跨重啟永久保存仍受本地檔案系統限制。HTTP `/api/v1/agent/chat` 已接入相同的 SDK `Runner.run` runtime，並在 Agent 執行 `plan_dispatch` 後保存 plan；OpenAI／Google 的當前 Live 狀態仍須依環境憑證判定。`frontend/` 已提供 control tower 與 provider 降級提示。
 
 ### 原始必要功能的整合缺口
 
@@ -86,8 +86,8 @@ application_agent_count: 1
 | Google Maps Browser 地圖 | 部分完成（Browser LIVE BLOCKED） | `frontend/src/components/MapPanel.tsx` 可載入 Google Maps、Marker、polyline，無 key 時為 simulated fallback。 |
 | TDX OAuth／真實路況／道路事件 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth、事件 models、mock provider test；缺 TDX credentials。 |
 | TDX 受影響路線／配送風險 | 部分完成（deterministic） | `correlate_events_to_plan` 與 `map-data.traffic.route_risks`；尚缺 live event evidence。 |
-| 前端完整操作與 Agent 顯示 | 部分完成（local control tower） | `frontend/` React/Vite/MUI、API client、RTL tests；尚缺 Browser/live E2E。 |
-| 全整合前後端 Live E2E | 尚未完成 | keyless/provider-neutral/contract gates 通過；必須在有 Google、TDX、OpenAI、Browser credentials 的環境執行。 |
+| 前端完整操作與 Agent 顯示 | 完成（控制塔 UI；Live 依環境） | `frontend/` React/Vite/MUI、API client、Agent-first attachment flow、RTL tests；公開 Live 需當前憑證。 |
+| 全整合前後端 Live E2E | 部分完成 | keyless/provider-neutral/contract gates 與 runtime tool tests 通過；仍需在當前公開環境重新執行完整 provider E2E。 |
 
 ### 企業級擴充功能
 
@@ -123,6 +123,13 @@ application_agent_count: 1
 - 正式環境部署。
 
 ## 3. 固定參考資料
+
+## 2.1 本輪通用 Agent 與進階功能實作
+
+- `/api/v1/agent/chat` 會建立結構化 `AgentSession`，每則訊息進入 `Runner.run`；所有配送計算只由 strict allowlisted tools 與 deterministic services 執行。
+- 已提供三策略比較、延遲風險預覽、車輛可用性預覽、時段／優先順序變更預覽、凍結站點狀態、通用換車預覽、批次臨時插單與版本復原 API。
+- 所有變更均先產生 `PROPOSED` preview，重新執行 Validator，且確認條件禁止不完整或有未安排訂單的版本；`DISPATCH_ENABLED` 預設為 `false`。
+- 護欄以 Unicode 正規化與 pattern guardrail 阻擋規則繞過、直接 Dispatch、假造 Validator、秘密／系統提示揭露等變形輸入；輸出再經 evidence grounding 檢核。
 
 ### Depot
 
@@ -305,7 +312,7 @@ Reference: https://tdx.transportdata.tw/api-service/swagger/basic/
 - 使用 OpenAI Agents SDK single Agent 與 strict function tools。
 - Built-in tracing 可設定；sensitive trace payloads 預設停用。
 - 套用 token/tool/turn limits；OpenAI failure 只停用 `/agent/chat`。
-- `src/agent/runtime.py` 已具備 `Runner.run` 與 strict tools 的 provider-neutral E2E；HTTP `/api/v1/agent/chat` 提供 evidence-grounded explanation path，沒有 OpenAI credentials 時明確降級。完整 HTTP live Agent E2E 仍依環境 gate 判定。
+- `src/agent/runtime.py` 已具備 `Runner.run` 與 strict tools 的 provider-neutral E2E；HTTP `/api/v1/agent/chat` 會使用相同 runtime 進行語意理解、工具選擇、deterministic 計算與 evidence-grounded 回答。沒有 OpenAI credentials 時明確回傳降級錯誤；完整 HTTP live Agent E2E 仍依執行環境 gate 判定。
 
 References: https://developers.openai.com/api/docs/guides/latest-model and https://platform.openai.com/docs/quickstart
 

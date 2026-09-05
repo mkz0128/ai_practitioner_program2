@@ -10,6 +10,10 @@ import type {
   ValidationPayload,
   UrgentOrderPayload,
   UrgentPackagePayload,
+  StrategyComparison,
+  DelayPreview,
+  PlanVersionSummary,
+  ReassignmentPreview,
 } from './types'
 
 // Production is served by the same FastAPI origin. Local Vite development can
@@ -72,6 +76,15 @@ export function createPlan(datasetId: string, signal?: AbortSignal): Promise<Pla
   })
 }
 
+export function compareStrategies(datasetId: string, signal?: AbortSignal): Promise<StrategyComparison> {
+  return request<StrategyComparison>('/api/v1/plans/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataset_id: datasetId, route_provider_preference: 'AUTO', traffic_mode: 'AUTO' }),
+    signal,
+  })
+}
+
 export function getPlan(planId: string, version?: number): Promise<Plan> {
   const query = version ? `?version=${version}` : ''
   return request<Plan>(`/api/v1/plans/${encodeURIComponent(planId)}${query}`)
@@ -80,6 +93,35 @@ export function getPlan(planId: string, version?: number): Promise<Plan> {
 export function getMapData(planId: string, version?: number, signal?: AbortSignal): Promise<MapData> {
   const query = version ? `?version=${version}` : ''
   return request<MapData>(`/api/v1/plans/${encodeURIComponent(planId)}/map-data${query}`, { signal })
+}
+
+export function getPlanVersions(planId: string): Promise<{ plan_id: string; current_version: number; versions: PlanVersionSummary[] }> {
+  return request(`/api/v1/plans/${encodeURIComponent(planId)}/versions`)
+}
+
+export function restorePlan(planId: string, sourceVersion: number): Promise<Plan> {
+  return request<Plan>(`/api/v1/plans/${encodeURIComponent(planId)}/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_version: sourceVersion, dispatcher_reference: 'frontend-user' }),
+  })
+}
+
+export function previewDelay(planId: string, version: number, delayMinutes: 10 | 20 | 30): Promise<DelayPreview> {
+  return request<DelayPreview>(`/api/v1/plans/${encodeURIComponent(planId)}/delay-preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, delay_minutes: delayMinutes }),
+  })
+}
+
+export function previewReassignment(planId: string, baseVersion: number, orderId: string, targetVehicleId: string, signal?: AbortSignal): Promise<ReassignmentPreview> {
+  return request<ReassignmentPreview>(`/api/v1/plans/${encodeURIComponent(planId)}/reassign/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_plan_version: baseVersion, order_id: orderId, target_vehicle_id: targetVehicleId }),
+    signal,
+  })
 }
 
 export function getProviderStatus(): Promise<ProviderResponse> {

@@ -69,6 +69,11 @@ class SQLiteRepository:
                     plan_id TEXT PRIMARY KEY,
                     version INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS agent_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -187,3 +192,27 @@ class SQLiteRepository:
                 "UPDATE plans SET state = ? WHERE plan_id = ? AND version = ?",
                 (state, plan_id, version),
             )
+
+    def save_agent_session(self, session_id: str, payload: dict[str, Any], updated_at: str) -> None:
+        """Persist only structured conversation pointers, never raw workbook or secrets."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_sessions (session_id, payload_json, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                (session_id, _json_value(payload), updated_at),
+            )
+
+    def load_agent_session(self, session_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM agent_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        value = json.loads(str(row["payload_json"]))
+        return value if isinstance(value, dict) else None

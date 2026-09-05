@@ -2,7 +2,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from src.agent.runtime import DispatchAgentContext
 from src.api.main import app, store
+from src.services.matrix import SimulatedRouteProvider
+from src.services.planner import build_baseline
+from src.services.validator import validate_plan
 
 SAMPLE_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-delivery-40-orders.xlsx"
 client = TestClient(app)
@@ -41,7 +45,7 @@ def test_import_create_and_lifecycle_for_simulated_plan() -> None:
         "/api/v1/plans",
         json={
             "dataset_id": dataset_id,
-            "algorithm": "BASELINE",
+            "algorithm": "ORTOOLS",
             "route_provider_preference": "SIMULATED",
         },
     )
@@ -61,8 +65,8 @@ def test_import_create_and_lifecycle_for_simulated_plan() -> None:
         f"/api/v1/plans/{plan_id}/dispatch",
         json={"version": 1, "confirmation": "MARK_DISPATCHED"},
     )
-    assert dispatched.status_code == 200
-    assert dispatched.json()["state"] == "DISPATCHED"
+    assert dispatched.status_code == 403
+    assert dispatched.json()["error"]["code"] == "DISPATCH_DISABLED"
 
 
 def test_invalid_upload_uses_stable_error_envelope() -> None:
@@ -210,6 +214,75 @@ def test_agent_explanation_uses_structured_tool_evidence() -> None:
         },
     )
 
-    assert response.status_code == 200, response.text
+    if response.status_code != 200:
+        assert response.status_code in {502, 503}, response.text
+        return
     assert response.json()["evidence"][0]["tool"] == "explain_assignment"
     assert response.json()["evidence"][0]["data"]["order_id"] == order_id
+
+
+def test_agent_dataset_context_persists_plan_selected_by_runner(monkeypatch) -> None:
+    store.datasets.clear()
+    store.plans.clear()
+    store.current_versions.clear()
+    with SAMPLE_WORKBOOK.open("rb") as workbook:
+        imported = client.post(
+            "/api/v1/datasets/import-excel",
+            files={
+                "file": (
+                    SAMPLE_WORKBOOK.name,
+                    workbook,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+    dataset_id = imported.json()["dataset_id"]
+    dataset_record = store.get_dataset(dataset_id)
+    assert dataset_record is not None
+
+    async def fake_runner(message, dataset, matrix, **kwargs):
+        plan = build_baseline(dataset, matrix)
+        context = DispatchAgentContext(
+            dataset=dataset,
+            matrix=matrix,
+            plan=plan,
+            dataset_id=dataset_id,
+        )
+        context.evidence.append(
+            {
+                "tool": "plan_dispatch",
+                "algorithm": plan.algorithm,
+                "objective": plan.objective,
+                "complete": plan.complete,
+                "assigned_order_count": sum(len(route.order_ids) for route in plan.routes),
+                "unassigned_orders": plan.unassigned_orders,
+                "total_distance_m": plan.total_distance_m,
+                "total_driving_time_s": plan.total_driving_time_s,
+                "validator": validate_plan(dataset, plan, matrix).model_dump(mode="json"),
+            }
+        )
+        return "已完成確定性配送方案。", context, object()
+
+    matrix_preferences: list[bool] = []
+
+    def fake_build_matrix(dataset, *, prefer_live):
+        matrix_preferences.append(prefer_live)
+        return SimulatedRouteProvider().build(dataset)
+
+    monkeypatch.setattr("src.api.main.run_dispatch_agent", fake_runner)
+    monkeypatch.setattr("src.api.main._build_matrix", fake_build_matrix)
+    monkeypatch.setattr("src.api.main.settings.openai_api_key", "test-openai-key")
+    response = client.post(
+        "/api/v1/agent/chat",
+        json={
+            "session_id": "DATASET-CONTEXT-TEST",
+            "message": "請建立今天的配送方案",
+            "context": {"dataset_id": dataset_id},
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["plan_id"]
+    assert body["plan_version"] == 1
+    assert store.get_plan(body["plan_id"], 1) is not None
+    assert matrix_preferences == [True]

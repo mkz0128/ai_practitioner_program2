@@ -15,11 +15,11 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 
 ## 整合現況與未來邊界
 
-這 13 組 REST method/path 是正式的系統整合介面。本輪不修改 route、request schema 或 response schema；以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
+原有 13 組 REST method/path 維持相容；目前另加入 5 組進階 preview／比較／版本路由，因此 OpenAPI 現在共 18 組正式介面。以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
 
 - `POST /api/v1/datasets/import-excel` 僅正規化資料；`POST /api/v1/plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 會由 `GoogleRoutesProvider` strict 取得 Matrix，並把同一 hash/version 的 `MatrixResult` 注入 OR-Tools。缺 key 時回傳 `provider_mode=SIMULATED` 與 warning；已設定 key 但呼叫失敗回傳 `502 PROVIDER_UNAVAILABLE`，不靜默 fallback。
 - `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
-- `/api/v1/agent/chat` 目前走 deterministic `explain_assignment` evidence 路徑；`src/agent/runtime.py` 的 `Runner.run` strict-tool 情境測試獨立存在，HTTP endpoint 尚未接上該 runtime。
+- `/api/v1/agent/chat` 會將每則訊息交給 `src/agent/runtime.py` 的 `Runner.run`；Agent 以 strict allowlist 選擇 deterministic tool，API 只回傳工具 evidence 與 evidence-grounded 摘要。OpenAI 憑證缺少或 provider 失敗時，回傳明確錯誤，不產生假回答。
 - 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
 
 ## 錯誤封套
@@ -402,6 +402,18 @@ Response:
 ```
 
 絕不暴露 credential values 或 raw auth failures。TDX status／map data 另包含 `data_status`（例如 `CREDENTIALS_MISSING`、`NO_EVENTS`、`EVENTS_FOUND`）；`traffic.route_risks` 只引用已投影且可關聯至 route/order 的事件 evidence。
+
+## 進階預覽與版本端點
+
+下列端點為向後相容的非破壞性擴充，所有方案變更仍需人工確認：
+
+- `POST /api/v1/plans/compare`：以同一 `dataset_id` 與 Matrix 回傳 `FASTEST`、`BALANCED`、`STABLE` 三組 Validator-backed summaries。
+- `GET /api/v1/plans/{plan_id}/versions`：列出版本、建立時間、狀態、objective、完整性及未安排訂單。
+- `POST /api/v1/plans/{plan_id}/restore`：以 `source_version` 建立新的 `PROPOSED` 版本，復原後重新執行 Validator。
+- `POST /api/v1/plans/{plan_id}/delay-preview`：接受 `delay_minutes` 為 10、20 或 30，回傳 ETA 餘裕與風險燈號。
+- `POST /api/v1/plans/{plan_id}/reassign/preview`：接受 order／target vehicle，回傳非破壞性換車差異與 Validator。
+
+Dispatch endpoint 保留相容性但由 server-side `DISPATCH_ENABLED=false` 預設停用，停用時固定回傳 `403 DISPATCH_DISABLED`；Agent allowlist 與前端均不提供 Dispatch tool／按鈕。
 
 ## Status Code 政策
 

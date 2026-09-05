@@ -2,14 +2,14 @@
 
 ## CURRENT PHASE
 
-- 階段：`PHASE_3_RENDER_FREE_TEST_DEPLOYMENT`
+- 階段：`PHASE_2_FEATURE_IMPLEMENTATION`
 - Feature code allowed：`true`
 - Required implementation command：`APPROVE_IMPLEMENTATION`
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
-- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`DONE`；HTTP integration：`LIVE_PASS`
+- OpenAI Agent status（`Runner.run`／strict-tool runtime）：`LOCAL_LIVE_PASS`；HTTP live gate：`BLOCKED`（Windows in-process OR-Tools native abort，未冒稱通過）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE；LIFECYCLE_PARTIAL`
-- Live Provider Integration：`GOOGLE_LIVE；BROWSER_LIVE；TDX_OPTIONAL_NOT_CONFIGURED`
-- Frontend Integration status：`LIVE_CONTROL_TOWER_VERIFIED`
+- Live Provider Integration：`OPENAI_LIVE；GOOGLE_BLOCKED_403；BROWSER_MISSING；TDX_OPTIONAL_NOT_CONFIGURED`
+- Frontend Integration status：`LOCAL_VERIFIED；PUBLIC_REVALIDATION_PENDING`
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -23,38 +23,38 @@
 | Excel 匯入與欄位驗證 | 原始必要 | 完成 | `src/services/importer.py`、`tests/test_import_validation.py`、`tests/test_competition_acceptance.py` | 無核心缺口 |
 | 包裹件數與單件重量加總 | 原始必要 | 完成 | `Order.total_weight_kg`、import／planning tests | 無核心缺口 |
 | 車輛載重與服務區域 | 原始必要 | 完成 | `src/services/planner.py`、`src/services/validator.py`、競賽驗收 | 無核心缺口 |
-| OR-Tools 分車與順序 | 原始必要 | 完成（Google live Matrix 已接入） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`、本輪 Live flow | Browser／TDX 尚未完成 |
+| OR-Tools 分車與順序 | 原始必要 | 部分完成（Google live gate 目前受 403 阻塞） | `build_ortools`、`tests/test_planning.py`、`tests/test_live_provider_wiring.py`；Live gate 實際回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗同次 Matrix→OR-Tools |
 | 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成（simulated） | planner／validator time-window tests | 尚未以 live duration 驗證 |
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
 | 超重重新分配 | 原始必要 | 完成（Google live Matrix） | Z4 112 kg acceptance、Validator evidence、本輪 Live plan | 無核心缺口 |
-| 臨時插單 Preview 與差異 | 原始必要 | 完成（Google live Matrix；Browser／TDX 待補） | `try_minimal_insert`、`compute_plan_diff`、本輪 ORD-041 Live preview | Browser／TDX 顯示仍待憑證 |
+| 臨時插單 Preview 與差異 | 原始必要 | 部分完成（deterministic；Google live gate 阻塞） | `try_minimal_insert`、`compute_plan_diff`、本輪 deterministic regression | 需在 Google live Matrix 可用時重驗代表性插單 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
-| OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Live PASS） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 無核心缺口 |
-| Google Routes 真實距離／時間 | 原始必要 | 完成（Live PASS） | `src/providers/google_routes.py`、本輪 `provider_mode=GOOGLE` Matrix／geometry | Browser key 另屬前端缺口 |
-| Google Matrix 進入 OR-Tools | 原始必要 | 完成（Live PASS） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator | 無核心缺口 |
-| Google Maps Browser 地圖 | 原始必要 | 完成（Browser LIVE PASS） | `frontend/src/components/MapPanel.tsx`、Playwright Live；臺北道路、Marker 與 Google geometry | 無核心缺口 |
+| OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成（Local Live；HTTP gate blocked） | `src/agent/runtime.py`、`/api/v1/agent/chat`、本輪 `RunResult`／strict tool evidence | 需在不觸發 Windows in-process OR-Tools abort 的 HTTP harness／公開環境重驗 |
+| Google Routes 真實距離／時間 | 原始必要 | 部分完成（Live blocked） | `src/providers/google_routes.py`；本輪 live gate 回傳 `GOOGLE_HTTP_403` | 需修正 Google server key 的權限／API 或配額設定 |
+| Google Matrix 進入 OR-Tools | 原始必要 | 部分完成（Live gate blocked） | `_build_matrix`、matrix hash/version、一致的 OR-Tools plan 與 Validator；本輪 Google gate 為 `GOOGLE_HTTP_403` | 需修正 Google server key 權限後重驗 |
+| Google Maps Browser 地圖 | 原始必要 | 部分完成（Browser key missing） | `frontend/src/components/MapPanel.tsx`、simulated fallback 與 key-presence runtime gate | 需提供 Browser key 後重新執行瀏覽器 Live gate |
 | TDX OAuth／真實路況查詢 | 原始必要 | 部分完成（Live BLOCKED） | `src/providers/tdx.py` OAuth/event models、mock test | TDX credentials 與 live response |
 | TDX 路線風險判斷 | 原始必要 | 部分完成（deterministic） | `correlate_events_to_plan`、`map-data.traffic.route_risks` | live event evidence |
-| 前端完整操作流程 | 原始必要 | 完成（Live Playwright PASS） | `frontend/tests/e2e/live-control-tower.spec.ts`、七張 1440×900 截圖 | TDX 為可選外部依賴 |
-| 全整合前後端 Live E2E | 原始必要 | 完成（TDX 排除於本輪） | Excel → Google Matrix → OR-Tools → Map → Agent → ORD-041 → confirm | TDX credentials 尚未設定 |
+| 前端完整操作流程 | 原始必要 | 部分完成（本機回歸通過；公開 Live 需重驗） | `frontend/tests/e2e/live-control-tower.spec.ts`、本機 Playwright regression | 目前 Browser key／Google live provider gate 受環境限制 |
+| 全整合前後端 Live E2E | 原始必要 | 部分完成 | Excel → matrix → OR-Tools → Map → Agent → preview → confirm 的 deterministic／歷史公開證據 | 目前 Google Routes 403、HTTP Agent Windows native abort，TDX credentials 尚未設定 |
 | 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-公開 Render 競賽驗收與必要缺口修正（不執行 Dispatch、不部署正式環境）
+在隔離的 Linux／公開執行環境重新驗證 HTTP Agent 與 Google Routes Live provider（不執行真實 Dispatch）
 
-- 依競賽命題稽核 Render 公開服務與核心流程，區分 public live、simulated 與阻塞證據；必要修正後重新驗收，不執行 Dispatch、不合併 `main`。
+- 本輪通用 Agent、五項進階功能與安全護欄已完成本機 deterministic 驗證；目前 HTTP Agent 受 Windows OR-Tools 原生 abort 阻塞，Google Routes 受 HTTP 403 阻塞，未將其冒稱為 Live PASS。
 
 ## NEXT
 
-1. 完成 Render Dashboard 登入／GitHub OAuth 與安全 Provider key 注入後的公開網址驗收。
-2. 在具備 TDX credentials 的環境執行 OAuth、事件與 route-risk Live gate。
-3. 由前端團隊依 `docs/frontend-handoff.md` 進行日常維護與使用者驗收。
+1. 以隔離環境執行代表性 OpenAI／Google Live Agent E2E。
+2. 由前端串接三策略、延遲風險與換車預覽端點。
+3. 在具備憑證的環境執行公開網站驗收並記錄 Live／Blocked。
 
 ## BLOCKED
 
 - `REQ-ORIG-004`：TDX Live 查詢需要 `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 與服務條款／配額確認；目前僅能執行 adapter/mock 或 `CREDENTIALS_MISSING`。
-- `REQ-ORIG-003`：已以 Browser key 完成 Google Maps Live 瀏覽器驗收；無 key 的環境仍保留明確 simulated fallback。
+- `REQ-ORIG-003`：歷史公開驗收曾以 Browser key 完成 Google Maps；目前本機 Browser key 未設定，仍保留明確 simulated fallback，不能由歷史證據推論目前 Live PASS。
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
 
 ## OPEN ISSUES
@@ -62,26 +62,32 @@
 - `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
 - `EXT-002 — External Provider Issue`：local environment 尚未設定 TDX credentials；core planning 仍可使用。
 - `ENV-001 — Environment Issue`：dependency lock 已在 Windows CPython 3.12 驗證；未來 Linux deployment 前仍需進行 Linux wheel／lock verification。
-- `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix、geometry 與 OR-Tools 同次求解為 Live PASS；後續仍需保留 quota／錯誤監控。
+- `REQ-ORIG-001／002 — External Provider Issue`：本輪 Google server Matrix gate 實際回傳 `GOOGLE_HTTP_403`，未 fallback；需修正 key 權限後再驗收 Matrix、geometry 與 OR-Tools 同次求解。
 - `REQ-ORIG-003／006／007 — Frontend Integration`：控制塔已通過 typecheck／lint／unit build 與 Live Playwright；TDX 仍為可選外部依賴，這些是原始必要功能，不是 P1。
 - `REQ-ORIG-005 — External Provider Issue`：TDX correlation/risk model 已建立，但尚無 live event evidence。
 - `CORE-STATE-001 — Resolved`：confirm 現在會回寫 SQLite plan state 並更新 current-version pointer；repository regression 已驗證，Dispatch 仍不在本輪範圍。
-- `AGENT-API-001 — Integration`：`/api/v1/agent/chat` 已使用 `Runner.run` 與 strict tools；本輪 HTTP Live Agent 回傳 `RunResult`、`explain_assignment` evidence。後續僅需持續維護模型／配額監控。
+- `AGENT-API-001 — Integration`：`/api/v1/agent/chat` 已使用 `Runner.run` 與 strict tools；本輪 direct SDK live 通過，但 HTTP gate 在 Windows OR-Tools 原生邊界中止，未宣稱 HTTP Live PASS。
 - `AGENT-001 — Regression record`: an earlier Responses request used the Chat Completions nested function envelope and returned HTTP 400 `missing_required_parameter`; correct top-level Responses parameters now pass. Retained as regression evidence; OpenAI Agent is DONE by human acceptance.
 - `API-001 — Acceptance`：全部 13 條 contract routes 與 40-order preview flow 通過 automated checks；Demo gate 刻意不執行 dispatch。
 - `P0-AC-001 — Competition Acceptance`：field-level import errors、evidence-grounded Plan reasons、計算後的 order-41 diff、overload redistribution 與 independent Validator evidence 均可執行且已人工驗收；Backend P0 為 DONE。
 - `P0-URG-002 — Regression`：先前 Demo 將 OR-Tools initial output 與 Baseline preview 比較；修正已完成，aligned OR-Tools regression 通過，ORD-041 使用 `MINIMAL_CHANGE`。
 
-- `LIVE-UI-001 — Live Integration`：Browser key 已載入 Vite；真實 Google Maps 顯示臺北道路、DEPOT-001、40 個 Marker 與四條 Google geometry；Agent／ORD-041／人工確認與兩個前端工作區均由 Playwright 通過，未產生 Dispatch request。
+- `LIVE-UI-001 — Live Integration`：歷史公開驗收曾顯示 Browser key、Google Maps、Agent 與 ORD-041；本輪本機 Browser key 未設定且 Google live gate 為 403，需重新取得憑證後才能宣稱目前 Live。
 - `RANDOM-AUDIT-001 — Acceptance`：固定 seed `260904` 的新 workbook 為 40 張訂單／79 packages／322.8 kg；simulated OR-Tools 40/40、Validator 通過。五類臨時插單與缺欄／重複拒絕均記錄在 `docs/randomized-acceptance-report.json`。
 - `RANDOM-BROWSER-001 — Acceptance`：第二組 workbook 已在 Playwright 以拖放方式匯入；附件與文字單次送出、純附件預設意圖、連續三筆任意 ID 插單均完成預覽／人工確認／重新整理 hydration，Console errors 與 Dispatch requests 皆為 0。該瀏覽器驗收為 `SIMULATED PASS`（路線 provider 為成本受控的 deterministic simulated）；既有代表性 Google Live gate 仍獨立標示 `LIVE PASS`。
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
 
+- 新增 `FASTEST`、`BALANCED`、`STABLE` 三種 OR-Tools objective、延遲風險燈號、換車／時段／優先順序／凍結站點預覽、批次臨時插單 strict tool，以及版本列舉／復原 API。
+- `/api/v1/agent/chat` 現在可在 dataset context 下由 `Runner.run` 選擇 `plan_dispatch`，並將工具產生的方案保存為不可變 `plan_id/version`；前端附件匯入後只送一次 Agent 對話，不再先直接呼叫 `createPlan`。
+- 擴充 Unicode 正規化 Prompt injection guardrail、evidence grounding 檢核、前端拖拉換車預覽與新增 `tests/test_top5_features.py`／多筆 strict urgent 測試。
+- 驗證結果：後端 `49 passed、3 skipped`（live gates 依環境跳過），前端 TypeScript／ESLint／Vitest／Vite production build 全數通過；`mypy` 與 `ruff` 通過。
+
 - 已以公開 Render 網站核對目前部署、API、Agent、Google Maps 與例外處理證據；持續補做競賽命題的公開流程驗收。
 - 已修正前端 StatusBar 對 runtime Browser key 的狀態判定，避免公開地圖已載入卻顯示「未設定」。
 - 定位並修正 OR-Tools 求解順序重建缺口：路線指標改依求解器原始順序計算，避免將合法路線誤標為 `SOLVER_ROUTE_VALIDATION_FAILED`；新增回歸測試。
+- 修正前端 Agent evidence-first 顯示：工具只回傳 JSON 時轉成繁體中文摘要，主畫面不再顯示 Raw JSON；新增元件回歸測試。
 
 - 新增單一 Render Web Service 的 `Dockerfile`、`.dockerignore` 與 `render.yaml`：multi-stage Vite build、FastAPI SPA fallback、`$PORT`、單一 Uvicorn worker、`/health`、Free Singapore region、branch pinning 與 `sync: false` secrets。
 - 將 production 前端 API 改為同源相對路徑；Vite 本機開發以 `/api` proxy 連接 FastAPI，Browser key 由公開 runtime-config 注入，不把 server secrets 放入 bundle。
@@ -155,6 +161,7 @@
 - 2026-09-05 公開 40 單重跑發現並修正 OR-Tools solver sequence reconstruction 缺口；修正後需重新等待 Render 部署並以公開網址確認 40/40 與 Validator。
 - Render 自動部署後已完成重驗：`PLAN-C932F22FFF36` 為 Google→OR-Tools 40/40、365 kg、Validator valid，Google map 4 routes／40 stops；ORD-041 preview 為 `MINIMAL_CHANGE`（40→41、365→367 kg、換車 0、受影響 1 台車）。公開容量不足、重複 ID、缺欄請求均回傳安全錯誤／unassigned 結果；前端 Google Maps 狀態列已顯示「已設定」。
 - 最新非付費隨機驗收：固定 seeds `260904`–`260913` 共 10 組，Validator violations 全為 0、輸入 hash 可重現；完整 pytest（空白本機 OpenAI key）為 44 passed、3 skipped，另有 1 個既有 Agent API 測試因環境缺少可用 key 回傳預期的 503。
+- 前端最新品質閘門：TypeScript、ESLint、Vitest `3 passed`（含 Agent JSON 摘要回歸）、Vite production build 通過。
 - 本輪品質：前端 install/typecheck/ESLint/Vitest（2 passed）/Vite build 通過；後端 ruff、mypy 通過。完整 pytest 在刻意清空本機 OpenAI key 下為 43 passed、3 skipped、1 個既有 Agent API 測試因預期 OpenAI 200 而收到安全 503；此為本機憑證條件，不冒稱 Live。
 
 - Render deployment preflight（2026-09-05 Asia/Taipei）：branch `feat/frontend-control-tower` 與 `origin` 正常；已修正 `COPY frontend/dist` Render build failure，改用 `frontend-builder` stage 產物。Docker CLI 存在但 Docker Linux daemon 未啟動，無法完成本機 `--no-cache` image build；本機無 Render CLI、Render API token 或可用 Render service id，未建立雲端資源、未部署。
@@ -215,3 +222,30 @@
 - 確認後 current plan pointer 與 SQLite state 會持久化，新增 repository regression；前端重新整理可依 localStorage plan reference 重新載入 plan／map。
 - 新增隨機資料瀏覽器證據：`random-01-attached.png`、`random-02-base-plan.png`、`random-03-insert-1.png`、`random-04-insert-2.png`、`random-05-final-plan.png`（1440×900，未含 secrets）。
 - 新增純附件瀏覽器證據：`random-06-attachment-only.png`（1440×900，未含 secrets）。
+
+## 2026-09-05 本輪實作閘門（以最新工作樹為準）
+
+- `pytest --basetemp=.pytest-local-temp-run`：`56 passed、4 skipped`（歷史快照）。四個 skipped 是明確 opt-in 的 Responses、Agents SDK、HTTP Agent 與 Google provider gates；未將 skipped 視為 Live PASS。
+- `ruff check src tests scripts` 與 `mypy src`：通過。
+- Frontend `pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest（3 tests）與 Vite production build：通過。
+- OpenAI Responses API Live：`PASS`；Agents SDK direct Live：`PASS`。HTTP Agent Live gate 在本機 ASGI harness 觸發 OR-Tools 原生 `Fatal Python error: Aborted`，標記 `BLOCKED`，不影響 deterministic keyless suite。
+- Google Routes Live Matrix gate：`BLOCKED`，provider 回傳 `GOOGLE_HTTP_403`；未 fallback 或冒稱 `LIVE PASS`。Browser key 與 TDX credentials 目前未設定，分別為 `BLOCKED` 與 `OPTIONAL／NOT_CONFIGURED`。
+- 三種策略使用不同求解成本（FASTEST／BALANCED／STABLE），同一 Matrix 且均通過 Validator；回歸測試確認三組 distance／duration／load spread fingerprints 均不同。
+- `DISPATCH_ENABLED=false`，未執行 Dispatch、部署、正式環境操作或資料刪除；工作區未追蹤任何 secret。
+
+### 本輪狀態
+
+`Backend Core deterministic：DONE`；`OpenAI Agents SDK direct live：LOCAL_LIVE_PASS`；`HTTP Agent live：BLOCKED`；`Google Routes／Browser Maps：BLOCKED（provider／credential）`；`TDX：OPTIONAL／NOT_CONFIGURED`；`Overall Project：IN_PROGRESS`。
+
+## 2026-09-05 最新實作驗證（本次工作樹）
+
+- 新增結構化 Agent session 的 `dataset_id`、`frozen_stop_ids`、`pending_order` 與 `last_preview_version` 指標；明確 dataset context 不會被舊 plan pointer 覆蓋，且不保存 workbook 或 credential。
+- `change_frozen_stops`、`change_order_constraint`、`change_vehicle_availability` 與 `reassign_order_preview` 會阻擋會移動凍結站點的候選方案；新增 SDK 回歸測試。
+- `preview_multiple_urgent_insert` 補回 before／after、matrix version、dataset hash、algorithm 與 diff evidence；前端新增「比較三種方案／延遲風險／檢視版本／復原草稿」的方案分析區。
+- 本機後端全量 `pytest`：`78 passed、4 skipped`；skipped 僅為 `RUN_LIVE_AGENT_E2E`、`RUN_LIVE_AGENT_HTTP_E2E`、`RUN_LIVE_PROVIDER_E2E` 與 `RUN_LIVE_RESPONSES_SMOKE` 條件式 gates。Ruff、mypy、`git diff --check` 均通過。
+- 前端 TypeScript、ESLint、Vitest `3 passed`、Vite production build 通過；Playwright regression `2 passed、3 skipped`。其中 keyless `control-tower-flow` 使用僅替代 Agent transport 的 UI fixture，REST planner 仍實際執行；公開／Live gate 另行分類。
+- OpenAI Responses smoke `LOCAL_LIVE_PASS`、direct Agents SDK `LOCAL_LIVE_PASS`；Google Routes 明確回傳 `GOOGLE_HTTP_403`，未使用 fallback，標記 `BLOCKED`。HTTP Agent live gate 的 Windows OR-Tools native abort 仍 `BLOCKED`。
+- Secret scan：追蹤檔案高信心 pattern `0`、敏感路徑 `0`、GitHub Actions workflow `0`；Dispatch requests `0`。未執行 Dispatch、部署或正式環境操作。
+
+- 最新修正：資料集進入新 Agent 方案時，`agent_chat` 先以 `prefer_live=True` 解析一次矩陣，再將同一 `MatrixResult` 交給 `Runner.run` 選出的 deterministic tool；回歸測試確認不會回退到匯入時的 simulated matrix。
+- 最新驗證：後端 `78 passed、4 skipped`；前端 TypeScript／ESLint／Vitest `3 passed`／Vite build／Playwright regression `2 passed、3 skipped`；OpenAI Responses 與 direct Agents SDK 各 `1 passed`，Google Routes `GOOGLE_HTTP_403`、HTTP Agent Windows native abort 維持 `BLOCKED`。

@@ -75,13 +75,13 @@ Canonical comparison 排除 live Google matrices。為確保 Reproducibility，�
 
 Agents SDK 驗收包含 real `Runner.run` Agent、strict tools、`OpenAIResponsesModel` live smoke，以及 provider-neutral `ScriptedModel` E2E：daily dispatch、highest-load lookup、unassigned explanation、urgent insertion、missing-data questions、prompt injection 與 evidence-only numeric grounding。Live request 固定使用 `gpt-5-mini`；Responses tools 使用 top-level `name`／`parameters`／`strict`，不使用 Chat Completions nested function envelope。既有 HTTP 400 `missing_required_parameter` 僅作 regression diagnostic，不以更換 model 隱藏。
 
-API gate 統計 13 組 documented method/path、13 組 FastAPI registrations 與 13 組 exercised responses。40-order Demo gate 執行 import → validation → initial plan → route-provider fallback → Agent explanation → confirm → order-41 preview/diff，並刻意不 dispatch。`src/observability` 會產生 redacted JSONL trajectory events，並施行 turn／tool／token／wall-clock／repeated-call limits；`docs/openapi-snapshot.sha256` 對 contract drift fail closed。
+API gate 統計原有 13 組 documented method/path 加上 5 組進階 routes，目前為 18 組 FastAPI registrations 與契約／OpenAPI coverage。40-order Demo gate 執行 import → validation → initial plan → route-provider fallback → Agent explanation → confirm → order-41 preview/diff，並刻意不 dispatch。`src/observability` 會產生 redacted JSONL trajectory events，並施行 turn／tool／token／wall-clock／repeated-call limits；`docs/openapi-snapshot.sha256` 對 contract drift fail closed。
 
 `tests/test_competition_acceptance.py` 覆蓋 Z4 112 kg concentration、missing address／weight／time cells、time-window／capacity exceptions 與 independent Validator。`scripts/run_p0_demo.py` 是 40-order／4-vehicle fixture 的中文 walkthrough，預覽 order 41 且不 dispatch／deploy。
 
 Urgent insertion 先在 eligible existing routes 的合法位置執行 deterministic minimum-change search；preview 保留 base plan algorithm／identity，回傳 before／after dataset hashes 與 assigned weights，並標示 `MINIMAL_CHANGE`。只有 candidate 無法通過 independent Validator 時，才產生帶有 scope／moved-order metadata 的 `FULL_REPLAN`。
 
-上述核心能力的「完成」僅適用於固定 simulated matrix 與本機 deterministic scope。實際實作現況為：confirm／dispatch 的 state mutation 尚未回寫既有 SQLite plan row；HTTP `/api/v1/agent/chat` 仍採 evidence explanation path，SDK `Runner.run` 由 runtime／E2E gate 驗證；Google Routes adapter 已接入 `create_plan`／`map-data` 的 strict wiring，但本環境缺少 key；TDX 已具備 OAuth／event projection／risk correlation adapter，但本環境缺少 credentials；`frontend/` 已提供 local control tower，Browser key 與完整 live E2E 仍待驗證。因此不得將 keyless 測試通過解讀為完整 Live Provider、Browser 或全生命週期整合完成。
+上述核心能力的「完成」僅適用於固定 simulated matrix 與本機 deterministic scope。實際實作現況為：confirm／restore 的 state 與 current-version pointer 會回寫 SQLite；HTTP `/api/v1/agent/chat` 已經接入相同的 `Runner.run` runtime，並可在 `plan_dispatch` 後保存 plan；Google Routes adapter 的 strict wiring 會在有 key 時拒絕靜默 fallback；TDX 已具備 OAuth／event projection／risk correlation adapter，但 Live 狀態仍依 credentials 判定；`frontend/` 已提供 Agent-first control tower。不得將 keyless 測試通過解讀為當前環境的 Live Provider 證據。
 
 ## 驗證標準
 
@@ -116,14 +116,13 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 
 ## 企業級擴充功能（B 類）
 
-下列功能來自企業 TMS 對照，與 A 類原始必要功能分開管理，現況均為 `PLANNED`：
+下列功能來自企業 TMS 對照，與 A 類原始必要功能分開管理；本輪已實作的三策略比較與延遲風險屬核心進階服務，不再列為僅規劃：
 
 1. ERP／WMS／電商訂單整合層。
 2. 車輛出發後的路況與 ETA 持續監控。
 3. 路況改變後的動態重新試算。
 4. 例外控制塔。
-5. 準時優先、距離優先、最小變動等多方案比較。
-6. 完整 Why／What-if 排程診斷。
+5. 完整 Why／What-if 排程診斷。
 7. 客戶 ETA 與延遲通知預覽。
 8. 計畫與實際結果比較。
 9. 成本、油耗與碳排儀表板。
@@ -140,7 +139,7 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 8. 正式簡訊發送。
 9. 正式環境部署。
 
-## 建議實作順序（本輪不執行）
+## 後續實作順序
 
 1. 查證並修正目前狀態。
 2. 完成 Google Routes 完整 Live 排程。
@@ -183,6 +182,14 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 | Plan race／stale preview | wrong confirmation | immutable versions + optimistic concurrency |
 | Provider cost loop | denial of wallet | quotas、cache、timeouts、retries、Agent limits |
 
+## 本輪通用 Agent 與進階功能實際驗證
+
+- 已在 `src/agent/runtime.py` 實作 strict schema tools：三種策略比較、延遲模擬、車輛可用性、時段／優先順序、凍結站點、換車預覽、任意單筆／批次臨時插單與版本查詢；所有規劃輸出均重新執行 independent Validator。
+- `src/api/main.py::agent_chat` 以 `Runner.run` 為唯一對話編排入口，並在 Agent 選擇 `plan_dispatch` 後保存 `plan_id/version`；前端附件流程不再直接呼叫 `createPlan`。
+- 本機 deterministic quality gates 為 `56 passed、4 skipped`（歷史快照）；前端 typecheck、ESLint、Vitest 3 tests、Vite build、Ruff、mypy 均通過。OpenAI Responses 與 direct Agents SDK live gates 各自通過。
+- 本輪 Google Routes live gate 實際回傳 `GOOGLE_HTTP_403`，未啟用 fallback；Browser key 與 TDX credentials 未設定。HTTP Agent live gate 在 Windows in-process ASGI harness 觸發 OR-Tools 原生 abort，均標記 `BLOCKED`，不得以歷史結果或 simulated 測試替代。
+- 下一個唯一必要工作是：在隔離的 Linux／公開執行環境修正 HTTP Agent 與 OR-Tools 的執行緒／程序邊界，並重新取得 Google server／Browser key 後完成公開 Live E2E；此工作不包含 Dispatch 或正式部署。
+
 ## Render Free 測試部署工作包
 
 本工作包只針對已核准的 `feat/frontend-control-tower` 測試環境，不延伸為 Production deployment：
@@ -201,3 +208,11 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 - Deterministic invariant 與 state-machine review。
 - 使用 live key 前，確認 secret restrictions、quota／budget 與 provider terms。
 - 任何 deployment 或 Git push 前，依規範取得獨立 Conditional LGTM。
+
+## 2026-09-05 通用 Agent／進階功能實作結果
+
+- `src/agent/runtime.py` 維持單一 `Runner.run` 編排，並以 strict schema tool 支援三策略比較、延遲風險、車輛可用性、時段／優先順序、凍結站點、任意換車與單筆／批次臨時插單；凍結站點若會被候選方案移動則回傳 `FROZEN_STOP_CONFLICT`。
+- `src/api/main.py` 與 `src/repositories/sqlite.py` 保存 dataset／plan／version／session pointer；明確 dataset context 不會被過期 plan pointer 覆蓋，且 session 只保留受控識別資訊與 bounded history。
+- `frontend/src/components/PlanInsights.tsx` 將三種策略、延遲 10／20／30 分鐘預覽、版本檢視與復原草稿接入控制塔；拖拉換車仍使用非破壞性 preview，須人工確認後才建立新 current pointer。
+- 品質結果：後端 `78 passed、4 skipped`；前端 TypeScript、ESLint、Vitest `3 passed`、Vite build 通過；Playwright regression `2 passed、3 skipped`。OpenAI Responses 與 direct Agents SDK 明確 live gate 各 `1 passed`；Google Routes live gate 為 `GOOGLE_HTTP_403`，HTTP Agent gate 受 Windows OR-Tools native abort 阻塞。
+- 本輪不執行 Dispatch、部署、正式環境操作或 force push；Google／Browser／TDX 的公開 Live 狀態仍需依當前受限憑證與執行環境重新驗收。

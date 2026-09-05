@@ -309,7 +309,7 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 ### 品質閘門（本輪）
 
 - Backend：完整 pytest 為 `44 passed, 3 skipped, 1 failed`（唯一失敗是刻意清空本機 OpenAI key 後，既有 API test 預期 200 而收到安全的 503；不冒稱 Live）；排除該環境相依案例後為 `44 passed, 3 skipped, 1 deselected`。skipped 為 Agents SDK、Google live key、Responses smoke 的條件式 gates。`ruff check src tests scripts PASS`、`mypy src PASS`。
-- Frontend：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest `2 passed`、Vite production build PASS。
+- Frontend：`pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest `3 passed`、Vite production build PASS。
 - Render 公開網址：健康檢查、13-path OpenAPI／CORS、40 單 Google→OR-Tools→Validator、Agent、Google Maps 與 ORD-041 preview 均有實際回應；TDX 為 `OPTIONAL／NOT_CONFIGURED`。
 
 ### 修正後公開重驗（Commit `35c7952`）
@@ -320,4 +320,60 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 - 公開 ORD-041 preview：`MINIMAL_CHANGE`、preview version 3、40→41 張、365→367 kg、換車 0、受影響 1 台車；GET preview version 的 Validator `valid=true`。距離／時間差由當次 Google Matrix 計算，未寫死固定值。
 - 公開容量不足插單：`FULL_REPLAN`，新增訂單列為 unassigned，基準 plan version 1、40/40 與原車輛載重保持不變；重複 ID 與缺欄請求分別回傳 422 `URGENT_ORDER_INVALID`／`FIELD_VALIDATION_ERROR`，缺欄 envelope 含 9 個 field errors 且 `details.requires_manual_review=true`。
 - 公開瀏覽器切換至「路線追蹤」可見 40 stops、4 車篩選、Google attribution、道路地圖與 `Google Maps · 即時道路`；修正後服務狀態列顯示 Google Maps「已設定」。Console 無未處理 error；Dispatch requests=0。
+- 前端 Agent 顯示補強：新增 evidence-first `friendlyText`，即使模型只回傳 `highest_load_vehicle` 工具 JSON，主畫面仍顯示繁體中文載重摘要；新增元件回歸測試，未改變工具或計算邏輯。
 - 非付費壓力驗收：`scripts/run_randomized_insert_audit.py` 固定 seeds `260904`–`260913` 共 10 組，重跑後 input hash 可重現、Validator violations 全為 0；最新差異已寫入 `docs/randomized-acceptance-report.json`。
+## 2026-09-05 通用 Agent／進階功能驗證
+
+本輪以 `feat/frontend-control-tower` 工作樹執行，未執行 Dispatch、部署或正式環境操作；所有外部憑證值均未讀取至輸出。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| 後端 pytest | `49 passed、3 skipped`；跳過的是明確 opt-in 的 OpenAI Responses、OpenAI Agent Live 與 Google Routes Live gates，原因為測試環境未啟用或缺少環境變數。 |
+| Ruff／mypy | 通過。 |
+| 前端 typecheck／ESLint／Vitest／Vite build | 通過（Vitest 3 tests）。 |
+| 三種策略 | `compare_strategies` 使用同一 Matrix 執行 `FASTEST`／`BALANCED`／`STABLE`，每組均經 Validator。 |
+| 延遲風險 | `calculate_plan_risks` 回傳 ETA 餘裕及 10／20／30 分鐘模擬，不產生機率。 |
+| Agent 編排 | `/api/v1/agent/chat` → `run_dispatch_agent` → `Runner.run` → strict allowlist tool → deterministic service → Validator → evidence-grounded response。 |
+| 版本／安全 | Confirm／restore 建立不可變版本；`DISPATCH_ENABLED=false` 時固定回傳 `403 DISPATCH_DISABLED`。 |
+| Live Provider | 當前本機執行未啟用 opt-in live gate；不得將 simulated／skipped 視為 Live PASS。 |
+
+本輪新增的前端附件流程會先完成匯入與欄位驗證，再將 `dataset_id` 與同一則自然語言訊息送入 Agent；Agent 選擇 `plan_dispatch` 後由 API 保存 plan。前端不再在送出前直接呼叫 `createPlan`。
+
+## 2026-09-05 實作後重新驗證（最新工作樹）
+
+| 閘門 | 證據 | 狀態 |
+|---|---|---|
+| Backend deterministic suite | `pytest --basetemp=.pytest-local-temp-run`：56 passed、4 skipped（歷史快照）；Ruff 與 mypy 通過 | `LOCAL LIVE PASS` |
+| OpenAI Responses API | `tests/test_responses_api.py`，明確 live gate 單獨執行：1 passed | `LOCAL LIVE PASS` |
+| OpenAI Agents SDK | `test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool`：1 passed，`Runner.run`、strict tool、Validator evidence | `LOCAL LIVE PASS` |
+| HTTP Agent live gate | `test_http_agent_chat_persists_runner_selected_plan` 在本機 ASGI harness 觸發 OR-Tools 原生 `Fatal Python error: Aborted`；已改為 async ASGI transport 仍可重現 | `BLOCKED` |
+| Google Routes Matrix→OR-Tools | `tests/test_live_integrations.py` 單獨 live 執行回傳 `GOOGLE_HTTP_403`；未使用 fallback | `BLOCKED` |
+| Browser Maps | 本機目前 `VITE_GOOGLE_MAPS_BROWSER_API_KEY` 未設定，僅可執行 simulated map fallback | `BLOCKED` |
+| TDX | `TDX_CLIENT_ID`／`TDX_CLIENT_SECRET` 未設定 | `OPTIONAL／NOT_CONFIGURED` |
+| Frontend quality | `pnpm install --frozen-lockfile`、TypeScript、ESLint、Vitest 3 tests、Vite production build | `LOCAL LIVE PASS` |
+| Strategy objectives | FASTEST／BALANCED／STABLE 使用不同成本設定；回歸測試確認 distance／duration／load spread 三組 fingerprint 不同，且 Validator 均通過 | `LOCAL LIVE PASS` |
+| Dispatch safety | `DISPATCH_ENABLED=false`；測試與本輪操作 Dispatch requests=0 | `PASS` |
+
+本節只記錄本輪實際結果；歷史段落中的 Live 或公開網站結果仍屬當時 Commit／環境的歷史證據，不覆蓋目前的 BLOCKED 狀態。未輸出、記錄或提交任何憑證值。
+
+## 2026-09-05 最新實作閘門（本次工作樹）
+
+| 閘門 | 實際結果 | 分類 |
+|---|---|---|
+| Backend full pytest | `78 passed、4 skipped`；skipped 為四個明確 opt-in 的外部 gate：`test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool`、`test_http_agent_chat_persists_runner_selected_plan`、`test_google_matrix_enters_same_live_ortools_solve`、`test_responses_gpt5_mini_text_and_strict_tool_smoke` | `LOCAL PASS`；未將 skipped 視為 Live |
+| Ruff／mypy／diff check | `ruff check src tests scripts`、`mypy src`、`git diff --check` 全部通過 | `LOCAL PASS` |
+| OpenAI Responses smoke | 明確啟用 `RUN_LIVE_RESPONSES_SMOKE=1`，`1 passed` | `LOCAL LIVE PASS` |
+| OpenAI Agents SDK direct | 明確啟用 `RUN_LIVE_AGENT_E2E=1`，`1 passed`；`Runner.run`、strict tool、Validator evidence | `LOCAL LIVE PASS` |
+| Google Routes Matrix | 明確啟用 `RUN_LIVE_PROVIDER_E2E=1`，實際回傳 `GOOGLE_HTTP_403`；未 fallback | `BLOCKED` |
+| HTTP Agent live | Windows ASGI／Uvicorn harness 仍在 OR-Tools native boundary 觸發 `Fatal Python error: Aborted`；未冒稱通過 | `BLOCKED` |
+| Frontend quality | TypeScript、ESLint、Vitest `3 passed`、Vite production build | `LOCAL PASS` |
+| Playwright regression | `2 passed、3 skipped`；keyless simulated suites 經測試 fixture 僅替代 Agent transport，REST planner／preview 仍實際呼叫；Live suites 依環境條件跳過 | `MOCK PASS`／`SIMULATED PASS`／`SKIPPED` 分開標示 |
+| Agent session persistence | dataset pointer、frozen stop IDs、pending order、last preview version 已結構化保存；明確 dataset context 不受 stale plan pointer 覆蓋 | `LOCAL PASS` |
+| Frozen stop guard | 凍結站點換車回傳 `FROZEN_STOP_CONFLICT`；新增 `test_sdk_frozen_stop_cannot_be_reassigned` | `LOCAL PASS` |
+| Secret／Actions／Dispatch | tracked secret pattern `0`、敏感路徑 `0`、workflow `0`、Dispatch requests `0` | `PASS` |
+
+本節只記錄目前工作樹的新證據；Render 公開網站與歷史 Live 結果仍需以其部署 Commit／當下憑證重新核對，不能由本機測試推論。未輸出、記錄或提交任何憑證值。
+
+補充：有資料集但尚無 plan 時，`agent_chat` 會以 `prefer_live=True` 解析單一 `MatrixResult`，再將同一矩陣傳入 `Runner.run` 選出的 deterministic planning tool；此邊界由 `tests/test_api.py::test_agent_dataset_context_persists_plan_selected_by_runner` 驗證。
+
+目前 OpenAPI 實際註冊 18 組 `/api/v1`／health paths：原有 13 組契約保持相容，新增的 5 組為策略比較、版本列舉／復原、延遲預覽與換車預覽；snapshot test 已同步。

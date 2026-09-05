@@ -70,6 +70,7 @@ export interface Plan {
   matrix_hash?: string
   matrix_version?: string
   algorithm: 'BASELINE' | 'ORTOOLS'
+  objective?: 'FASTEST' | 'BALANCED' | 'STABLE'
   dataset_hash?: string
   is_fully_feasible: boolean
   requires_human_confirmation: boolean
@@ -135,6 +136,9 @@ export interface ChatResponse {
   message: string
   evidence: Array<{ tool: string; data: Record<string, unknown> }>
   requires_human_confirmation: boolean
+  plan_id?: string | null
+  plan_version?: number | null
+  provider_mode?: ProviderMode
 }
 
 export interface UrgentOrderPayload {
@@ -183,6 +187,58 @@ export interface UrgentPreview {
     total_distance_delta_m: number
     total_duration_delta_s: number
   }
+}
+
+export interface StrategySummary {
+  objective: 'FASTEST' | 'BALANCED' | 'STABLE'
+  algorithm: 'ORTOOLS' | 'BASELINE'
+  total_distance_m: number
+  total_duration_s: number
+  max_vehicle_load_kg: number
+  load_spread_kg: number
+  min_slack_minutes?: number
+  unassigned_orders: string[]
+  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
+}
+
+export interface StrategyComparison {
+  dataset_id: string
+  dataset_hash: string
+  matrix_hash: string
+  matrix_version: string
+  provider_mode: ProviderMode
+  strategies: StrategySummary[]
+}
+
+export interface DelayPreview {
+  plan_id: string
+  version: number
+  risks: Array<Record<string, unknown>>
+  simulation: Record<string, unknown>
+  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
+}
+
+export interface ReassignmentPreview {
+  plan_id: string
+  base_version: number
+  preview_version: number
+  before: Plan['summary']
+  after: Plan['summary']
+  diff: UrgentPreview['diff']
+  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
+  provider_mode: ProviderMode
+  matrix_hash: string
+}
+
+export interface PlanVersionSummary {
+  version: number
+  state: Plan['state']
+  created_at: string
+  algorithm: string
+  objective?: string
+  validator_valid: boolean
+  complete: boolean
+  unassigned_orders: string[]
 }
 
 export interface ApiErrorBody {

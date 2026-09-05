@@ -27,13 +27,20 @@ interface AgentPanelProps {
 
 const suggestions = ['你可以做什麼？', 'Excel 需要哪些欄位？', '你如何避免超載？']
 
-function friendlyText(text: string, evidence: ChatResponse['evidence'] = []): string {
+export function friendlyText(text: string, evidence: ChatResponse['evidence'] = []): string {
   const normalized = text
     .replace(/ORTOOLS/g, '最佳化排程')
     .replace(/SIMULATED/g, '示範資料')
     .replace(/GOOGLE_LIVE/g, 'Google 即時資料')
     .replace(/FEASIBLE/g, '可行')
   const planEvidence = evidence.find((item) => item.tool === 'plan_dispatch')?.data
+  const highestLoadEvidence = evidence.find((item) => item.tool === 'highest_load_vehicle')?.data
+  if (highestLoadEvidence && typeof highestLoadEvidence.vehicle_id === 'string') {
+    const load = typeof highestLoadEvidence.planned_load_kg === 'number' ? highestLoadEvidence.planned_load_kg.toFixed(1) : '—'
+    const capacity = typeof highestLoadEvidence.max_load_kg === 'number' ? highestLoadEvidence.max_load_kg.toFixed(1) : '—'
+    const utilization = typeof highestLoadEvidence.load_utilization === 'number' ? `${(highestLoadEvidence.load_utilization * 100).toFixed(1)}%` : '—'
+    return `目前載重最高的是 ${highestLoadEvidence.vehicle_id}，載重 ${load}／${capacity} kg，使用率 ${utilization}。`
+  }
   const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間/i.test(normalized)
   if (!containsEngineeringFields) return normalized
   if (planEvidence) {

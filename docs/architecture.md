@@ -59,7 +59,7 @@ tests/
 
 **限制：**產品內不得使用 handoffs、A2A、AP2 或 sub-agents。每個 tool 都有 strict Pydantic input/output；model 來自 `OPENAI_MODEL`。
 
-Runtime gate 是由 `Runner.run` 執行的實際 OpenAI Agents SDK `Agent`，不是只包裝 prompt。Strict tools 為 `plan_dispatch`、`highest_load_vehicle`、`explain_unassigned` 與 `preview_urgent_insert`。每個 planning tool 在回傳精簡 JSON evidence 前，都會呼叫 deterministic planner 與 independent Validator。Model 只能摘要 evidence 已存在的值，不得計算 weights、routes、legality 或 metrics。
+Runtime gate 是由 `Runner.run` 執行的實際 OpenAI Agents SDK `Agent`，不是只包裝 prompt。Strict allowlist 包含 `plan_dispatch`、查詢／解釋工具、三策略比較、延遲模擬、車輛可用性、時段／優先順序、凍結站點、換車預覽、版本查詢與通用臨時插單工具。每個 planning tool 在回傳精簡 evidence 前，都會呼叫 deterministic planner 與 independent Validator。Model 只能摘要 evidence 已存在的值，不得計算 weights、routes、legality 或 metrics。
 
 Keyless SDK E2E suite 使用 SDK 的 `ScriptedModel`，在沒有 network access 的情況下執行實際 tool dispatch 與 guardrail pipeline。Opt-in live gate 使用 `OpenAIResponsesModel` 與 `gpt-5-mini`、`parallel_tool_calls=false`、`max_tokens=2048`、`max_turns=4`，停用 sensitive data tracing，並要求只呼叫一次 planning tool。
 
@@ -191,7 +191,7 @@ Reproducibility controls 包含：pinned OR-Tools／runtime versions；committed
 
 ## ADR-007 — 前端控制塔與 Provider 邊界
 
-`frontend/` 是 React + TypeScript + Vite + MUI 的單一控制塔。畫面只透過既有 13 組 REST routes 取得 dataset、plan、map、provider status、Agent evidence 與 urgent preview；不在前端重算重量、路線或合法性，也不提供自動 Dispatch。Google Maps JavaScript API 只接受 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`，Server key、OpenAI 與 TDX credentials 永遠留在後端。
+`frontend/` 是 React + TypeScript + Vite + MUI 的單一控制塔。畫面只透過原有 13 組 REST routes 與 5 組進階 routes 取得 dataset、plan、map、provider status、Agent evidence、策略比較、風險、版本與 urgent preview；不在前端重算重量、路線或合法性，也不提供自動 Dispatch。Google Maps JavaScript API 只接受 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`，Server key、OpenAI 與 TDX credentials 永遠留在後端。
 
 後端 provider 狀態與每個 response 的 `provider_mode`／`traffic.data_status` 必須直接呈現。缺少 Browser key 時控制塔顯示可用的 deterministic map preview 並標記 `SIMULATED`；這不是 Google live map。缺少 Google Routes 或 TDX credentials 時顯示 `BLOCKED`／`CREDENTIALS_MISSING`，不把 fallback 當作 live 通過。
 
@@ -199,7 +199,7 @@ Tests 只能檢查 required variable 是否存在。絕不可將 secret 讀入 a
 
 ## Runtime 驗收閘門
 
-Endpoint contract 是可執行的：`tests/test_api_contract.py` 解析全部 13 條文件路由，與 FastAPI 註冊的 method/path 比對，並以安全成功或穩定錯誤 response 執行每條路由。40-order Demo gate 接著執行 import、validation、initial plan、map/provider fallback、evidence explanation、human confirmation 與 order-41 preview/diff。流程刻意在 dispatch 前停止，並確認 base plan/version 未變更。這些是 evidence gates，不是未經驗證的完成宣稱。
+Endpoint contract 是可執行的：`tests/test_api_contract.py` 解析原有契約與目前進階路由，與 FastAPI 註冊的 method/path 比對，並以安全成功或穩定錯誤 response 執行每條路由。40-order Demo gate 接著執行 import、validation、initial plan、map/provider fallback、evidence explanation、human confirmation 與 order-41 preview/diff。流程刻意在 dispatch 前停止，並確認 base plan/version 未變更。這些是 evidence gates，不是未經驗證的完成宣稱。
 
 ## ADR-007 — Provider 隔離與 Fallback
 
@@ -280,7 +280,7 @@ Planned tables:
 
 SQLite transactions 保護 import 與 state changes。Confirmation 使用 `plan_id + version` 的 optimistic concurrency；stale requests 回傳 `PLAN_VERSION_CONFLICT`。
 
-現況限制：SQLite 會保存 plan rows 與 immutable preview rows，但 `confirm`／`dispatch` 目前只更新 process 內的 record state，尚未將 state mutation 回寫既有 plan row。重新啟動後可能重新載入舊的 `PROPOSED` state，因此「人工確認與方案版本管理」目前屬於部分完成；在修正 durable state persistence 並加入 restart regression test 前，不得宣稱完整持久化生命週期。
+現況限制：SQLite 會保存 plan rows、immutable preview rows、確認狀態與 current-version pointer；`confirm`／停用的 `dispatch` 均透過 repository 回寫狀態並留存 audit。Render Free 的本地檔案仍不適合作為跨執行個體的永久資料庫，因此跨部署持久化需另行選擇受管資料庫，不能在沒有該依賴時宣稱永久保存。
 
 ## State Machine
 
@@ -332,6 +332,14 @@ DRAFT -> VALIDATED -> PROPOSED -> CONFIRMED -> DISPATCHED
 本專案的 Render 目標是 `feat/frontend-control-tower` 上的單一 Free Web Service，僅供測試與展示，不代表 Production deployment。Docker multi-stage build 先產生 Vite `frontend/dist`，再由單一 FastAPI/Uvicorn worker 同源提供 SPA、Swagger 與 `/api/v1/*`；Render `$PORT` 與 `/health` 由平台注入及檢查。Render Blueprint 的 branch auto-deploy 僅限此測試服務，不建立 GitHub Actions、不合併 `main`、不執行 Dispatch。
 
 Render Secrets 只注入 server-side `OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_API_KEY` 與展示密碼；Browser key 透過公開 runtime config 供 Maps JavaScript 使用，TDX 變數可缺省。部署前必須使用已輪替且受限的 Provider keys，不能把曾曝光的開發憑證帶入公開服務。SQLite 使用 `/tmp` 暫存路徑，服務休眠或重啟後資料可能重置。
+
+## 進階功能實作邊界
+
+- `compare_strategies` 以同一份 Matrix 分別執行 `FASTEST`、`BALANCED`、`STABLE`；三者使用不同的 OR-Tools 初始策略／成本權重，並各自通過 Validator。
+- `calculate_plan_risks` 以 ETA、時段截止、服務時間與剩餘餘裕計算綠／黃／紅風險及 10／20／30 分鐘延遲情境，不產生沒有歷史依據的機率。
+- `reassign_order_preview` 與 `change_order_constraint` 只建立不可變的 `PROPOSED` preview；換車、時段及優先級變更必須先驗證，再由調度員確認。
+- `change_frozen_stops` 以結構化 order IDs 保存凍結範圍；任何未來重排均應以此範圍作為服務層約束，不能由模型自行忽略。
+- `evidence_grounded_answer` 會在回覆送出前檢查模型使用的數字與識別碼是否存在於工具 evidence；不一致時改以安全摘要回覆。
 
 ## 已查閱的官方參考資料（2026-09-01）
 

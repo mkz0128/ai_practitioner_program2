@@ -14,10 +14,36 @@ def test_sqlite_repository_creates_dataset_plan_and_audit_tables(tmp_path) -> No
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
 
-    assert {"datasets", "plans", "audit_events"} <= tables
+    assert {"datasets", "plans", "audit_events", "agent_sessions"} <= tables
     assert repository.count("datasets") == 0
     assert repository.count("plans") == 0
     assert repository.count("audit_events") == 0
+
+
+def test_sqlite_repository_round_trips_structured_agent_session(tmp_path) -> None:
+    repository = SQLiteRepository(f"sqlite:///{tmp_path / 'dispatch.db'}")
+    repository.save_agent_session(
+        "SESSION-1",
+        {
+            "plan_id": "PLAN-1",
+            "dataset_id": "DS-1",
+            "plan_version": 2,
+            "order_id": "ORD-7",
+            "pending_order": {"order_id": "TMP-1", "time_slot": "PM"},
+            "history": [["user", "哪台車載重最高？"]],
+        },
+        "now",
+    )
+
+    assert repository.load_agent_session("SESSION-1") == {
+        "plan_id": "PLAN-1",
+        "dataset_id": "DS-1",
+        "plan_version": 2,
+        "order_id": "ORD-7",
+        "pending_order": {"order_id": "TMP-1", "time_slot": "PM"},
+        "history": [["user", "哪台車載重最高？"]],
+    }
+    assert repository.load_agent_session("MISSING") is None
 
 
 @dataclass

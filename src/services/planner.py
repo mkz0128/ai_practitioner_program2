@@ -12,6 +12,7 @@ BASE_TIME = datetime(2026, 9, 1, 8, 0, tzinfo=timezone(timedelta(hours=8)))
 SERVICE_SECONDS = 180
 AM_START, AM_END = 0, 4 * 3600
 PM_START, PM_END = 5 * 3600, 9 * 3600
+Objective = Literal["FASTEST", "BALANCED", "STABLE"]
 
 
 class Stop(BaseModel):
@@ -58,6 +59,7 @@ class PlanResult(BaseModel):
     total_driving_time_s: int
     solver_status: str | None = None
     optimality_not_proven: bool = False
+    objective: Objective = "FASTEST"
 
 
 @dataclass
@@ -295,6 +297,7 @@ def build_baseline(dataset: Dataset, matrix: MatrixResult) -> PlanResult:
         unassigned_reasons=unassigned,
         total_distance_m=sum(route.total_distance_m for route in routes),
         total_driving_time_s=sum(route.total_duration_s for route in routes),
+        objective="FASTEST",
     )
 
 
@@ -353,6 +356,7 @@ def try_minimal_insert(
                 total_driving_time_s=sum(route.total_duration_s for route in routes),
                 solver_status=base_plan.solver_status,
                 optimality_not_proven=base_plan.optimality_not_proven,
+                objective=base_plan.objective,
             )
             score = (
                 candidate_plan.total_distance_m - base_plan.total_distance_m,
@@ -366,8 +370,91 @@ def try_minimal_insert(
     return min(candidates, key=lambda item: item[0])[1]
 
 
+def preview_reassignment(
+    base_plan: PlanResult,
+    dataset: Dataset,
+    matrix: MatrixResult,
+    order_id: str,
+    target_vehicle_id: str,
+) -> PlanResult | None:
+    """Build a non-mutating preview that moves one order to another vehicle.
+
+    Existing order sequences are preserved except for the source and target
+    routes.  The caller must run the independent Validator before exposing or
+    confirming the result.
+    """
+    vehicles = _vehicle_map(dataset)
+    orders = {order.order_id: order for order in dataset.orders}
+    if order_id not in orders or target_vehicle_id not in vehicles:
+        return None
+    source_index = next(
+        (index for index, route in enumerate(base_plan.routes) if order_id in route.order_ids),
+        None,
+    )
+    target_index = next(
+        (
+            index
+            for index, route in enumerate(base_plan.routes)
+            if route.vehicle_id == target_vehicle_id
+        ),
+        None,
+    )
+    if source_index is None or target_index is None or source_index == target_index:
+        return None
+    order = orders[order_id]
+    target_vehicle = vehicles[target_vehicle_id]
+    if not _eligible(order, target_vehicle):
+        return None
+    source_route = base_plan.routes[source_index]
+    target_route = base_plan.routes[target_index]
+    source_ids = [candidate for candidate in source_route.order_ids if candidate != order_id]
+    target_ids = [*target_route.order_ids]
+    candidates: list[tuple[tuple[int, int, str], PlanResult]] = []
+    for position in range(len(target_ids) + 1):
+        candidate_target_ids = [*target_ids]
+        candidate_target_ids.insert(position, order_id)
+        source_new = _route_metrics_preserving_order(
+            source_ids, vehicles[source_route.vehicle_id], orders, matrix
+        )
+        target_new = _route_metrics_preserving_order(
+            candidate_target_ids, target_vehicle, orders, matrix
+        )
+        if source_new is None or target_new is None:
+            continue
+        routes = [*base_plan.routes]
+        routes[source_index] = source_new
+        routes[target_index] = target_new
+        candidates.append(
+            (
+                (
+                    target_new.total_distance_m + source_new.total_distance_m,
+                    target_new.total_duration_s + source_new.total_duration_s,
+                    target_vehicle_id,
+                ),
+                PlanResult(
+                    algorithm=base_plan.algorithm,
+                    state="PROPOSED",
+                    complete=base_plan.complete,
+                    provider_mode=matrix.provider_mode,
+                    routes=routes,
+                    unassigned_orders=list(base_plan.unassigned_orders),
+                    unassigned_reasons=dict(base_plan.unassigned_reasons),
+                    total_distance_m=sum(route.total_distance_m for route in routes),
+                    total_driving_time_s=sum(route.total_duration_s for route in routes),
+                    solver_status=base_plan.solver_status,
+                    optimality_not_proven=base_plan.optimality_not_proven,
+                    objective=base_plan.objective,
+                ),
+            )
+        )
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
 def build_ortools(
-    dataset: Dataset, matrix: MatrixResult, time_limit_seconds: int = 10
+    dataset: Dataset,
+    matrix: MatrixResult,
+    time_limit_seconds: int = 10,
+    objective: Objective = "FASTEST",
 ) -> PlanResult:
     vehicles = sorted(dataset.vehicles, key=lambda vehicle: vehicle.vehicle_id)
     orders = tuple(sorted(dataset.orders, key=lambda order: order.order_id))
@@ -430,12 +517,40 @@ def build_ortools(
         time_dimension.CumulVar(node).SetRange(start, end)
         routing.AddDisjunction([node], sum(sum(row) for row in matrix.duration_s) + 1)
     parameters = pywrapcp.DefaultRoutingSearchParameters()
-    parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
-    )
-    parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    )
+    if objective == "BALANCED":
+        # Penalise the longest stop count so the solver trades a small amount
+        # of travel time for a smaller workload spread without changing hard
+        # time-window feasibility.
+        def stop_count_callback(from_index: int) -> int:
+            return 0 if manager.IndexToNode(from_index) == 0 else 1
+
+        stop_count_idx = routing.RegisterUnaryTransitCallback(stop_count_callback)
+        routing.AddDimension(stop_count_idx, 0, len(orders) + 1, True, "Stops")
+        routing.GetDimensionOrDie("Stops").SetGlobalSpanCostCoefficient(100)
+        parameters.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+        )
+        parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+    elif objective == "STABLE":
+        # Savings keeps geographically coherent routes and is less disruptive
+        # when used as a follow-up to a confirmed plan.  Penalising the
+        # time-dimension span makes the solver prefer routes with additional
+        # deadline slack instead of merely reproducing FASTEST's distance
+        # objective.
+        parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.SAVINGS
+        parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        time_dimension.SetGlobalSpanCostCoefficient(100)
+    else:
+        parameters.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+        )
+        parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
     parameters.time_limit.FromSeconds(time_limit_seconds)
     parameters.solution_limit = 1000
     solution = routing.SolveWithParameters(parameters)
@@ -456,6 +571,7 @@ def build_ortools(
             total_driving_time_s=0,
             solver_status="NO_SOLUTION",
             optimality_not_proven=True,
+            objective=objective,
         )
     routes: list[VehicleRoute] = []
     assigned: set[str] = set(pre_unassigned)
@@ -499,4 +615,5 @@ def build_ortools(
         total_driving_time_s=sum(route.total_duration_s for route in routes),
         solver_status="FEASIBLE",
         optimality_not_proven=True,
+        objective=objective,
     )

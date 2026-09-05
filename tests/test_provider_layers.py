@@ -1,8 +1,8 @@
-import os
 from pathlib import Path
 
 import pytest
 
+from src.config import get_settings
 from src.providers.google_routes import GoogleRoutesProvider
 from src.providers.tdx import TDXProvider
 from src.services.importer import parse_workbook
@@ -30,5 +30,5 @@ def test_tdx_missing_credentials_are_explicitly_disabled() -> None:
 
 @pytest.mark.live
 def test_live_google_requires_explicit_environment_key() -> None:
-    if not os.getenv("GOOGLE_ROUTES_SERVER_API_KEY"):
+    if not get_settings().google_routes_server_api_key:
         pytest.skip("GOOGLE_ROUTES_SERVER_API_KEY is not exported for live tests")

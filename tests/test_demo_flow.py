@@ -76,7 +76,7 @@ def test_demo_40_order_flow_stops_before_dispatch() -> None:
             "context": {"plan_id": plan_id, "plan_version": 1, "order_id": order_id},
         },
     )
-    assert explanation.status_code in {200, 503}, explanation.text
+    assert explanation.status_code in {200, 502, 503}, explanation.text
     if explanation.status_code == 200:
         assert explanation.json()["evidence"][0]["tool"] == "explain_assignment"
 

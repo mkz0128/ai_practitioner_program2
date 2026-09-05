@@ -16,7 +16,7 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 ```
 
 開啟 Swagger `http://127.0.0.1:8000/docs`，或使用固定的 schema
-`docs/openapi-snapshot.sha256`。若 13-route contract 未經刻意更新而變更，snapshot test 會 fail closed。
+`docs/openapi-snapshot.sha256`。原有 13-route contract 維持相容，另有 5 組進階路由；若目前 18-path OpenAPI 未經刻意更新而變更，snapshot test 會 fail closed。
 
 ## 前端環境變數
 
@@ -29,7 +29,7 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 ## 實作現況與必要功能邊界
 
-`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫既有 13 組 REST routes，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff 與人工 confirm；不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
+`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫原有 13 組 REST routes 與 5 組進階路由，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff、策略比較、延遲風險、版本復原與人工 confirm；不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
 
 `POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 
@@ -94,7 +94,7 @@ pnpm run build
 
 ## Endpoint request／response 範例
 
-後端已實作 `docs/api-contract.md` 的全部 13 組 method/path；以下是前端所需的 request／response index。除 multipart import 外，所有 body 都是 JSON。
+後端已實作 `docs/api-contract.md` 的原有 13 組 method/path 及 5 組進階 method/path；以下是前端所需的 request／response index。除 multipart import 外，所有 body 都是 JSON。
 
 | Endpoint | Request | 前端處理的 Response |
 |---|---|---|
@@ -250,6 +250,14 @@ Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend �
 
 ## 本分支 Live 驗收
 
-`frontend/tests/e2e/live-control-tower.spec.ts` 已在本機使用真實 OpenAI／Google 憑證執行：無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、Validator、Google Maps、Agent 多輪對話、ORD-041 preview、人工確認、配送任務與配送路線工作區均通過，且測試確認沒有 Dispatch request。
+`frontend/tests/e2e/live-control-tower.spec.ts` 的歷史執行曾在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、Validator、Google Maps、Agent 多輪對話、ORD-041 preview、人工確認、配送任務與配送路線工作區；該歷史結果不代表本輪環境仍具備相同憑證。當前本輪 Google gate 回傳 `GOOGLE_HTTP_403`，Browser key 亦未設定，必須分別標示 BLOCKED。
 
 Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`，每張為 1440×900 且不含 credential。TDX 因未設定 OAuth 憑證標示 `OPTIONAL／NOT_CONFIGURED`，不影響本輪後端與前端驗收。
+
+## Agent-first 與進階功能串接
+
+前端附件匯入只負責建立並驗證 `dataset_id`；使用者訊息會連同 `dataset_id` 一次送至 `/api/v1/agent/chat`。Agent 透過 `Runner.run` 選擇 `plan_dispatch`，後端在同一輪保存不可變的 `plan_id`／version，前端再讀取 plan 與 map-data。沒有附件時仍可直接聊天；需要資料的問題由 Agent 說明需補充 Excel 或範例資料。
+
+控制塔可選擇呼叫下列非破壞性端點：`/api/v1/plans/compare` 顯示三種策略、`/api/v1/plans/{plan_id}/delay-preview` 顯示 10／20／30 分鐘風險、`/api/v1/plans/{plan_id}/reassign/preview` 顯示拖拉換車差異、`/versions` 列舉版本及 `/restore` 建立復原草稿。所有回應都必須以 `validator.valid` 與 `requires_human_confirmation` 控制畫面按鈕；不得自行呼叫 `/dispatch`。
+
+拖拉換車提供滑鼠與鍵盤／按鈕替代操作。失敗時保留原 plan version，不更新地圖或目前確認指標；成功 preview 只顯示影響車輛、順序、重量、距離及時間差異，人工確認後才切換版本。

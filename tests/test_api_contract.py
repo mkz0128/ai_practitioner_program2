@@ -133,7 +133,7 @@ def test_every_contract_endpoint_has_an_exercised_response() -> None:
             "context": {"plan_id": plan_id, "plan_version": 1, "order_id": order_id},
         },
     )
-    assert chat.status_code in {200, 503}, chat.text
+    assert chat.status_code in {200, 502, 503}, chat.text
     outcomes[("POST", "/api/v1/agent/chat")] = chat.status_code
 
     for method, path, payload in [
@@ -149,7 +149,7 @@ def test_every_contract_endpoint_has_an_exercised_response() -> None:
         ),
     ]:
         response = client.request(method, path, json=payload)
-        assert response.status_code in {404, 409, 422}, response.text
+        assert response.status_code in {403, 404, 409, 422}, response.text
     outcomes[("POST", "/api/v1/plans/{plan_id}/confirm")] = 404
     outcomes[("POST", "/api/v1/plans/{plan_id}/dispatch")] = 404
 

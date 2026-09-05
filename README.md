@@ -129,7 +129,7 @@ VITE_GOOGLE_MAPS_BROWSER_API_KEY=
 
 每個 response 都包含 `X-Request-ID`；mutation/error body 也包含 `request_id`。IDs 與 versions 為 opaque 值，必須原樣傳回。
 
-## 端點範例（全部 13 條契約路由）
+## 端點範例（原有 13 條契約路由＋5 條進階路由）
 
 完整 schema 與 status-code matrix 請參考 [docs/api-contract.md](docs/api-contract.md)。以下精簡範例展示每條路由的前端 request 與 response shape。
 
@@ -213,7 +213,7 @@ Fixture 刻意將 112 kg 集中在 Z4；`VEH-002` 上限為 100 kg，因此 clie
 
 ## API、Swagger 與 CORS 交付檢查
 
-後端已註冊並測試全部 13 組契約 method/path。FastAPI 在 `/openapi.json` 與 `/docs` 發布相同 routes。CORS 使用 `CORS_ALLOWED_ORIGINS` 的明確 allowlist；請設定精確的 frontend origin(s)，不可永久使用 `*`。允許來源的 browser preflight 會取得 CORS headers；未列出的 origin 不得視為允許。
+後端已保留並測試原有 13 組契約 method/path，另提供 5 組進階路由；FastAPI 在 `/openapi.json` 與 `/docs` 發布目前共 18 組 paths。CORS 使用 `CORS_ALLOWED_ORIGINS` 的明確 allowlist；請設定精確的 frontend origin(s)，不可永久使用 `*`。允許來源的 browser preflight 會取得 CORS headers；未列出的 origin 不得視為允許。
 
 ## 範圍排除
 
