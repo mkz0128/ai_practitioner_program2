@@ -107,10 +107,26 @@ def test_provider_status_distinguishes_configured_from_connected(monkeypatch) ->
             {"error": {"status": "PERMISSION_DENIED", "message": "Billing disabled"}},
             "BILLING_DISABLED",
         ),
+        (
+            [
+                {
+                    "error": {
+                        "status": "PERMISSION_DENIED",
+                        "details": [
+                            {
+                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                "reason": "BILLING_DISABLED",
+                            }
+                        ],
+                    }
+                }
+            ],
+            "BILLING_DISABLED",
+        ),
     ],
 )
 def test_google_http_errors_are_classified_without_response_leak(
-    monkeypatch, payload: dict, expected: str
+    monkeypatch, payload: object, expected: str
 ) -> None:
     dataset_id = _upload_dataset()
 

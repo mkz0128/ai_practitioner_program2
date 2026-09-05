@@ -14,8 +14,15 @@ test('公開站通用超重插單證據會顯示且禁止套用', async ({ page 
   await page.getByRole('button', { name: '附加訂單檔案' }).click()
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
   const input = page.getByRole('textbox', { name: '輸入訊息' })
+  const planResponsePromise = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.request().method() === 'POST')
   await input.fill('請用這份資料建立今天的配送方案')
   await input.press('Enter')
+  const planResponse = await planResponsePromise
+  const planBody = await planResponse.json() as { error?: { code?: string; details?: { exception_type?: string } } }
+  expect(
+    planResponse.status(),
+    `${planBody.error?.code ?? 'UNKNOWN_AGENT_ERROR'}:${planBody.error?.details?.exception_type ?? 'UNKNOWN_EXCEPTION'}`,
+  ).toBe(200)
   await expect(page.getByText('40／40', { exact: true })).toBeVisible({ timeout: 300_000 })
 
   const responsePromise = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.request().method() === 'POST')

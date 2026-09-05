@@ -227,6 +227,8 @@ TrafficProvider:
 
 Google Compute Route Matrix 需要 field mask。規劃的最小欄位為 `originIndex,destinationIndex,status,condition,distanceMeters,duration`；route geometry 僅要求 frontend 所需的 distance、duration、encoded polyline 與 leg fields。除 manual investigation 外禁止 wildcard masks。
 
+2026-09-06 當前公開與本機 Google Routes 請求均被官方以 `ErrorInfo.reason=BILLING_DISABLED` 拒絕。這是外部帳務狀態，不改變上述 strict wiring；恢復後仍必須從公開站重驗 Matrix→OR-Tools→Map 同源流程。
+
 Google caching 採 transient 且可設定（預設 900 秒）。完成目前 service terms review 前停用 raw Google content 的 durable storage；derived plan records 僅保留 provider identity、timestamp 與法律允許的欄位。
 
 ## 整合架構補充 — Canonical Schema 與企業資料整合邊界

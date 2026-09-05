@@ -1,5 +1,12 @@
 # 變更紀錄
 
+## 2026-09-06 — Agent 急單上下文與 Google 錯誤分類
+
+- 將本輪原始使用者訊息與 application metadata 分離，防止舊的 `ORD-001` 上下文被當成新急單 ID；資料不足時改為要求必要欄位。
+- Agent evidence-only 對話使用有界三次嘗試，不執行無限重試。
+- Google Routes 安全錯誤分類已支援 list-shaped response；當前本機與 Render 的官方原因均為 `BILLING_DISABLED`，未使用 fallback，也未冒稱 Live PASS。
+- 當前驗證：Backend `224 passed、28 skipped`；112-case corpus suite `120 passed`；OpenAI 24-case Live Runner 與 strict-tool smoke `25 passed`；Frontend Vitest `23 passed`，TypeScript、ESLint、Vite build、Ruff、mypy 通過。
+
 ## 2026-09-06 — 明晚 Demo 穩定性與公開線性驗收
 
 - 公開 Render 以同一個 Chromium 會話從空白首頁完整跑完 Excel、40／40、4／4、Google 地圖、Agent、拖拉換車、取消、ORD-041、人工確認、三策略、延遲與版本，結果 `1 passed`；未處理錯誤與正式派車請求皆為 0。

@@ -1,6 +1,19 @@
 # 規格驗證報告
 
-## 2026-09-06 明晚 Demo 最終本機閘門
+## 2026-09-06 當前權威驗證
+
+- Backend deterministic：`224 passed、28 skipped、0 failed`（使用專案內 `--basetemp`）；Ruff、mypy 通過。
+- 112-case Agent corpus 數量與 12 類分布符合要求，相關 suite `120 passed`。
+- OpenAI Live：24-case `Runner.run` corpus 加 Responses strict-tool smoke `25 passed`；未使用昂貴模型。
+- Frontend：TypeScript、ESLint、Vitest `23 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。
+- Render `/health`：HTTP 200。公開線性 E2E 實際從空白首頁開始，但在 Google Matrix 階段收到 HTTP 403；官方 `ErrorInfo.reason=BILLING_DISABLED`、`fallback_used=false`。
+- Google 分類器已新增 list-shaped Compute Route Matrix 錯誤回應測試，不再誤標為 `API_KEY_RESTRICTED`。依本輪限制不修改 Billing，Google Routes／完整公開 E2E 為 `BLOCKED`，不是 Live PASS。
+- 公開 Playwright：`3 failed`；線性 Demo、ORD-041 專案流程與超重插單流程都在建立 Google Live 基礎方案時收到 HTTP 502 `PROVIDER_UNAVAILABLE`，沒有 fallback，也沒有進入後續步驟。
+- TDX：本版未啟用，不列入完成條件。Dispatch requests：`0`。
+
+## 2026-09-06 歷史 Demo 閘門快照（非當前權威）
+
+以下保留修正軌跡；當前狀態一律以前一節為準。
 
 | 項目 | 實際證據 | 狀態 |
 |---|---|---|
@@ -20,12 +33,14 @@
 28 個 skipped 全是明確 opt-in 的外部 Live gates：
 
 - `tests/test_agent_e2e.py::test_agents_sdk_daily_dispatch_calls_deterministic_planning_tool`：需 `RUN_LIVE_AGENT_E2E=1`；能力已由 24-case Live corpus 與公開 E2E 覆蓋，不影響 Demo。
-- `tests/test_agent_e2e.py::test_live_agent_http_endpoint_uses_agents_sdk`：需 `RUN_LIVE_AGENT_HTTP_E2E=1`；公開 `/api/v1/agent/chat` 已逐題驗證 `RunResult` 與工具證據，不影響 Demo。
+- `tests/test_agent_e2e.py::test_http_agent_chat_persists_runner_selected_plan`：需 `RUN_LIVE_AGENT_HTTP_E2E=1`；當前預設 suite 不執行外部 HTTP Agent Live gate。
 - `tests/test_live_agent_dialogue_corpus.py::test_live_agent_selects_expected_tool` 24 個參數案例：全量測試預設跳過；本輪已以 `RUN_LIVE_AGENT_CORPUS=1` 另行實跑並得到 `24 passed`，分類為 `LOCAL LIVE PASS`。
-- `tests/test_live_integrations.py::test_live_google_requires_explicit_environment_key`：需 `RUN_LIVE_PROVIDER_E2E=1`；本機 Server Key 的使用限制不允許該來源，但 Render 公開線性流程已實際完成 Google Matrix→OR-Tools，分類為 `PUBLIC LIVE PASS`。
+- `tests/test_live_integrations.py::test_google_matrix_enters_same_live_ortools_solve`：需 `RUN_LIVE_PROVIDER_E2E=1`；本輪另行啟用後實際收到 `BILLING_DISABLED`，分類為 `BLOCKED`，不以 simulated 取代。
 - `tests/test_responses_api.py::test_responses_gpt5_mini_text_and_strict_tool_smoke`：需 `RUN_LIVE_RESPONSES_SMOKE=1`；本輪主流程使用 Agents SDK Runner，這個底層 smoke 非明晚 Demo 阻塞。
 
-## 2026-09-06 Render 公開線性驗收
+## 2026-09-06 歷史 Render 公開線性驗收（當前已由 Billing 阻塞）
+
+以下為 Billing 狀態改變前的歷史證據，不代表目前仍通過。
 
 | 步驟 | 公開瀏覽器實際證據 | 狀態 |
 |---|---|---|

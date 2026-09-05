@@ -67,7 +67,7 @@ Canonical comparison 排除 live Google matrices。為確保 Reproducibility，�
 2. 實作 evidence-only explanation、tool guardrails 與 prompt-injection protection。
 3. 實作 OpenAI tracing 設定、JSON logs、correlation IDs 與 usage／limit enforcement。
 4. 實作 Google Routes adapter 與 field masks；缺 key 時使用明確 fallback。
-5. 實作 TDX credential settings、provider health/status、timeout 與 graceful fallback。
+5. 保留 TDX adapter 的相容性與安全降級；本版本不啟用 TDX，且不納入本輪完成條件。
 6. 將 provider verification 分為 always-on keyless simulated／mock tests 與 opt-in live integration tests。
 7. 缺少或拒絕 credentials 時，live tests skip 或 fallback，不得破壞 keyless suite。
 8. 確認 API Key 不會進入 output、logs、traces、assertions、snapshots、fixtures 或 Git。
@@ -95,23 +95,21 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 
 ## 原始必要功能的整合工作（A 類）
 
-下列工作是原始規劃的必要功能，不是 P1 或可選項目。本輪只完成程式、測試與文件的現況查證，不開始任何實作：
+下列工作是本版本的必要整合功能：
 
 1. 將 `GoogleRoutesProvider` 接入 import／`create_plan` 流程，取得真實 distance／duration。
 2. 確保同一份 Google Routes Matrix 真正傳入 OR-Tools，並由獨立 Validator 驗證。
 3. 建立可執行的 Google Maps Browser 前端，顯示地圖、Marker 與每台車路線。
-4. 完成 TDX OAuth、真實路況／道路事件查詢與錯誤處理。
-5. 將 TDX evidence 關聯至受影響路線，產生可追溯的配送風險判斷。
-6. 前端完整呈現訂單、車輛、載重、路線、例外、Agent 與 urgent preview／confirm。
-7. 執行 Google、TDX、OR-Tools、OpenAI Agent 與前端的完整 Live E2E；simulated、mock、fallback、skipped 不得替代。
+4. 前端完整呈現訂單、車輛、載重、路線、例外、Agent 與 urgent preview／confirm。
+5. 執行 Google、OR-Tools、OpenAI Agent 與前端的完整 Live E2E；simulated、mock、fallback、skipped 不得替代。
 
-目前查證結果：第 1、2 項已完成 provider wiring 與 keyless proof，但 Live 仍 BLOCKED；第 3 項已有 local React control tower 與 simulated map fallback，Browser live 尚待 key；第 4、5 項已有 TDX adapter、mock projection 與 risk correlation，真實資料尚待 credentials；第 6 項已有前端三條流程與 API client；第 7 項仍未完成，必須在有 keys 的環境執行完整前後端 Live E2E。詳細 Requirement ID、證據與驗收方式見 `docs/requirements.md` 與 `docs/project-status.md`。
+目前查證結果：第 1、2 項已完成 provider wiring 與 keyless proof；本輪 Live 呼叫已到達 Google，但官方回覆 `BILLING_DISABLED`，且 strict 模式未啟用 fallback，因此公開完整流程仍為外部阻塞。第 3、4 項已有 React control tower、Google Maps 整合與完整 API client；第 5 項須在 Google Cloud 專案 Billing 恢復後從公開網站重跑。TDX 為未來可選擴充，本版本顯示「本版本未啟用」，不影響核心 Demo 的功能判定。詳細 Requirement ID、證據與驗收方式見 `docs/requirements.md` 與 `docs/project-status.md`。
 
 ### 本輪實作切片
 
 - `frontend/`：React／TypeScript／Vite／MUI control tower，串接匯入、驗證、plan、map、provider status、Agent chat、urgent preview 與 confirm；不含 Dispatch。
 - Google Routes：`AUTO` 且有 server key 時 strict Matrix 與 route geometry；相同 Matrix identity 由 plan／map response 暴露。缺 key 使用明確 `SIMULATED` warning，provider error 回傳 `PROVIDER_UNAVAILABLE`。
-- TDX：OAuth token exchange、事件模型與 route-risk correlation 已接入 map payload；缺 credentials 回傳 `CREDENTIALS_MISSING`。
+- TDX：保留 OAuth／事件模型／route-risk correlation 相容程式；本版本不啟用，前端不顯示阻塞警告。
 - 驗證：新增 provider wiring tests、frontend RTL、Playwright local simulated flow 與 6 張無 secrets 截圖；Live gates 仍須在有 credentials 的環境執行。
 
 ## 企業級擴充功能（B 類）
@@ -141,15 +139,13 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 
 ## 後續實作順序
 
-1. 查證並修正目前狀態。
-2. 完成 Google Routes 完整 Live 排程。
-3. 完成 TDX 真實路況與路線風險資料。
-4. 前端完成 Google 地圖、表格、Agent 與插單畫面。
-5. 執行完整前後端 Live E2E。
-6. 完成例外控制塔。
-7. 完成多方案比較及 Why／What-if。
-8. 增加通知預覽與商業 KPI。
-9. 最後才評估 ERP 整合端點與 MCP 工具。
+1. 由帳號持有人恢復 Google Cloud 專案 Billing；不得由本專案自動修改計費設定。
+2. 重新執行 Google Routes 完整 Live 排程，確認 Matrix 進入同一次 OR-Tools 求解。
+3. 從公開 Render 網站由空白首頁完整重跑線性 Demo、按鈕與 Console／Network 驗收。
+4. 完成例外控制塔。
+5. 完成多方案比較及 Why／What-if。
+6. 增加通知預覽與商業 KPI。
+7. 最後才評估 ERP 整合端點、MCP 工具與 TDX 可選整合。
 
 ## 檔案變更預期
 

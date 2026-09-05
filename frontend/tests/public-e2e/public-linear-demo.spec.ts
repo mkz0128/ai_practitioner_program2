@@ -90,10 +90,14 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
 
   const input = page.getByRole('textbox', { name: '輸入訊息' })
   await input.fill('請用這份資料建立今天的配送方案')
-  const planResponse = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.status() === 200)
+  const planResponse = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat'))
   await input.press('Enter')
   const planAgentResponse = await planResponse
-  const planBody = await planAgentResponse.json() as { runner_result_type?: string; evidence?: Array<{ tool?: string; data?: Record<string, unknown> }> }
+  const planBody = await planAgentResponse.json() as AgentResponseBody
+  expect(
+    planAgentResponse.status(),
+    `${planBody.error?.code ?? 'UNKNOWN_AGENT_ERROR'}:${planBody.error?.details?.exception_type ?? 'UNKNOWN_EXCEPTION'}`,
+  ).toBe(200)
   expect(planBody.runner_result_type).toBe('RunResult')
   expect(planBody.evidence?.some((item) => item.tool === 'plan_dispatch' && item.data?.provider_mode === 'GOOGLE')).toBeTruthy()
   await expect(page.locator('.processing-bubble')).toHaveCount(0, { timeout: 240_000 })

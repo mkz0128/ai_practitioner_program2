@@ -25,6 +25,8 @@ def _classify_google_error(response: httpx.Response) -> str:
         body = response.json()
     except (TypeError, ValueError):
         body = {}
+    if isinstance(body, list) and body and isinstance(body[0], dict):
+        body = body[0]
     error = body.get("error") if isinstance(body, dict) else None
     error = error if isinstance(error, dict) else {}
     status = str(error.get("status", "")).upper()

@@ -8,8 +8,8 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE；GOOGLE_MAPS_PUBLIC_LIVE；TDX_EXCLUDED`
-- Frontend Integration status：`PUBLIC_LIVE_PASS`
+- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_ROUTES_BLOCKED_BILLING_DISABLED；GOOGLE_MAPS_CONFIGURED；TDX_EXCLUDED`
+- Frontend Integration status：`PARTIAL`（keyless／simulated 流程已通過；當前公開 Google 完整流程受 Billing 阻塞）
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -30,33 +30,35 @@
 | 臨時插單 Preview 與差異 | 原始必要 | 完成 | `try_minimal_insert`、`compute_plan_diff`；公開 ORD-041 Google Live 預覽與人工確認 | 無核心缺口 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成 | `src/agent/runtime.py`、`/api/v1/agent/chat`；24 個 Live Runner 與公開線性 E2E 均驗證 `RunResult`／strict tool evidence | 無核心缺口 |
-| Google Routes 真實距離／時間 | 原始必要 | 完成 | 公開 `provider_mode=GOOGLE`，Matrix 與道路 geometry 均實際取得 | 無核心缺口 |
-| Google Matrix 進入 OR-Tools | 原始必要 | 完成 | 公開 Matrix hash、40／40 OR-Tools plan、方案檢查與策略比較 hash 一致 | 無核心缺口 |
-| Google Maps Browser 地圖 | 原始必要 | 完成 | 公開 Google 地圖實例、40 個站點、4 條非 simulated 道路路線，Console error 0 | 無核心缺口 |
+| Google Routes 真實距離／時間 | 原始必要 | 阻塞 | 2026-09-06 公開站與本機最小請求均回傳 HTTP 403；官方 `ErrorInfo.reason=BILLING_DISABLED`，fallback=false | 需帳號所有人在 Google Cloud 啟用計費；本輪禁止代為修改 Billing |
+| Google Matrix 進入 OR-Tools | 原始必要 | 部分完成 | strict wiring、hash/version 一致性與歷史 Live 證據保留；當前端到端被 Google Billing 拒絕 | Billing 恢復後必須從公開站重跑，不可沿用歷史 PASS |
+| Google Maps Browser 地圖 | 原始必要 | 部分完成 | Browser key 已設定，先前公開地圖實例可載入；當前無法由同一方案生成四條 Live 路線 | 需 Google Routes 恢復後重驗 40 站、4 車道路 polyline 與 Console |
 | TDX OAuth／真實路況查詢 | 未來可選擴充 | 本版本未啟用 | 既有 adapter 保留，但不列入本次 Demo 流程 | 未排入本輪 |
 | TDX 路線風險判斷 | 未來可選擴充 | 本版本未啟用 | 既有 deterministic correlation 保留 | 未排入本輪 |
 | 前端完整操作流程 | 原始必要 | 完成 | 公開 Excel→Agent→Plan→Map→拖拉 Preview→ORD-041→人工確認驗收 | 無核心缺口 |
-| 全整合前後端 Live E2E | 原始必要 | 完成 | 公開網站從空白首頁一次完成 Excel→Google Matrix→OR-Tools→地圖→Agent→拖拉→ORD-041→確認→策略→延遲→版本；未處理錯誤 0、正式派車請求 0 | 無核心缺口 |
+| 全整合前後端 Live E2E | 原始必要 | 阻塞 | 最新公開線性 Playwright 在 Google Matrix 階段誠實收到 `BILLING_DISABLED`，未 fallback | 帳務恢復後從空白首頁重跑全線；本輪不得宣告公開全線 PASS |
 | 任意結構化臨時插單與連續版本 | 原始必要 | 完成（simulated acceptance） | `preview_structured_urgent_insert`、API arbitrary-order test、`docs/randomized-acceptance-report.json` | Live Google 僅執行代表性流程；壓力測試使用 simulated |
 
 ## NOW
 
-依 `docs/demo-runbook.md` 執行明晚展示前檢查；不新增功能、不執行正式派車。
+等待帳號所有人解除 Google Maps Platform `BILLING_DISABLED`，再從公開站空白首頁重跑完整 Demo。
 
 ## NEXT
 
-1. 明晚展示前確認 Render `/health` 與首頁可用。
-2. 準備範例 Excel，依線性流程演練一次。
-3. 後續再評估非必要的企業擴充；TDX 不在本版範圍。
+1. Google Billing 恢復後，驗證 Render Google Matrix 不再回傳 403。
+2. 從空白首頁重跑 `public-linear-demo.spec.ts`，核心流程不得 skipped。
+3. 通過後再更新公開截圖與最終 Demo 檢查表。
 
 ## BLOCKED
 
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
+- `EXT-GOOGLE-BILLING-001`：Google Compute Route Matrix 在公開 Render 與本機均回傳 HTTP 403，官方原因 `BILLING_DISABLED`。本輪禁止修改 Billing，這是目前唯一阻止公開完整 Demo 的外部條件。
 
 ## OPEN ISSUES
 
 - `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
 - `EXT-002 — Scope Decision`：TDX 已由本輪明確排除並移至未來可選擴充，不影響核心 Demo 或完成判定。
+- `EXT-003 — Current Google state`：先前的 Google Live 截圖與測試是歷史證據；2026-09-06 當前環境以 `BILLING_DISABLED` 為權威狀態，不得沿用舊 PASS。
 
 ## 2026-09-05 歷史公開紀錄（已由 2026-09-06 驗收取代）
 
@@ -88,6 +90,11 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 修正 Agent 將既有上下文 `ORD-001` 誤當新急單 ID：本輪原始訊息與 application metadata 已分離，tool boundary 會拒絕未出現於本輪訊息的偷渡 ID。
+- Agent 工具選擇使用有界 3 次嘗試；Google 錯誤分類器支援 list-shaped Compute Route Matrix 錯誤回應，當前精確分類為 `BILLING_DISABLED`。
+- Backend `224 passed、28 skipped`；112-case corpus 相關 suite `120 passed`；24-case Live Runner 加 Responses strict-tool smoke `25 passed`。
+- Frontend TypeScript、ESLint、Vitest `23 passed`、production build 通過；本機 Playwright `2 passed、3 skipped`。公開三條 Playwright 流程均在 Google Matrix 階段收到 `502 PROVIDER_UNAVAILABLE`，未宣告公開全線通過。
 
 - 從 Render 公開空白首頁以單一 Chromium 會話完成完整線性 Demo，涵蓋 Excel、40／40、4／4、Google 道路地圖、Agent 工具證據、車輛事件、真實拖拉換車、取消、ORD-041、人工確認、三策略、延遲與版本；結果 `1 passed`，正式派車請求 `0`。
 - 公開 Agent 現場題目均實際呼叫 `/api/v1/agent/chat`；重要問題逐題驗證 `RunResult` 與預期 strict tool。Prompt injection 收到明確 `PROMPT_INJECTION_BLOCKED`，沒有未處理 Console／page error。
@@ -193,6 +200,13 @@
 - 完成 1440×900 視覺檢查截圖：`C:\Users\User\AppData\Local\Temp\ai-dispatch-redesign-1440x900.png`、`ai-dispatch-redesign-imported-1440x900.png`、`ai-dispatch-redesign-tasks-1440x900.png`、`ai-dispatch-redesign-tracking-1440x900.png`；Browser key 缺少時明確顯示示意路線，未宣稱 Google Maps Live。
 
 ## LAST VALIDATION
+
+- 日期：`2026-09-06 Asia/Taipei`。
+- Backend deterministic：`224 passed、28 skipped、0 failed`；Ruff、mypy 通過。首次的 6 個 setup errors 為 Windows 系統暫存目錄權限，改用專案內 `--basetemp` 後全部通過。
+- Agent corpus：共 112 案，12 類數量與要求相符；相關 deterministic suite `120 passed`。OpenAI 24-case `Runner.run` Live corpus 加 Responses strict-tool smoke `25 passed`。
+- Frontend：TypeScript、ESLint、Vitest `23 passed`、Vite production build 通過。
+- Google Routes current Live：公開 Render 與本機均為 HTTP 403，`ErrorInfo.reason=BILLING_DISABLED`，fallback=false；依規定此為 `BLOCKED`。
+- Playwright：本機 regression `2 passed、3 skipped`；公開 `3 failed`，三條都在同一個 Google Matrix 外部阻塞點收到 HTTP 502。Render `/health` HTTP 200，TDX 本版未啟用；測試觀測到的 Dispatch requests `0`。
 
 - 2026-09-06 Commit `6fcc2d221e201d99ce74395c1a2dbb655fbecb42` 公開 Render 線性 E2E：`1 passed`（5.3 分鐘）；同一瀏覽器會話由空白首頁走完整流程，15 張 1440×900 截圖存於 `docs/screenshots/public-final/`，未處理 Console／page error `0`，正式派車 requests `0`。
 - 公開正式方案：40／40 張、4／4 台、365 kg、Google 即時 Matrix→OR-Tools、方案檢查通過；本次畫面載重為 VEH-001 `106/120 kg`、VEH-002 `93/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。
