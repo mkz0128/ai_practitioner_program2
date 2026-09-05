@@ -9,7 +9,7 @@
 | Agent 建立方案語意 | 真實 `gpt-5-mini` `Runner.run` 對「請匯入這份訂單並建立今天的配送方案」選擇 `plan_dispatch`，不再誤選 `request_missing_fields` | `LOCAL LIVE PASS` |
 | Agent 語料 | `tests/fixtures/agent_dialogue_cases.json` 112 筆；測試檔共 `115 passed`（112 cases＋3 個完整性檢查） | `MOCK PASS` |
 | OpenAI Runner 語料 | `RUN_LIVE_AGENT_CORPUS=1`：24 筆代表案例全部實際進入 `Runner.run` | `24 passed`／`LOCAL LIVE PASS` |
-| Backend 全量 | `pytest -q --basetemp=.tmp/pytest-final -p no:cacheprovider` | `218 passed、28 skipped` |
+| Backend 全量 | `pytest -q --basetemp=.tmp/pytest-final-rerun -p no:cacheprovider` | `219 passed、28 skipped` |
 | Python 品質 | `ruff check src tests scripts`、`mypy src`、`git diff --check` | `PASS` |
 | Frontend 品質 | TypeScript、ESLint、Vitest 6 files／20 tests、Vite production build | `PASS` |
 | Browser regression | keyless core `2 passed`；第二組隨機資料與純附件 `2 passed`；公開完整線性 E2E `1 passed` | `PASS` |
@@ -35,12 +35,12 @@
 | 地圖 | Google Maps JavaScript API 實際顯示道路底圖、四車路線與站點；可切換單車／全部 | `PUBLIC LIVE PASS` |
 | Agent 現場題 | 公開 `/api/v1/agent/chat` 回應至少 12 次；要求工具的題目逐題斷言 `RunResult` 及 tool evidence | `PUBLIC LIVE PASS` |
 | 拖拉換車 | 瀏覽器原生 DragEvent 將 `ORD-002` 放到 `VEH-004`，收到 `/reassign/preview` 200，顯示距離／時間差異；取消後原版本不變 | `PUBLIC LIVE PASS` |
-| ORD-041 | Preview 為 40→41、365→367 kg、影響 1 台車、既有訂單換車 0、距離 +2,296 m、時間 +268 s；方案檢查通過 | `PUBLIC LIVE PASS` |
+| ORD-041 | 固定合成案例與既有 `ORD-001` 站點同位置；Preview 為 40→41、365→367 kg、影響 1 台車、既有訂單換車 0、距離 +0 m、服務時間 +180 s；方案檢查通過 | `PUBLIC LIVE PASS` |
 | 人工確認／版本 | 使用者按下套用後建立確認版本；可顯示版本列表，沒有正式派車 | `PUBLIC LIVE PASS` |
 | 三策略／延遲 | 同一 Google 資料比較最快、最平均、最穩定；+20 分鐘風險預覽可見 | `PUBLIC LIVE PASS` |
 | 安全 | Prompt injection 得到 `PROMPT_INJECTION_BLOCKED`；未處理 Console／page error 0；正式派車 requests 0 | `PUBLIC LIVE PASS` |
 
-Commit `550f73678f8772a9d1f96c03cd4d66a2870f3664` 部署後，單次完整公開 Playwright 結果為 `1 passed`（4.6 分鐘）。15 張 1440×900 截圖位於 `docs/screenshots/public-final/`。公開方案畫面實際載重為 VEH-001 `106/120 kg`、VEH-002 `93/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。三策略實測為：最快 `242,911 m／483 分鐘`、最平均 `421,013 m／707 分鐘／載重差 19 kg`、最穩定 `289,111 m／527 分鐘／載重差 29 kg`。前端白話化回歸涵蓋車輛停用、插單差異、延遲風險與未知 JSON，確保主對話不顯示內部欄位、英文風險碼或 Raw JSON。
+Commit `7769a977e0894445c4a1551e900a235c09eb8c0b` 部署後，單次完整公開 Playwright 結果為 `1 passed`（5.1 分鐘）。15 張 1440×900 截圖位於 `docs/screenshots/public-final/`。公開方案畫面實際載重為 VEH-001 `100/120 kg`、VEH-002 `99/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。三策略當次實測為：最快 `237,811 m／446 分鐘`、最平均 `427,420 m／710 分鐘／載重差 18 kg`、最穩定 `274,187 m／493 分鐘／載重差 15 kg`；名稱表示各自求解的主要目標，不宣稱其他次要指標必然排序。前端白話化回歸涵蓋車輛停用、插單差異、延遲風險與未知 JSON，確保主對話不顯示內部欄位、英文風險碼或 Raw JSON。
 
 ## 2026-09-05 最新公開驗證（Commit `cb53615c25b0732d4243bd8470e3c9dc1356dc26`）
 
