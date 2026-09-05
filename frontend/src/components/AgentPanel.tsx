@@ -42,6 +42,7 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
   const missingFieldsEvidence = evidence.find((item) => item.tool === 'request_missing_fields')?.data
   const vehicleAvailabilityEvidence = evidence.find((item) => item.tool === 'change_vehicle_availability')?.data
   const urgentInsertEvidence = evidence.find((item) => item.tool === 'preview_urgent_insert')?.data
+  const delayEvidence = evidence.find((item) => item.tool === 'simulate_delay')?.data
   if (missingFieldsEvidence && Array.isArray(missingFieldsEvidence.missing_fields)) {
     const labels: Record<string, string> = {
       order_id: '訂單編號', zone_code: '配送區域', city: '城市', district: '行政區',
@@ -79,7 +80,18 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
     parts.push(validator?.valid === true ? '方案檢查通過，尚未套用，請由調度員確認。' : '方案尚未通過檢查，不能套用。')
     return parts.join(' ')
   }
-  const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間|UNAVAILABLE|change_vehicle_availability|preview_urgent_insert|inspect_plan_overview/i.test(normalized)
+  if (delayEvidence?.delay && typeof delayEvidence.delay === 'object') {
+    const delay = delayEvidence.delay as Record<string, unknown>
+    const minutes = typeof delay.delay_minutes === 'number' ? delay.delay_minutes : null
+    const affectedOrders = Array.isArray(delay.affected_orders) ? delay.affected_orders.map(String) : []
+    const affectedCount = typeof delay.affected_order_count === 'number' ? delay.affected_order_count : affectedOrders.length
+    if (affectedCount === 0) {
+      return `模擬延遲 ${minutes ?? '指定'} 分鐘後，目前沒有訂單超過指定時段；所有訂單仍有足夠時間餘裕。`
+    }
+    const listed = affectedOrders.slice(0, 5).join('、')
+    return `模擬延遲 ${minutes ?? '指定'} 分鐘後，有 ${affectedCount} 張訂單可能超過指定時段${listed ? `：${listed}` : ''}，需要調度員確認後續安排。`
+  }
+  const containsEngineeringFields = /provider_mode|solver_status|validator\.valid|matrix.?hash|tool schema|conversation id|求解狀態|驗證器|已指派訂單|未指派訂單|計畫完成|總駕駛時間|UNAVAILABLE|change_vehicle_availability|preview_urgent_insert|inspect_plan_overview|delay_minutes|risk_level|affected_order_count/i.test(normalized)
   const trimmed = normalized.trimStart()
   const looksLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[')
   if (!containsEngineeringFields && !looksLikeJson) return normalized
@@ -109,6 +121,7 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
   if (tool === 'change_vehicle_availability') return `已建立 ${String(data.vehicle_id ?? '指定車輛')} 的可用狀態變更預覽，尚未套用。`
   if (tool === 'inspect_plan_overview') return '已依目前方案確認訂單完整性、車輛載重與需要人工處理的項目。'
+  if (tool === 'simulate_delay') return '已依目前路線的預計抵達時間與時段餘裕完成延遲風險試算。'
   if (tool === 'prepare_confirmation') return '已準備確認資訊；請在畫面按下人工確認，系統不會自動執行派車。'
   if (tool === 'assistant_help') return String(data.message ?? '已取得使用說明。')
   return '已取得後端工具證據。'

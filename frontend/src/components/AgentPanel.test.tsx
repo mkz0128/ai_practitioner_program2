@@ -57,4 +57,16 @@ describe('Agent 對外訊息格式', () => {
     const text = friendlyText('{"internal_status":"SOMETHING"}', [{ tool: 'unknown_tool', data: {} }])
     expect(text).toBe('已完成處理；詳細的計算依據已收合，請展開查看。')
   })
+
+  it('延遲模擬使用白話風險摘要，不顯示內部欄位與英文燈號', () => {
+    const text = friendlyText('delay_minutes: 20；affected_order_count: 0；risk_level=GREEN', [{
+      tool: 'simulate_delay',
+      data: { delay: { delay_minutes: 20, affected_orders: [], affected_order_count: 0 } },
+    }])
+
+    expect(text).toContain('延遲 20 分鐘')
+    expect(text).toContain('沒有訂單超過指定時段')
+    expect(text).not.toContain('delay_minutes')
+    expect(text).not.toContain('GREEN')
+  })
 })
