@@ -975,7 +975,12 @@ def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_na
 
 @function_tool(strict_mode=True)
 def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
-    """Preview a pending order or a documented synthetic demo fixture by ID."""
+    """Preview the exact order ID explicitly supplied by the user.
+
+    Never call this tool when the user did not provide an order ID; use
+    request_missing_fields instead. The deterministic service may resolve a
+    documented synthetic fixture for an explicitly supplied ID.
+    """
     normalized_order_id = order_id.strip().upper()
     pending = ctx.context.pending_order
     if pending is None or pending.order_id != normalized_order_id:
@@ -1333,9 +1338,10 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "version questions. For a new urgent order, extract only supplied fields into the "
             "strict preview_structured_urgent_insert schema; if required fields are absent, call "
             "request_missing_fields with only those fields and ask for them, even when no dataset "
-            "is loaded. If the current request names an ID listed in application metadata as a "
-            "demo_urgent_order_id, call preview_urgent_insert with that ID; the deterministic tool "
-            "resolves the documented fixture. This current-turn rule takes precedence over an "
+            "is loaded. If the current request explicitly supplies an order ID, call "
+            "preview_urgent_insert with that exact ID; the deterministic tool may resolve a "
+            "documented fixture. Never infer or substitute a demo order ID when the user did not "
+            "provide one. This current-turn rule takes precedence over an "
             "earlier request_missing_fields turn. An action request to add, insert, or fit an "
             "urgent/new order is not a "
             "capability question: never answer it with assistant_help. Use assistant_help only "

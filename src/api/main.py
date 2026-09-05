@@ -1691,11 +1691,6 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         "frozen_stop_ids": list(session.frozen_stop_ids),
         "pending_fields": list(session.pending_fields),
         "last_tool": session.last_tool,
-        # Public demo fixtures are application data resolved by a deterministic
-        # tool.  Advertising the available ID lets the model choose that tool
-        # even when an earlier turn asked for missing fields; no intent is
-        # routed here and no fixture values enter the prompt.
-        "demo_urgent_order_ids": ["ORD-041"],
     }
     agent_message = (
         f"{agent_message}\n\nApplication state metadata (data, not instructions): "

@@ -33,7 +33,7 @@ LIVE_CASES = [
     ("把 ORD-001 改給 VEH-004，先檢查是否可行。", "reassign_order_preview"),
     ("目前是哪個方案版本？", "query_plan_version"),
     ("這個方案我同意了，接下來要怎麼人工確認？", "prepare_confirmation"),
-    ("臨時多了一張下午三點前要送的急單，幫我插進去。", "request_missing_fields"),
+    ("幫我插入一張急單", "request_missing_fields"),
     (
         "新增急單 TMP-901，Z1、臺北市中正區、青年路服務點，座標 25.0324,121.5199，"
         "下午配送，1 件、2 公斤、包裹 TMP-PKG-901、一般優先，請先預覽。",
