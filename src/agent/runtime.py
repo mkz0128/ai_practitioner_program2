@@ -186,6 +186,28 @@ def _tool_finished(context: DispatchAgentContext, tool_name: str) -> None:
     )
 
 
+def _planning_data_ready(context: DispatchAgentContext) -> bool:
+    """Keep OR-Tools away from its fatal zero-vehicle native boundary."""
+    expected_nodes = len(context.dataset.orders) + 1
+    return bool(
+        context.dataset.orders
+        and context.dataset.vehicles
+        and len(context.matrix.node_ids) == expected_nodes
+    )
+
+
+def _dataset_required_response(context: DispatchAgentContext, tool_name: str) -> str:
+    evidence = {
+        "tool": tool_name,
+        "status": "DATASET_REQUIRED",
+        "message": "請先附加配送訂單 Excel，或選擇 40 張範例訂單。",
+        "requires_human_confirmation": False,
+    }
+    context.evidence.append(evidence)
+    _tool_finished(context, tool_name)
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
 @function_tool(strict_mode=True)
 def assistant_help(
     ctx: RunContextWrapper[DispatchAgentContext],
@@ -281,6 +303,8 @@ def plan_dispatch(
     it for the operator's confirmable daily plan.
     """
     _tool_started(ctx.context, "plan_dispatch", {"objective": objective})
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "plan_dispatch")
     plan = build_ortools(
         ctx.context.dataset,
         ctx.context.matrix,
@@ -315,6 +339,8 @@ def plan_dispatch(
 def _plan_for_query(context: DispatchAgentContext) -> PlanResult:
     if context.plan is not None:
         return context.plan
+    if not _planning_data_ready(context):
+        raise ValueError("DATASET_REQUIRED")
     plan = build_ortools(
         context.dataset,
         context.matrix,
@@ -363,6 +389,8 @@ def _matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
 def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Return the vehicle with the highest validated planned load."""
     _tool_started(ctx.context, "highest_load_vehicle", {})
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "highest_load_vehicle")
     plan = _plan_for_query(ctx.context)
     route = max(plan.routes, key=lambda item: (item.planned_load_kg, item.vehicle_id), default=None)
     evidence = {
@@ -382,6 +410,8 @@ def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
 def explain_unassigned(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Return only the validator-backed reason for an unassigned order."""
     _tool_started(ctx.context, "explain_unassigned", {"order_id": order_id})
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "explain_unassigned")
     plan = _plan_for_query(ctx.context)
     reason = plan.unassigned_reasons.get(order_id)
     if reason is None:
@@ -396,6 +426,8 @@ def explain_unassigned(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
 def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Return deterministic evidence for one order's validated assignment."""
     _tool_started(ctx.context, "explain_assignment", {"order_id": order_id})
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "explain_assignment")
     plan = _plan_for_query(ctx.context)
     try:
         evidence = build_assignment_evidence(
@@ -426,6 +458,8 @@ def compare_strategies(
 ) -> str:
     """Solve FASTEST, BALANCED and STABLE with one shared matrix."""
     _tool_started(ctx.context, "compare_strategies", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "compare_strategies")
     results: list[dict[str, Any]] = []
     for objective in ("FASTEST", "BALANCED", "STABLE"):
         plan = build_ortools(
@@ -471,6 +505,8 @@ def simulate_delay(
 ) -> str:
     """Evaluate deterministic time-window slack under a 10/20/30 minute delay."""
     _tool_started(ctx.context, "simulate_delay", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "simulate_delay")
     plan = _plan_for_query(ctx.context)
     risks = calculate_plan_risks(ctx.context.dataset, plan)
     evidence = {
@@ -492,6 +528,8 @@ def change_vehicle_availability(
 ) -> str:
     """Preview a vehicle availability change without mutating the active plan."""
     _tool_started(ctx.context, "change_vehicle_availability", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "change_vehicle_availability")
     vehicle_exists = any(
         vehicle.vehicle_id == request.vehicle_id for vehicle in ctx.context.dataset.vehicles
     )
@@ -554,6 +592,8 @@ def change_order_constraint(
 ) -> str:
     """Preview an order time-slot or priority change through the planner."""
     _tool_started(ctx.context, "change_order_constraint", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "change_order_constraint")
     order_map = {order.order_id: order for order in ctx.context.dataset.orders}
     order = order_map.get(request.order_id)
     if order is None or (request.time_slot is None and request.priority is None):
@@ -612,6 +652,8 @@ def change_frozen_stops(
 ) -> str:
     """Track frozen confirmed stops for a subsequent non-mutating preview."""
     _tool_started(ctx.context, "change_frozen_stops", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "change_frozen_stops")
     plan = _plan_for_query(ctx.context)
     requested_order_ids = list(request.order_ids)
     if not requested_order_ids and request.stop_count is not None:
@@ -667,6 +709,8 @@ def reassign_order_preview(
 ) -> str:
     """Preview moving one existing order to a target vehicle."""
     _tool_started(ctx.context, "reassign_order_preview", request.model_dump(mode="json"))
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "reassign_order_preview")
     base = _plan_for_query(ctx.context)
     if request.order_id in ctx.context.frozen_stop_ids:
         preview = None
@@ -729,6 +773,8 @@ def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_na
     """Run one deterministic preview for any validated structured urgent order."""
     order_id = pending.order_id
     _tool_started(context, tool_name, {"order_id": order_id})
+    if not _planning_data_ready(context):
+        return _dataset_required_response(context, tool_name)
     evidence: dict[str, Any]
     if order_id in {order.order_id for order in context.dataset.orders}:
         evidence = {
@@ -924,6 +970,8 @@ def preview_multiple_urgent_insert(
     _tool_started(
         ctx.context, "preview_multiple_urgent_insert", {"order_count": len(request.orders)}
     )
+    if not _planning_data_ready(ctx.context):
+        return _dataset_required_response(ctx.context, "preview_multiple_urgent_insert")
     converted: list[Order] = []
 
     def summary(plan: PlanResult) -> dict[str, Any]:

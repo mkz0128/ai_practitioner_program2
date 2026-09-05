@@ -1,5 +1,17 @@
 # 規格驗證報告
 
+## 2026-09-05 公開 Agent 原生崩潰回歸
+
+| 項目 | 證據 | 狀態 |
+|---|---|---|
+| 公開故障根因 | Render runtime log 顯示零車輛資料進入 OR-Tools，觸發 `routing.cc` 的原生 assertion；服務重啟期間回傳 HTTP 502 | 已定位 |
+| 程式層防護 | `src/agent/runtime.py::_planning_data_ready`；所有規劃、比較、延遲、車況、訂單約束、凍結、換車與插單工具在求解前 fail closed | `PASS` |
+| 回歸測試 | `tests/test_agent_empty_dataset_safety.py` 八個 strict-tool 案例，均回傳 `DATASET_REQUIRED`，且不建立方案 | `8 passed` |
+| Backend 全量 | `pytest` 212 passed、28 skipped；skipped 均為明確 opt-in Live Provider gates | `PASS` |
+| Frontend 品質 | TypeScript、ESLint、Vitest 9 tests、production build；Playwright 2 passed、3 個 opt-in Live／random tests skipped | `PASS` |
+
+公開網站必須在修正 Commit 完成 Render 自動部署後重新執行 Agent、Excel、地圖、Provider、Console、Network 與正式派車零請求驗收；部署前不宣稱公開修正完成。
+
 ## 2026-09-05 正式方案與控制塔本機驗證
 
 | 項目 | 證據 | 狀態 |

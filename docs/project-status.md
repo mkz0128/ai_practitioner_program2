@@ -41,13 +41,13 @@
 
 ## NOW
 
-提交已通過本機驗證的正式方案與控制塔修正，等待 Render 自動部署後執行公開網站驗收。
+提交公開 Agent 空資料原生崩潰修正，等待 Render 自動部署後重新執行公開網站驗收。
 
 ## NEXT
 
-1. 驗證 Render 使用最新 Commit，執行公開健康檢查、主要流程與瀏覽器 Console／Network 檢查。
-2. 以 Render 環境重新驗證 OpenAI、Google Routes 與 Google Maps，禁止用 fallback 冒充 Live。
-3. 將公開驗收證據與唯一外部阻塞同步至驗證報告。
+1. 驗證 Render 使用最新修正 Commit，重新執行公開 Agent 與 Excel 流程。
+2. 以 Render 環境重驗 Google Routes、Google Maps、Console 與 Network，禁止用 fallback 冒充 Live。
+3. 同步公開驗收證據，確認正式派車請求維持 0。
 
 ## BLOCKED
 
@@ -89,6 +89,10 @@
 - `PUBLIC-AUDIT-001 — Acceptance`：Render 公開網址實測 `/health`、`/ready`、Swagger／OpenAPI 13 paths、CORS、官方 40 單匯入、Google Matrix → OR-Tools、Google Maps 道路 geometry、OpenAI `Runner.run` tool evidence 與 ORD-041 preview；未執行 Dispatch。公開驗收使用合成資料，未輸出任何憑證。
 
 ## DONE THIS ROUND
+
+- 從 Render runtime log 定位 HTTP 502 根因：無資料對話誤選規劃型工具後，零車輛資料進入 OR-Tools 並觸發原生 assertion。
+- 所有可能進入求解器的 Agent 工具加入資料就緒的 fail-closed 防線；沒有訂單、車輛或完整 Matrix 時改回覆需要資料，不執行求解器。
+- 新增八個空資料集 strict-tool 回歸案例；完整後端 `212 passed、28 skipped`，前端 TypeScript／ESLint／Vitest 9 tests／production build 與 Playwright regression 2 tests 均通過。
 
 - 以 regression-first 強制所有一般正式方案固定使用 `ORTOOLS`；`BASELINE` 僅能作為比較，不能確認。
 - Plan API 新增「完整性」、「規則檢查」與「可確認性」三個獨立證據；有未安排訂單、資料缺漏、provider 不完整或規則違規時皆禁止人工確認。
