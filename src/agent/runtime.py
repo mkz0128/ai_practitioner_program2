@@ -195,10 +195,15 @@ def assistant_help(
         "DATA_REQUIREMENTS",
         "CAPACITY_RULES",
         "URGENT_INSERTION",
-        "DATA_REQUIRED",
     ],
 ) -> str:
-    """Return deterministic onboarding guidance without inventing a plan."""
+    """Return deterministic guidance for explicit informational questions only.
+
+    This tool is intentionally not a data-missing or action router.  Requests to
+    create, insert, change, or otherwise modify a delivery plan must use a
+    structured action tool (or ``request_missing_fields`` when required data is
+    absent), even when the dataset has not been loaded.
+    """
     _tool_started(ctx.context, "assistant_help", {"topic": topic})
     messages = {
         "CAPABILITIES": (
@@ -216,10 +221,6 @@ def assistant_help(
         "URGENT_INSERTION": (
             "臨時訂單會使用已驗證的結構化資料，建立插單前後的最小變動 preview；"
             "只有人工確認後才會套用。"
-        ),
-        "DATA_REQUIRED": (
-            "要建立實際配送方案，請上傳今日 Excel 或選擇 40 張範例訂單。"
-            "尚未提供資料前不會猜測訂單或路線。"
         ),
     }
     evidence = {
@@ -1214,12 +1215,13 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "strict preview_structured_urgent_insert schema; if required fields are absent, call "
             "request_missing_fields with only those fields and ask for them, even when no dataset "
             "is loaded. An action request to add, insert, or fit an urgent/new order is not a "
-            "capability question: never answer it with assistant_help or DATA_REQUIRED. Use "
-            "assistant_help only for explicit informational questions about capabilities or "
-            "required columns. Use "
+            "capability question: never answer it with assistant_help. Use assistant_help only "
+            "for explicit informational questions about capabilities, required columns, capacity "
+            "rules, or the insertion workflow. Use "
             "preview_multiple_urgent_insert for multiple supplied "
-            "urgent orders. If there is no validated dataset, use assistant_help for a "
-            "short capability or data-requirement response. Confirmations use "
+            "urgent orders. If there is no validated dataset, use assistant_help only for an "
+            "explicit informational question; action requests must use the relevant structured "
+            "tool or request_missing_fields. Confirmations use "
             "prepare_confirmation; never mutate state or dispatch from chat. All route changes "
             "are previews followed by human confirmation. Answer briefly in Traditional Chinese "
             "using only evidence values, and refuse unrelated requests without exposing system "
@@ -1240,8 +1242,8 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             preview_urgent_insert,
             preview_structured_urgent_insert,
             preview_multiple_urgent_insert,
-            assistant_help,
             request_missing_fields,
+            assistant_help,
             prepare_confirmation,
         ],
         input_guardrails=[reject_prompt_injection],
