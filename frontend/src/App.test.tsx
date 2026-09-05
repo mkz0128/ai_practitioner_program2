@@ -113,4 +113,35 @@ describe('控制塔主流程', () => {
     expect(screen.getByText('尚未匯入訂單')).toBeInTheDocument()
     expect(screen.getByText(/已清除目前畫面與未確認變更/)).toBeInTheDocument()
   })
+
+  it('通用插單無法安排時顯示差異且禁止套用', async () => {
+    window.localStorage.setItem('dispatch.active-plan', JSON.stringify({ plan_id: 'PLAN-001', version: 1 }))
+    api.chat.mockResolvedValueOnce({
+      session_id: 'TEST', agent_run_id: 'RUN', message: '已完成確定性工具計算。',
+      requires_human_confirmation: true,
+      evidence: [{
+        tool: 'preview_structured_urgent_insert',
+        data: {
+          status: 'PREVIEWED', order_id: 'ORD-OVER-901', feasible: false,
+          mode: 'FULL_REPLAN', full_replan_reason: 'NO_LEGAL_SINGLE_ROUTE_INSERTION',
+          affected_vehicle_count: 0, moved_order_count: 0,
+          before: plan.summary,
+          after: { ...plan.summary, unassigned_order_count: 1, unassigned_orders: ['ORD-OVER-901'] },
+          comparison: { base_algorithm: 'ORTOOLS', preview_algorithm: 'ORTOOLS', base_dataset_hash: 'dataset', preview_dataset_hash: 'preview-dataset' },
+          diff: { inserted_order_id: 'ORD-OVER-901', reassigned_orders: [], sequence_changes: [], vehicle_load_changes: [], total_distance_delta_m: 0, total_duration_delta_s: 0 },
+          structured_order: { order_id: 'ORD-OVER-901' }, structured_packages: [],
+          validator: { valid: true }, unassigned_orders: ['ORD-OVER-901'],
+        },
+      }],
+    })
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('40／40')).toBeInTheDocument())
+    fireEvent.change(screen.getByRole('textbox', { name: '輸入訊息' }), { target: { value: '新增一張超重急單' } })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '輸入訊息' }), { key: 'Enter', code: 'Enter' })
+
+    await waitFor(() => expect(screen.getByText(/目前不可套用/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '套用變更' })).toBeDisabled()
+    expect(api.previewUrgent).not.toHaveBeenCalled()
+  })
 })

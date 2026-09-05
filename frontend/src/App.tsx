@@ -39,6 +39,28 @@ function previewPayload(data: Record<string, unknown>): { order: UrgentOrderPayl
   return { order: order as UrgentOrderPayload, packages: packages as UrgentPackagePayload[] }
 }
 
+function rejectedPreviewFromEvidence(data: Record<string, unknown>, activePlan: Plan): UrgentPreview | null {
+  if (data.status !== 'PREVIEWED' || data.feasible !== false) return null
+  if (!data.before || !data.after || !data.comparison || !data.diff) return null
+  if (typeof data.before !== 'object' || typeof data.after !== 'object'
+    || typeof data.comparison !== 'object' || typeof data.diff !== 'object') return null
+  return {
+    plan_id: activePlan.plan_id,
+    base_version: activePlan.version,
+    preview_version: activePlan.version,
+    feasible: false,
+    requires_human_confirmation: true,
+    mode: data.mode === 'MINIMAL_CHANGE' ? 'MINIMAL_CHANGE' : 'FULL_REPLAN',
+    full_replan_reason: typeof data.full_replan_reason === 'string' ? data.full_replan_reason : null,
+    affected_vehicle_count: typeof data.affected_vehicle_count === 'number' ? data.affected_vehicle_count : 0,
+    moved_order_count: typeof data.moved_order_count === 'number' ? data.moved_order_count : 0,
+    before: data.before as Plan['summary'],
+    after: data.after as Plan['summary'],
+    comparison: data.comparison as UrgentPreview['comparison'],
+    diff: data.diff as UrgentPreview['diff'],
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<'assistant' | 'tasks' | 'tracking'>('assistant')
   const [sessionId] = useState(() => `CONVERSATION-${Math.random().toString(36).slice(2, 10).toUpperCase()}`)
@@ -194,7 +216,14 @@ export default function App() {
       const previewEvidence = response.evidence.find((item) =>
         (item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert') && item.data.status === 'PREVIEWED')
       const structuredPreview = previewEvidence ? previewPayload(previewEvidence.data) : null
-      if (structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
+      const rejectedPreview = previewEvidence && activePlan
+        ? rejectedPreviewFromEvidence(previewEvidence.data, activePlan)
+        : null
+      if (rejectedPreview) {
+        // An infeasible deterministic preview is evidence worth showing, but it
+        // must never be persisted as a candidate version or become confirmable.
+        setPreview(rejectedPreview)
+      } else if (structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
         // The Agent tool remains evidence-only; this REST preview creates the
         // proposed immutable version used by the human confirmation button.
         setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, structuredPreview.order, structuredPreview.packages, controller.signal))
