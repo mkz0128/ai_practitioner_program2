@@ -580,6 +580,19 @@ def build_ortools(
         routing.SetArcCostEvaluatorOfAllVehicles(neutral_cost_idx)
         capacity_dimension.SetGlobalSpanCostCoefficient(1000)
 
+        # Global span only minimises the largest end load because every route
+        # starts at zero.  Add symmetric soft bounds around the average demand
+        # so lightly loaded vehicles are pulled toward the same target as well.
+        # This makes the user-facing "balanced" metric (max load - min load)
+        # match the objective being solved instead of relying on coincidence.
+        total_demand = sum(round(order.total_weight_kg * 1000) for order in orders)
+        average_demand = round(total_demand / max(len(vehicles), 1))
+        for vehicle_index, capacity in enumerate(capacities):
+            target = min(average_demand, capacity)
+            end_index = routing.End(vehicle_index)
+            capacity_dimension.SetCumulVarSoftLowerBound(end_index, target, 1000)
+            capacity_dimension.SetCumulVarSoftUpperBound(end_index, target, 1000)
+
         # Keep stop counts close when load totals are equal.
         def stop_count_callback(from_index: int) -> int:
             return 0 if manager.IndexToNode(from_index) == 0 else 1
