@@ -191,6 +191,8 @@ export interface UrgentPreview {
 
 export interface StrategySummary {
   objective: 'FASTEST' | 'BALANCED' | 'STABLE'
+  primary_goal: string
+  tradeoff: string
   algorithm: 'ORTOOLS' | 'BASELINE'
   total_distance_m: number
   total_duration_s: number

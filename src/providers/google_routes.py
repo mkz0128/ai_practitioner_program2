@@ -13,9 +13,43 @@ from src.services.matrix import MatrixResult, SimulatedRouteProvider
 class GoogleRoutesProviderError(RuntimeError):
     """Safe provider error; message never contains credentials or request headers."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, category: str | None = None) -> None:
         super().__init__(code)
         self.code = code
+        self.category = category
+
+
+def _classify_google_error(response: httpx.Response) -> str:
+    """Map a Google error response to a safe, non-secret operational category."""
+    try:
+        body = response.json()
+    except (TypeError, ValueError):
+        body = {}
+    error = body.get("error") if isinstance(body, dict) else None
+    error = error if isinstance(error, dict) else {}
+    status = str(error.get("status", "")).upper()
+    message = str(error.get("message", "")).casefold()
+    reasons = " ".join(
+        str(item.get("reason", "")).casefold()
+        for item in error.get("details", [])
+        if isinstance(item, dict)
+    )
+    text = f"{status} {reasons} {message}"
+    if "api not enabled" in text or "has not been used" in text or "service_disabled" in text:
+        return "API_NOT_ENABLED"
+    if "billing" in text or "billing_disabled" in text:
+        return "BILLING_DISABLED"
+    if "quota" in text or "rate limit" in text or response.status_code == 429:
+        return "QUOTA_EXCEEDED"
+    if "invalid api key" in text or (status == "INVALID_ARGUMENT" and "key" in text):
+        return "INVALID_API_KEY"
+    if "referer" in text or "referrer" in text or "ip address" in text:
+        return "WRONG_API_RESTRICTION"
+    if response.status_code in {401, 403} or status == "PERMISSION_DENIED":
+        return "API_KEY_RESTRICTED"
+    if response.status_code == 400 or status == "INVALID_ARGUMENT":
+        return "REQUEST_INVALID"
+    return "OTHER"
 
 
 class GoogleRoutesProvider:
@@ -171,7 +205,10 @@ class GoogleRoutesProvider:
             raise
         except httpx.HTTPStatusError as exc:
             if not allow_fallback:
-                raise GoogleRoutesProviderError(f"GOOGLE_HTTP_{exc.response.status_code}") from None
+                raise GoogleRoutesProviderError(
+                    f"GOOGLE_HTTP_{exc.response.status_code}",
+                    category=_classify_google_error(exc.response),
+                ) from None
             return replace(fallback, warning="GOOGLE_HTTP_ERROR")
         except httpx.TimeoutException:
             if not allow_fallback:
@@ -253,7 +290,10 @@ class GoogleRoutesProvider:
             raise
         except httpx.HTTPStatusError as exc:
             if not allow_fallback:
-                raise GoogleRoutesProviderError(f"GOOGLE_HTTP_{exc.response.status_code}") from None
+                raise GoogleRoutesProviderError(
+                    f"GOOGLE_HTTP_{exc.response.status_code}",
+                    category=_classify_google_error(exc.response),
+                ) from None
             return replace(fallback, warning="GOOGLE_HTTP_ERROR")
         except httpx.TimeoutException:
             if not allow_fallback:
@@ -331,7 +371,10 @@ class GoogleRoutesProvider:
             return f"simulated:{fallback}"
         except httpx.HTTPStatusError as exc:
             if not allow_fallback:
-                raise GoogleRoutesProviderError(f"GOOGLE_HTTP_{exc.response.status_code}") from None
+                raise GoogleRoutesProviderError(
+                    f"GOOGLE_HTTP_{exc.response.status_code}",
+                    category=_classify_google_error(exc.response),
+                ) from None
             return f"simulated:{fallback}"
         except httpx.TimeoutException:
             if not allow_fallback:

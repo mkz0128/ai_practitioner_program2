@@ -407,7 +407,7 @@ Response:
 
 下列端點為向後相容的非破壞性擴充，所有方案變更仍需人工確認：
 
-- `POST /api/v1/plans/compare`：以同一 `dataset_id` 與 Matrix 回傳 `FASTEST`、`BALANCED`、`STABLE` 三組 Validator-backed summaries。
+- `POST /api/v1/plans/compare`：以同一 `dataset_id` 與 Matrix 回傳 `FASTEST`、`BALANCED`、`STABLE` 三組 Validator-backed summaries；每組包含 `primary_goal`、`tradeoff`、`total_duration_s`、`load_spread_kg` 與 `min_slack_minutes`，前端不得以名稱推測主要目標。
 - `GET /api/v1/plans/{plan_id}/versions`：列出版本、建立時間、狀態、objective、完整性及未安排訂單。
 - `POST /api/v1/plans/{plan_id}/restore`：以 `source_version` 建立新的 `PROPOSED` 版本，復原後重新執行 Validator。
 - `POST /api/v1/plans/{plan_id}/delay-preview`：接受 `delay_minutes` 為 10、20 或 30，回傳 ETA 餘裕與風險燈號。

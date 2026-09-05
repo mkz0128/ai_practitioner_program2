@@ -832,6 +832,7 @@ def create_plan(payload: CreatePlanRequest, request: Request) -> Any:
             provider="GOOGLE",
             operation="computeRouteMatrix",
             provider_error=exc.code,
+            provider_error_category=exc.category,
             fallback_used=False,
             retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
         )
@@ -882,8 +883,23 @@ def compare_plan_strategies(payload: CompareStrategiesRequest, request: Request)
             "Google Routes 即時矩陣無法取得。",
             provider="GOOGLE",
             provider_error=exc.code,
+            provider_error_category=exc.category,
             fallback_used=False,
         )
+    strategy_goals: dict[str, tuple[str, str]] = {
+        "FASTEST": (
+            "最小化總行駛時間（秒）",
+            "速度優先，可能犧牲車輛工作量平衡。",
+        ),
+        "BALANCED": (
+            "縮小各車載重差距",
+            "工作量較平均，可能增加總距離與行駛時間。",
+        ),
+        "STABLE": (
+            "保留較大的時段餘裕",
+            "較能承受延遲，可能增加總距離與時間。",
+        ),
+    }
     strategies: list[dict[str, Any]] = []
     for objective in ("FASTEST", "BALANCED", "STABLE"):
         plan = build_ortools(
@@ -899,6 +915,8 @@ def compare_plan_strategies(payload: CompareStrategiesRequest, request: Request)
         strategies.append(
             {
                 "objective": objective,
+                "primary_goal": strategy_goals[objective][0],
+                "tradeoff": strategy_goals[objective][1],
                 "algorithm": plan.algorithm,
                 "total_distance_m": plan.total_distance_m,
                 "total_duration_s": plan.total_driving_time_s,
@@ -1117,6 +1135,7 @@ def get_map_data(plan_id: str, request: Request, version: int | None = None) -> 
                     provider="GOOGLE",
                     operation="computeRoutes",
                     provider_error=exc.code,
+                    provider_error_category=exc.category,
                     fallback_used=False,
                     retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
                 )
@@ -1250,6 +1269,7 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             provider="GOOGLE",
             operation="computeRouteMatrix",
             provider_error=exc.code,
+            provider_error_category=exc.category,
             fallback_used=False,
             retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
         )
@@ -1534,6 +1554,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                 provider="GOOGLE",
                 operation="computeRouteMatrix",
                 provider_error=exc.code,
+                provider_error_category=exc.category,
                 fallback_used=False,
                 retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
             )

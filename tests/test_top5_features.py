@@ -71,6 +71,20 @@ def test_strategy_comparison_uses_three_objectives_and_one_matrix() -> None:
     }
     assert len(fingerprints) == 3
     assert body["matrix_hash"]
+    by_objective = {item["objective"]: item for item in body["strategies"]}
+    assert all(item["primary_goal"] and item["tradeoff"] for item in body["strategies"])
+    assert by_objective["FASTEST"]["total_duration_s"] <= min(
+        by_objective["BALANCED"]["total_duration_s"],
+        by_objective["STABLE"]["total_duration_s"],
+    )
+    assert by_objective["BALANCED"]["load_spread_kg"] <= min(
+        by_objective["FASTEST"]["load_spread_kg"],
+        by_objective["STABLE"]["load_spread_kg"],
+    )
+    assert by_objective["STABLE"]["min_slack_minutes"] >= max(
+        by_objective["FASTEST"]["min_slack_minutes"],
+        by_objective["BALANCED"]["min_slack_minutes"],
+    )
 
 
 def test_delay_preview_returns_deterministic_slack_and_simulation() -> None:

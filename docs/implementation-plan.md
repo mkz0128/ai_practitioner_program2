@@ -116,7 +116,7 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 
 ## 企業級擴充功能（B 類）
 
-下列功能來自企業 TMS 對照，與 A 類原始必要功能分開管理；本輪已實作的三策略比較與延遲風險屬核心進階服務，不再列為僅規劃：
+下列功能來自企業 TMS 對照，與 A 類原始必要功能分開管理；本輪已實作的三策略比較與延遲風險屬核心進階服務，不再列為僅規劃。三策略共用同一 Matrix，`FASTEST` 以 `total_driving_time_s` 最小化、`BALANCED` 以載重 span 最小化、`STABLE` 以最小時段餘裕最大化；API 與回歸測試會驗證這些顯示指標，而不是只比較 solver objective value：
 
 1. ERP／WMS／電商訂單整合層。
 2. 車輛出發後的路況與 ETA 持續監控。

@@ -335,7 +335,7 @@ Render Secrets 只注入 server-side `OPENAI_API_KEY`、`GOOGLE_ROUTES_SERVER_AP
 
 ## 進階功能實作邊界
 
-- `compare_strategies` 以同一份 Matrix 分別執行 `FASTEST`、`BALANCED`、`STABLE`；三者使用不同的 OR-Tools 初始策略／成本權重，並各自通過 Validator。
+- `compare_strategies` 以同一份 Matrix 分別執行 `FASTEST`、`BALANCED`、`STABLE`；三者使用不同的 OR-Tools 成本函數。`FASTEST` 以總行駛秒數為主要成本，`BALANCED` 以 Capacity dimension 的載重 span 為主要懲罰，`STABLE` 以 Time dimension span／時段餘裕為主要懲罰。API 同時回傳 `primary_goal`、`tradeoff`、距離、時間、載重差與最小餘裕；比較回歸測試強制 FASTEST 的時間不劣於其他方案、BALANCED 的載重差最小、STABLE 的最小餘裕最大，且三者共用同一 Matrix 並通過同一 Validator。
 - `calculate_plan_risks` 以 ETA、時段截止、服務時間與剩餘餘裕計算綠／黃／紅風險及 10／20／30 分鐘延遲情境，不產生沒有歷史依據的機率。
 - `reassign_order_preview` 與 `change_order_constraint` 只建立不可變的 `PROPOSED` preview；換車、時段及優先級變更必須先驗證，再由調度員確認。
 - `change_frozen_stops` 以結構化 order IDs 保存凍結範圍；任何未來重排均應以此範圍作為服務層約束，不能由模型自行忽略。

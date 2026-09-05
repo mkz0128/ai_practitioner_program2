@@ -102,6 +102,27 @@ class MultipleUrgentOrderInput(BaseModel):
     orders: list[StructuredUrgentOrderInput] = Field(min_length=1, max_length=5)
 
 
+class MissingFieldsInput(BaseModel):
+    """Strict list of fields that the dispatcher must provide before planning."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    fields: list[
+        Literal[
+            "order_id",
+            "zone_code",
+            "city",
+            "district",
+            "location_label",
+            "latitude",
+            "longitude",
+            "time_slot",
+            "declared_package_count",
+            "packages",
+        ]
+    ] = Field(min_length=1)
+
+
 class VehicleAvailabilityChange(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -208,6 +229,26 @@ def assistant_help(
     }
     ctx.context.evidence.append(evidence)
     _tool_finished(ctx.context, "assistant_help")
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+@function_tool(strict_mode=True)
+def request_missing_fields(
+    ctx: RunContextWrapper[DispatchAgentContext], request: MissingFieldsInput
+) -> str:
+    """Ask for only the structured fields required before an urgent preview."""
+    _tool_started(ctx.context, "request_missing_fields", request.model_dump(mode="json"))
+    fields = list(dict.fromkeys(request.fields))
+    ctx.context.pending_fields = tuple(fields)
+    evidence = {
+        "tool": "request_missing_fields",
+        "status": "MISSING_REQUIRED_FIELDS",
+        "missing_fields": fields,
+        "message": "請補充上述配送欄位後，才能進行安全的插單預覽。",
+        "requires_human_confirmation": False,
+    }
+    ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "request_missing_fields")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -1149,8 +1190,9 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             "change_frozen_stops for freeze/unfreeze requests, "
             "reassign_order_preview for a requested vehicle move, and query_plan_version for "
             "version questions. For a new urgent order, extract only supplied fields into the "
-            "strict preview_structured_urgent_insert schema; if required fields are absent, ask "
-            "only for those fields. Use preview_multiple_urgent_insert for multiple supplied "
+            "strict preview_structured_urgent_insert schema; if required fields are absent, call "
+            "request_missing_fields with only those fields and ask for them. Use "
+            "preview_multiple_urgent_insert for multiple supplied "
             "urgent orders. If there is no validated dataset, use assistant_help for a "
             "short capability or data-requirement response. Confirmations use "
             "prepare_confirmation; never mutate state or dispatch from chat. All route changes "
@@ -1174,6 +1216,7 @@ def create_dispatch_agent(model_override: Model | None = None) -> Agent[Dispatch
             preview_structured_urgent_insert,
             preview_multiple_urgent_insert,
             assistant_help,
+            request_missing_fields,
             prepare_confirmation,
         ],
         input_guardrails=[reject_prompt_injection],

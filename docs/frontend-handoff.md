@@ -29,7 +29,7 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 ## 實作現況與必要功能邊界
 
-`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫原有 13 組 REST routes 與 5 組進階路由，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff、策略比較、延遲風險、版本復原與人工 confirm；不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
+`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫原有 13 組 REST routes 與 5 組進階路由，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff、策略比較、延遲風險、版本復原與人工 confirm；策略卡片直接顯示 API 回傳的 `primary_goal` 與 `tradeoff`，不以 `FASTEST` 等名稱猜測目標。不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
 
 `POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 

@@ -49,7 +49,7 @@ export function PlanInsights({
         <div className="insight-block">
           <strong>方案比較</strong>
           {!comparison && <span className="hint">按下「比較三種方案」後顯示不同目標函數的實際結果。</span>}
-          {comparison && <div className="strategy-list">{comparison.strategies.map((strategy) => <div className="strategy-row" key={strategy.objective}><span><b>{strategy.objective === 'FASTEST' ? '最快' : strategy.objective === 'BALANCED' ? '最平均' : '最穩定'}</b><small>{strategy.objective}</small></span><span>{strategy.total_distance_m.toLocaleString()} m</span><span>{Math.round(strategy.total_duration_s / 60)} 分鐘</span><span>載重差 {strategy.load_spread_kg.toFixed(1)} kg</span></div>)}</div>}
+          {comparison && <div className="strategy-list">{comparison.strategies.map((strategy) => <div className="strategy-row" key={strategy.objective} title={strategy.tradeoff}><span><b>{strategy.objective === 'FASTEST' ? '最快' : strategy.objective === 'BALANCED' ? '最平均' : '最穩定'}</b><small>{strategy.primary_goal}</small></span><span>{strategy.total_distance_m.toLocaleString()} m</span><span>{Math.round(strategy.total_duration_s / 60)} 分鐘</span><span>載重差 {strategy.load_spread_kg.toFixed(1)} kg</span></div>)}</div>}
         </div>
         <div className="insight-block">
           <strong>方案版本</strong>

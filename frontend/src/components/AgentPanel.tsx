@@ -35,6 +35,16 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
     .replace(/FEASIBLE/g, '可行')
   const planEvidence = evidence.find((item) => item.tool === 'plan_dispatch')?.data
   const highestLoadEvidence = evidence.find((item) => item.tool === 'highest_load_vehicle')?.data
+  const missingFieldsEvidence = evidence.find((item) => item.tool === 'request_missing_fields')?.data
+  if (missingFieldsEvidence && Array.isArray(missingFieldsEvidence.missing_fields)) {
+    const labels: Record<string, string> = {
+      order_id: '訂單編號', zone_code: '配送區域', city: '城市', district: '行政區',
+      location_label: '配送地點', latitude: '緯度', longitude: '經度', time_slot: '配送時段',
+      declared_package_count: '包裹件數', packages: '包裹重量',
+    }
+    const missing = missingFieldsEvidence.missing_fields.map((field) => labels[String(field)] || String(field))
+    return `要進行插單，還需要補充：${missing.join('、')}。`
+  }
   if (highestLoadEvidence && typeof highestLoadEvidence.vehicle_id === 'string') {
     const load = typeof highestLoadEvidence.planned_load_kg === 'number' ? highestLoadEvidence.planned_load_kg.toFixed(1) : '—'
     const capacity = typeof highestLoadEvidence.max_load_kg === 'number' ? highestLoadEvidence.max_load_kg.toFixed(1) : '—'
@@ -66,6 +76,7 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   if (tool === 'highest_load_vehicle') return `已從驗證方案找出載重最高的車輛：${String(data.vehicle_id ?? '—')}。`
   if (tool === 'explain_assignment') return '這份說明來自訂單、車輛容量、服務區域與時段驗證結果。'
   if (tool === 'preview_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
+  if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
   if (tool === 'prepare_confirmation') return '已準備確認資訊；請在畫面按下人工確認，Agent 不會執行 Dispatch。'
   if (tool === 'assistant_help') return String(data.message ?? '已取得使用說明。')
   return '已取得後端工具證據。'

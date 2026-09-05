@@ -12,4 +12,13 @@ describe('Agent 對外訊息格式', () => {
     expect(text).toContain('154.0／160.0 kg')
     expect(text).not.toContain('"tool"')
   })
+
+  it('資料不足時列出結構化缺欄，不回傳錯誤或猜測結果', () => {
+    const text = friendlyText('需要更多資料。', [
+      { tool: 'request_missing_fields', data: { missing_fields: ['order_id', 'packages'] } },
+    ])
+
+    expect(text).toContain('訂單編號、包裹重量')
+    expect(text).not.toContain('Raw')
+  })
 })

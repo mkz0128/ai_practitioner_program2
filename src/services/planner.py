@@ -494,6 +494,7 @@ def build_ortools(
         round((vehicle.max_load_kg - vehicle.current_load_kg) * 1000) for vehicle in vehicles
     ]
     routing.AddDimensionWithVehicleCapacity(demand_idx, 0, capacities, True, "Capacity")
+    capacity_dimension = routing.GetDimensionOrDie("Capacity")
     routing.AddDimension(duration_idx, 3600, PM_END, False, "Time")
     time_dimension = routing.GetDimensionOrDie("Time")
     for vehicle_index in range(len(vehicles)):
@@ -518,9 +519,18 @@ def build_ortools(
         routing.AddDisjunction([node], sum(sum(row) for row in matrix.duration_s) + 1)
     parameters = pywrapcp.DefaultRoutingSearchParameters()
     if objective == "BALANCED":
-        # Penalise the longest stop count so the solver trades a small amount
-        # of travel time for a smaller workload spread without changing hard
-        # time-window feasibility.
+        # Balance the actual load dimension rather than stop count alone. A
+        # neutral arc cost leaves the span penalty in control, so this strategy
+        # does not accidentally optimise the FASTEST duration metric.
+        def neutral_cost_callback(from_index: int, to_index: int) -> int:
+            del from_index, to_index
+            return 1
+
+        neutral_cost_idx = routing.RegisterTransitCallback(neutral_cost_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(neutral_cost_idx)
+        capacity_dimension.SetGlobalSpanCostCoefficient(1000)
+
+        # Keep stop counts close when load totals are equal.
         def stop_count_callback(from_index: int) -> int:
             return 0 if manager.IndexToNode(from_index) == 0 else 1
 

@@ -1,5 +1,13 @@
 # 變更紀錄
 
+## 2026-09-05 — 三策略指標與 Provider 錯誤分類
+
+- 修正 `BALANCED` 的 OR-Tools 成本函數，改以 Capacity dimension span 平衡載重；`FASTEST`、`BALANCED`、`STABLE` 的公開指標排序新增回歸測試。
+- 策略比較 API 與前端新增 `primary_goal`／`tradeoff`，避免以名稱誤解方案取捨。
+- 新增 `request_missing_fields` strict Agent tool，臨時訂單資訊不足時會明確追問必要欄位。
+- Google Routes HTTP 錯誤改為安全分類，保留 `PROVIDER_UNAVAILABLE` 行為，不輸出回應內容或憑證。
+- 最新 deterministic suite：`82 passed、4 skipped`；公開 Render simulated plan 通過，Google AUTO Live 仍因 `PROVIDER_UNAVAILABLE` 阻塞。
+
 ## 未發布 — 2026-09-03
 
 ### 2026-09-05 實作閘門更新（歷史快照）

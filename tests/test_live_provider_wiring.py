@@ -2,6 +2,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from src.api import main as api_main
@@ -69,6 +70,51 @@ def test_auto_plan_reports_google_failure_without_simulated_fallback(monkeypatch
     assert body["error"]["code"] == "PROVIDER_UNAVAILABLE"
     assert body["error"]["details"]["provider_error"] == "GOOGLE_HTTP_503"
     assert body["error"]["details"]["fallback_used"] is False
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            {"error": {"status": "PERMISSION_DENIED", "message": "Invalid API key"}},
+            "INVALID_API_KEY",
+        ),
+        (
+            {
+                "error": {
+                    "status": "PERMISSION_DENIED",
+                    "message": "API keys with referer restrictions cannot be used",
+                }
+            },
+            "WRONG_API_RESTRICTION",
+        ),
+        (
+            {"error": {"status": "PERMISSION_DENIED", "message": "Billing disabled"}},
+            "BILLING_DISABLED",
+        ),
+    ],
+)
+def test_google_http_errors_are_classified_without_response_leak(
+    monkeypatch, payload: dict, expected: str
+) -> None:
+    dataset_id = _upload_dataset()
+
+    def fake_post(*args, **kwargs):
+        del args, kwargs
+        return httpx.Response(
+            403,
+            json=payload,
+            request=httpx.Request("POST", "https://routes.googleapis.com"),
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with pytest.raises(GoogleRoutesProviderError) as error:
+        dataset = api_main.store.get_dataset(dataset_id)
+        assert dataset is not None
+        GoogleRoutesProvider("test-google-key").build(dataset.dataset, allow_fallback=False)
+    assert error.value.code == "GOOGLE_HTTP_403"
+    assert error.value.category == expected
+    assert "test-google-key" not in str(error.value)
 
 
 def test_tdx_oauth_and_event_projection_are_redacted(monkeypatch) -> None:

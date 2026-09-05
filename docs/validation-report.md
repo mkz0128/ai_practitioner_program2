@@ -377,3 +377,11 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 補充：有資料集但尚無 plan 時，`agent_chat` 會以 `prefer_live=True` 解析單一 `MatrixResult`，再將同一矩陣傳入 `Runner.run` 選出的 deterministic planning tool；此邊界由 `tests/test_api.py::test_agent_dataset_context_persists_plan_selected_by_runner` 驗證。
 
 目前 OpenAPI 實際註冊 18 組 `/api/v1`／health paths：原有 13 組契約保持相容，新增的 5 組為策略比較、版本列舉／復原、延遲預覽與換車預覽；snapshot test 已同步。
+
+## 2026-09-05 策略與 Provider 分類修正
+
+- `BALANCED` 現在使用 Capacity dimension span 作為主要成本，避免沿用行駛時間弧成本而偶然比 `FASTEST` 更快；`FASTEST` 以 `total_driving_time_s`、`BALANCED` 以 `load_spread_kg`、`STABLE` 以 `min_slack_minutes` 作為公開比較指標。回歸測試會直接斷言三項排序與同一 Matrix／Validator。
+- `POST /api/v1/plans/compare` 現在回傳每種方案的 `primary_goal` 與 `tradeoff`，前端依 API 欄位顯示，不以名稱猜測。
+- 新增 `request_missing_fields` strict tool，資訊不足的臨時訂單會以欄位清單要求補充，不再因 Agent 未選工具而回傳泛用 `AGENT_RUN_FAILED`。
+- Google Routes HTTP 錯誤現在只保留安全分類（`API_NOT_ENABLED`、`BILLING_DISABLED`、`INVALID_API_KEY`、`WRONG_API_RESTRICTION`、`QUOTA_EXCEEDED`、`REQUEST_INVALID`、`API_KEY_RESTRICTED` 或 `OTHER`），不記錄 response body、headers 或 key。
+- 本輪 deterministic quality gate：`pytest 82 passed、4 skipped`；frontend TypeScript／ESLint／Vitest `4 passed`／Vite build 通過。公開 Render 的 simulated plan 可完成 40/40 與 Validator；AUTO Google plan 目前回傳 `502 PROVIDER_UNAVAILABLE`，未宣稱 Live PASS。

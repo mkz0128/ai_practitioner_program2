@@ -264,6 +264,18 @@ async def test_sdk_missing_data_prompts_instead_of_guessing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_missing_urgent_fields_are_requested_structurally() -> None:
+    _, context, _ = await _run_tool(
+        "幫我插入一張急單，但資料還不完整。",
+        "request_missing_fields",
+        {"request": {"fields": ["order_id", "zone_code", "time_slot", "packages"]}},
+    )
+    evidence = context.evidence[-1]
+    assert evidence["status"] == "MISSING_REQUIRED_FIELDS"
+    assert evidence["missing_fields"] == ["order_id", "zone_code", "time_slot", "packages"]
+
+
+@pytest.mark.asyncio
 async def test_sdk_prompt_injection_is_blocked_by_guardrail() -> None:
     dataset, matrix = _fixture()
     with pytest.raises(InputGuardrailTripwireTriggered):

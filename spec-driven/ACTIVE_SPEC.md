@@ -228,11 +228,26 @@ objective_priority:
   - satisfy_all_hard_constraints
   - minimize_total_travel_time_and_distance
   - balance_vehicle_load_utilization_when_distance_is_similar
+strategy_objectives:
+  FASTEST:
+    primary_metric: total_driving_time_s
+    objective: minimize
+    tradeoff: load_spread_may_increase
+  BALANCED:
+    primary_metric: vehicle_load_span_kg
+    objective: minimize
+    tradeoff: distance_and_duration_may_increase
+  STABLE:
+    primary_metric: minimum_time_window_slack_minutes
+    objective: maximize
+    tradeoff: distance_and_duration_may_increase
 ```
 
 Hard constraints 包含 exactly-once-or-unassigned、order integrity、capacity、vehicle availability、service zone、AM/PM、lunch、service time 與 depot start/end。
 
 每個 solver output 都必須通過獨立 validator。若無法達成完整可行性，回傳 partial plan 及明確的 `unassigned_orders`／exceptions；不得靜默省略。
+
+三種方案必須使用同一批訂單、車輛與 Matrix，且透過不同的 OR-Tools 成本函數求解。比較 API 必須以 deterministic 指標驗證：`FASTEST` 的 `total_driving_time_s` 不得劣於其他方案、`BALANCED` 的車輛載重 span 應最小、`STABLE` 的最小時段餘裕應最大；若資料造成指標相同，必須如實呈現相同結果，不得只更換名稱。
 
 ### 範例資料特性
 
