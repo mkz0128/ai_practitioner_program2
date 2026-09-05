@@ -1723,6 +1723,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                     agent_message,
                     dataset,
                     matrix,
+                    current_user_message=payload.message,
                     pending_order=pending_order,
                     plan=record.plan if record else None,
                     request_id=_request_id(request),

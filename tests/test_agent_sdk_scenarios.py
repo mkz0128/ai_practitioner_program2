@@ -368,6 +368,33 @@ async def test_sdk_rejects_stale_order_context_as_new_urgent_order() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_does_not_treat_metadata_order_as_explicit_urgent_id() -> None:
+    dataset, matrix = _fixture()
+    model = ScriptedModel(
+        [
+            [
+                function_call(
+                    "preview_urgent_insert",
+                    {"order_id": "ORD-001"},
+                    call_id="call-stale-metadata",
+                )
+            ],
+            [assistant_message("Ask only for missing fields.")],
+        ]
+    )
+    _, context, _ = await run_dispatch_agent(
+        '幫我插入一張急單\n\nApplication state metadata: {"order_id":"ORD-001"}',
+        dataset,
+        matrix,
+        model=model,
+        current_user_message="幫我插入一張急單",
+    )
+
+    model.assert_complete()
+    assert context.evidence[-1]["tool"] == "request_missing_fields"
+
+
+@pytest.mark.asyncio
 async def test_sdk_prompt_injection_is_blocked_by_guardrail() -> None:
     dataset, matrix = _fixture()
     with pytest.raises(InputGuardrailTripwireTriggered):

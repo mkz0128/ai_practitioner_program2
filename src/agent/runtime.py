@@ -1438,6 +1438,7 @@ async def run_dispatch_agent(
     dataset: Dataset,
     matrix: MatrixResult,
     model: Model | None = None,
+    current_user_message: str | None = None,
     pending_order: Order | None = None,
     plan: PlanResult | None = None,
     require_tool: bool = True,
@@ -1449,7 +1450,7 @@ async def run_dispatch_agent(
     context = DispatchAgentContext(
         dataset=dataset,
         matrix=matrix,
-        current_user_message=message,
+        current_user_message=current_user_message or message,
         plan=plan,
         pending_order=pending_order,
         request_id=request_id,
