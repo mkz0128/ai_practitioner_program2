@@ -122,7 +122,7 @@ describe('控制塔主流程', () => {
       evidence: [{
         tool: 'preview_structured_urgent_insert',
         data: {
-          status: 'PREVIEWED', order_id: 'ORD-OVER-901', feasible: false,
+          order_id: 'ORD-OVER-901', feasible: false,
           mode: 'FULL_REPLAN', full_replan_reason: 'NO_LEGAL_SINGLE_ROUTE_INSERTION',
           affected_vehicle_count: 0, moved_order_count: 0,
           before: plan.summary,

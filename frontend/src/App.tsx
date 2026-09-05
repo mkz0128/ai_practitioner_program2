@@ -40,7 +40,7 @@ function previewPayload(data: Record<string, unknown>): { order: UrgentOrderPayl
 }
 
 function rejectedPreviewFromEvidence(data: Record<string, unknown>, activePlan: Plan): UrgentPreview | null {
-  if (data.status !== 'PREVIEWED' || data.feasible !== false) return null
+  if (data.feasible !== false) return null
   if (!data.before || !data.after || !data.comparison || !data.diff) return null
   if (typeof data.before !== 'object' || typeof data.after !== 'object'
     || typeof data.comparison !== 'object' || typeof data.diff !== 'object') return null
@@ -214,7 +214,7 @@ export default function App() {
         reportProgress?.('方案已建立')
       }
       const previewEvidence = response.evidence.find((item) =>
-        (item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert') && item.data.status === 'PREVIEWED')
+        item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert')
       const structuredPreview = previewEvidence ? previewPayload(previewEvidence.data) : null
       const rejectedPreview = previewEvidence && activePlan
         ? rejectedPreviewFromEvidence(previewEvidence.data, activePlan)
