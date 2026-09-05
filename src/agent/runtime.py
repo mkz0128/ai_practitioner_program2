@@ -27,6 +27,7 @@ from src.config import get_settings
 from src.domain.models import Dataset, Order, Package, Priority
 from src.observability import JsonlEventRecorder, LimitReachedError, RunBudget
 from src.providers.google_routes import GoogleRoutesProvider, GoogleRoutesProviderError
+from src.services.demo_orders import get_demo_urgent_order
 from src.services.fingerprint import dataset_hash
 from src.services.importer import validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
@@ -918,14 +919,17 @@ def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_na
 
 @function_tool(strict_mode=True)
 def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
-    """Preview the existing structured urgent-order context (legacy-compatible)."""
+    """Preview a pending order or a documented synthetic demo fixture by ID."""
+    normalized_order_id = order_id.strip().upper()
     pending = ctx.context.pending_order
-    if pending is None or pending.order_id != order_id:
-        _tool_started(ctx.context, "preview_urgent_insert", {"order_id": order_id})
+    if pending is None or pending.order_id != normalized_order_id:
+        pending = get_demo_urgent_order(normalized_order_id)
+    if pending is None or pending.order_id != normalized_order_id:
+        _tool_started(ctx.context, "preview_urgent_insert", {"order_id": normalized_order_id})
         evidence = {
             "tool": "preview_urgent_insert",
             "status": "REQUIRES_STRUCTURED_ORDER",
-            "order_id": order_id,
+            "order_id": normalized_order_id,
         }
         ctx.context.evidence.append(evidence)
         _tool_finished(ctx.context, "preview_urgent_insert")

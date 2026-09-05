@@ -144,6 +144,23 @@ async def test_sdk_urgent_insert_runs_preview_planner_and_validator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_demo_urgent_insert_resolves_known_fixture_without_pending_context() -> None:
+    """The public demo ID is data looked up by the tool, not an intent-routing shortcut."""
+    _, context, _ = await _run_tool(
+        "Preview the documented demo urgent order.",
+        "preview_urgent_insert",
+        {"order_id": "ORD-041"},
+    )
+
+    evidence = context.evidence[-1]
+    assert evidence["tool"] == "preview_urgent_insert"
+    assert evidence["status"] == "PREVIEWED"
+    assert evidence["order_id"] == "ORD-041"
+    assert evidence["structured_order"]["order_id"] == "ORD-041"
+    assert evidence["validator"]["valid"] is True
+
+
+@pytest.mark.asyncio
 async def test_sdk_structured_urgent_insert_accepts_arbitrary_order_id() -> None:
     order_id = "RND-URGENT-900"
     _, context, _ = await _run_tool(
