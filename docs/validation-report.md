@@ -9,17 +9,19 @@
 - 上一輪公開流程已完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換與前六則 Agent 問答；當時「幫我插入一張急單」曾錯選為 `plan_dispatch`。該輪使用 1,681 Matrix elements，沒有自動重跑，Dispatch requests 為 0；此問題已由本節上述部署修正。
 - 根因是第一個 strict 急單語意結果偶發回傳 `NONE`，而主 Agent 當時沒有安全的急單入口，只能在其他工具中誤選。現在新增無副作用的 strict `begin_urgent_insertion`；它只收集欄位，API 隨即交回同一個確定性狀態機，不能規劃、取得 Matrix、套用或確認方案。
 - 真實 OpenAI `gpt-5-mini` 已重新驗證三種主 Agent 語句：「幫我插入一張急單」、「幫我插入 ORD-041」與一張完整任意急單，均選用 `begin_urgent_insertion`，沒有選 `plan_dispatch`，且沒有呼叫 Google。
-- Commit `cfec21f` 部署後，公開首頁實測「幫我插入一張急單」正確進入 `COLLECTING`，補一張完整任意訂單及同時兩張完整急單都進入 `REVIEW_READY`，取消後原方案不變，Console errors 為 0。驗收也發現模型可能把單純 `ORD-041` 放在 `orders[].order_id`；已新增 deterministic fixture lookup 回歸，等待下一版部署後重驗 Preview／Confirm。
+- Commit `cfec21f` 部署後，公開首頁實測「幫我插入一張急單」正確進入 `COLLECTING`，補一張完整任意訂單及同時兩張完整急單都進入 `REVIEW_READY`，取消後原方案不變，Console errors 為 0。後續 `3a83958` 已修正模型把單純 `ORD-041` 放在 `orders[].order_id` 的情況，並於公開站完成摘要、Preview 與人工確認。
 - Backend 全量：`250 passed、28 skipped、0 failed`；112 筆 Agent corpus 單獨執行為 `116 passed`。Ruff、mypy、OpenAPI／contract 皆隨全量測試通過。
 - 通用急單測試涵蓋：只說要插單、單筆完整、缺重量／時段、多筆、部分缺欄、既有 ORD-041、不存在 ID、重複 ID、超載、時段衝突、無法安排、取消及提示注入；Preview 失敗不污染目前方案。
 - Frontend：TypeScript、ESLint、Vitest `24 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。三個 skipped 是需明確開啟的外部 Live／隨機流程，沒有用 skipped 隱藏本次後端急單失敗。
 - Secret scan：高信心 Secret `0`、追蹤敏感檔案 `0`、GitHub Actions `0`；`.env` 與 `frontend/.env.local` 仍被 Git 排除。
 - Google Routes 新 Key 的既有最小證據仍是 4 elements：`provider_mode=GOOGLE`、1／1 完整安排、560 m／167 s、無 simulated fallback。這次修正與本機驗證沒有新增 Google Matrix 用量。
-- 下一個公開驗收只驗證急單的缺欄追問、摘要、Preview 與人工確認，優先使用 simulated／既有方案；不得再自動重算 41×41 Google Matrix。TDX 本版排除，正式派車仍停用。
+- 目前競賽 Demo 已就緒。新 Key 的 4-element Routes Live 與公開 Browser Map 已通過；最新 Commit 的完整 40 單全線流程只在正式 Demo 執行一次，不得自動重算。TDX 本版排除，正式派車仍停用。
+
+- 「模擬延遲 20 分鐘」只把目前方案的 ETA 往後推 20 分鐘，再由確定性程式檢查時段餘裕與受影響訂單；不使用 GPS、不呼叫 Google、不變更路線，也不修改正式方案。
 
 ## 2026-09-06 歷史 Demo 閘門快照（非當前權威）
 
-以下保留修正軌跡；當前狀態一律以前一節為準。
+本節及其後所有較早日期的區段只保留修正軌跡；即使舊標題或內容出現「最新」「目前」「阻塞」，也只代表當時快照。當前狀態一律以前一節為準。
 
 | 項目 | 實際證據 | 狀態 |
 |---|---|---|
@@ -44,7 +46,7 @@
 - `tests/test_live_integrations.py::test_google_matrix_enters_same_live_ortools_solve`：需 `RUN_LIVE_PROVIDER_E2E=1`；本輪另行啟用後實際收到 `BILLING_DISABLED`，分類為 `BLOCKED`，不以 simulated 取代。
 - `tests/test_responses_api.py::test_responses_gpt5_mini_text_and_strict_tool_smoke`：需 `RUN_LIVE_RESPONSES_SMOKE=1`；本輪主流程使用 Agents SDK Runner，這個底層 smoke 非明晚 Demo 阻塞。
 
-## 2026-09-06 歷史 Render 公開線性驗收（當前已由 Billing 阻塞）
+## 2026-09-06 歷史 Render 公開線性驗收
 
 以下為 Billing 狀態改變前的歷史證據，不代表目前仍通過。
 
@@ -63,7 +65,7 @@
 
 Commit `6fcc2d221e201d99ce74395c1a2dbb655fbecb42` 部署後，單次完整公開 Playwright 結果為 `1 passed`（5.3 分鐘）。15 張 1440×900 截圖位於 `docs/screenshots/public-final/`。公開方案畫面實際載重為 VEH-001 `106/120 kg`、VEH-002 `93/100 kg`、VEH-003 `160/160 kg`、VEH-004 `6/110 kg`。三策略當次實測為：最快 `230,741 m／447 分鐘`、最平均 `406,244 m／690 分鐘／載重差 8 kg`、最穩定 `304,108 m／527 分鐘／載重差 24 kg`；公開測試已硬性斷言最平均的載重差不大於最穩定。前端白話化回歸涵蓋車輛停用、插單差異、延遲風險與未知 JSON，確保主對話不顯示內部欄位、英文風險碼或 Raw JSON。
 
-## 2026-09-05 最新公開驗證（Commit `cb53615c25b0732d4243bd8470e3c9dc1356dc26`）
+## 2026-09-05 歷史公開驗證（Commit `cb53615c25b0732d4243bd8470e3c9dc1356dc26`）
 
 | 項目 | 實際證據 | 狀態 |
 |---|---|---|
@@ -78,7 +80,7 @@ Commit `6fcc2d221e201d99ce74395c1a2dbb655fbecb42` 部署後，單次完整公開
 | Google Maps Browser | 公開頁面實際建立 Google 地圖、4 條非 simulated 道路 geometry 與 40 個站點；Console 未處理錯誤 0 | `PUBLIC LIVE PASS` |
 | Secret／正式派車 | 高信心 secret pattern `0`、敏感檔案 tracked `0`、GitHub Actions `0`、Dispatch requests `0` | `PASS` |
 
-Render Dashboard 顯示 `cb53615` 為 `Live`。公開三策略使用同一 Google Matrix：最快方案的主要速度指標為 485 分鐘、均衡方案載重差為 9 kg、穩定方案以時段餘裕為主要目標；三者資料來源與目前方案 Matrix hash 一致。TDX credentials 仍未設定，因此僅 TDX Live 維持 `BLOCKED`。
+Render Dashboard 當時顯示 `cb53615` 為 `Live`。公開三策略使用同一 Google Matrix：最快方案的主要速度指標為 485 分鐘、均衡方案載重差為 9 kg、穩定方案以時段餘裕為主要目標；三者資料來源與當時方案 Matrix hash 一致。TDX 現已排除於競賽 Demo，不列為阻塞。
 
 ## 2026-09-05 公開 Agent 原生崩潰回歸
 
@@ -107,7 +109,7 @@ Render Dashboard 顯示 `cb53615` 為 `Live`。公開三策略使用同一 Googl
 | TDX | `TDX_CLIENT_ID`、`TDX_CLIENT_SECRET` 均為 MISSING | `BLOCKED` |
 | 正式派車 | Agent allowlist 無正式派車工具，前端與驗收不呼叫正式派車 | `0 requests` |
 
-上述為本輪當前證據；歷史 Live 記錄不得覆蓋這個時間點的真實 Provider 狀態。公開網站結果會在最新 Commit 完成 Render 自動部署後另行補記。
+上述為該輪歷史證據；目前狀態以前方「2026-09-06 當前權威驗證」為準。
 
 ## 狀態快照
 
@@ -328,7 +330,7 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 | 缺欄、超重、時段衝突、重複與無法安排 | `DONE` | competition acceptance、structured API validation、randomized impossible/duplicate/missing cases。 |
 | 人工確認後不得 Dispatch | `DONE` | Playwright request gate：Dispatch requests=0；確認只更新 plan state。 |
 
-## 2026-09-05 本輪矛盾修正與 Render 公開驗收
+## 2026-09-05 歷史矛盾修正與 Render 公開驗收
 
 | 項目 | 實際證據 | 狀態 |
 |---|---|---|
@@ -341,7 +343,7 @@ Playwright 截圖：`docs/screenshots/01-empty-control-tower.png`、`02-imported
 | 延遲風險 | 公開 10／20／30 分鐘均回傳 40 筆 deterministic risks；本 fixture 皆為 GREEN，未捏造機率 | `PUBLIC LIVE PASS` |
 | 版本生命週期 | 公開虛構插單 `MINIMAL_CHANGE` V1→V2，人工確認 V2；復原 V1 建立新 V3 並重新驗證 | `PUBLIC LIVE PASS` |
 | Google Routes AUTO | Render AUTO 實際回傳 HTTP `502 PROVIDER_UNAVAILABLE`、`GOOGLE_HTTP_403`，安全分類 `API_KEY_RESTRICTED`，`fallback_used=false` | `BLOCKED` |
-| Browser／Google Maps | 公開首頁目前顯示 Browser key 未設定；本輪未將 simulated map 宣稱 Live | `BLOCKED` |
+| Browser／Google Maps | 公開首頁當時顯示 Browser key 未設定；該輪未將 simulated map 宣稱 Live | `BLOCKED` |
 | TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
 
 本輪完整 backend suite：`83 passed, 4 skipped`；skipped 為明確的 OpenAI／Agent HTTP／Google provider／Responses opt-in gates。`ruff` 與 `mypy` 通過；tracked-file 高信心 secret scan 為 0，`.github/workflows` 為 0。前端 typecheck 與 ESLint 通過；Vitest／Vite 在目前 Windows sandbox 的非 ASCII 工作路徑遇到工具層路徑解析限制，既有上輪 `2 files／4 tests passed` 與 production build 證據保留，未將工具層失敗誤判為程式通過。
@@ -464,7 +466,7 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 | 延遲風險 | `calculate_plan_risks` 回傳 ETA 餘裕及 10／20／30 分鐘模擬，不產生機率。 |
 | Agent 編排 | `/api/v1/agent/chat` → `run_dispatch_agent` → `Runner.run` → strict allowlist tool → deterministic service → Validator → evidence-grounded response。 |
 | 版本／安全 | Confirm／restore 建立不可變版本；`DISPATCH_ENABLED=false` 時固定回傳 `403 DISPATCH_DISABLED`。 |
-| Live Provider | 當前本機執行未啟用 opt-in live gate；不得將 simulated／skipped 視為 Live PASS。 |
+| Live Provider | 該次本機執行未啟用 opt-in live gate；不得將 simulated／skipped 視為 Live PASS。 |
 
 本輪新增的前端附件流程會先完成匯入與欄位驗證，再將 `dataset_id` 與同一則自然語言訊息送入 Agent；Agent 選擇 `plan_dispatch` 後由 API 保存 plan。前端不再在送出前直接呼叫 `createPlan`。
 
@@ -501,15 +503,15 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 | Frozen stop guard | 凍結站點換車回傳 `FROZEN_STOP_CONFLICT`；新增 `test_sdk_frozen_stop_cannot_be_reassigned` | `LOCAL PASS` |
 | Secret／Actions／Dispatch | tracked secret pattern `0`、敏感路徑 `0`、workflow `0`、Dispatch requests `0` | `PASS` |
 
-本節只記錄目前工作樹的新證據；Render 公開網站與歷史 Live 結果仍需以其部署 Commit／當下憑證重新核對，不能由本機測試推論。未輸出、記錄或提交任何憑證值。
+本節只記錄該次工作樹證據；Render 公開網站與歷史 Live 結果須以其部署 Commit／當下憑證核對，不能由本機測試推論。未輸出、記錄或提交任何憑證值。
 
 補充：有資料集但尚無 plan 時，`agent_chat` 會以 `prefer_live=True` 解析單一 `MatrixResult`，再將同一矩陣傳入 `Runner.run` 選出的 deterministic planning tool；此邊界由 `tests/test_api.py::test_agent_dataset_context_persists_plan_selected_by_runner` 驗證。
 
 目前 OpenAPI 實際註冊 18 組 `/api/v1`／health paths：原有 13 組契約保持相容，新增的 5 組為策略比較、版本列舉／復原、延遲預覽與換車預覽；snapshot test 已同步。
 
-## 2026-09-05 V2 權威重驗（目前部署）
+## 2026-09-05 V2 歷史重驗
 
-以下結果優先於本文件較早的歷史快照；所有數字均來自目前 Render `842da61b0f2b003633e3c839a001a54efa9f647e` 部署或本機可重現測試。
+以下數字來自當時 Render `842da61b0f2b003633e3c839a001a54efa9f647e` 部署或本機可重現測試，已被本文件最上方的當前權威驗證取代。
 
 | 閘門 | 實際證據 | 分類 |
 |---|---|---|
@@ -520,7 +522,7 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 | 公開 Agent 語意 | `ORD-020 為什麼給這台車？` 回傳 `RunResult`／`explain_assignment` evidence；`三號車壞掉了，help me reassign` 回傳 `RunResult`／`change_vehicle_availability`；缺資料案例回傳 `request_missing_fields` | `PUBLIC LIVE PASS`（路線資料為 SIMULATED） |
 | Render 基本服務 | `/health=200`、`/ready=200`、`/docs=200`、OpenAPI 18 paths | `PUBLIC LIVE PASS` |
 | Google Routes AUTO | HTTP `502 PROVIDER_UNAVAILABLE`，`GOOGLE_HTTP_403`，安全分類 `API_KEY_RESTRICTED`，`fallback_used=false`；未把 simulated 結果冒稱 Live | `BLOCKED` |
-| Google Maps Browser | 公開頁面目前顯示 Browser key 未設定，故不能宣稱目前地圖 Live | `BLOCKED` |
+| Google Maps Browser | 公開頁面當時顯示 Browser key 未設定，故該次不能宣稱地圖 Live | `BLOCKED` |
 | TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
 | 本機後端品質 | `pytest --basetemp=.pytest-local-temp-run`：`83 passed、4 skipped`；`ruff`、`mypy`、`git diff --check` 通過 | `LOCAL PASS` |
 | 前端品質 | TypeScript／ESLint 通過；Vite production build 以 ASCII drive alias 通過；Vitest 在 Windows 非 ASCII sandbox 路徑的 esbuild setup-file 解析受工具層限制 | `LOCAL PASS`／`BLOCKED`（Vitest 工具層） |
@@ -528,9 +530,9 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 
 ### Google 403 安全分類與必要外部修正
 
-目前可從公開回應確認的分類是 `API_KEY_RESTRICTED`，未記錄 response body、headers 或任何金鑰值；因此不能進一步宣稱是 Billing 或 API 未啟用。若要解除阻塞，需在 Google Cloud Console 啟用 Routes API／Maps JavaScript API、確認 Billing，將 server key 限制為 Routes API 且不使用 HTTP referrer，並將 Browser key 的 HTTP referrer 限制為 `https://ai-dispatch-control-tower.onrender.com/*`；更新 Render 環境變數後重新部署，再重驗同一份 Matrix→OR-Tools。
+該次可從公開回應確認的分類是 `API_KEY_RESTRICTED`，未記錄 response body、headers 或任何金鑰值；當時不能進一步宣稱是 Billing 或 API 未啟用。此問題後來已由新 Key 的成功 Live 證據取代。
 
-## 2026-09-05 V2 最新公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
+## 2026-09-05 V2 歷史公開重驗（Commit `c5fe929577797cb8590eac7d54fc47b6fb5637fa`）
 
 | 閘門 | 實際證據 | 分類 |
 |---|---|---|
@@ -545,7 +547,7 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 | 公開延遲風險 | 10／20／30 分鐘各 HTTP 200、40 筆 deterministic risk；無捏造機率 | `PUBLIC LIVE PASS` |
 | 公開版本與復原 | V1→V2 `CONFIRMED`；復原 V1 建立 V3 `PROPOSED`，歷史未覆蓋且 Validator 通過 | `PUBLIC LIVE PASS` |
 | Google Routes AUTO | HTTP 502 `PROVIDER_UNAVAILABLE`；`GOOGLE_HTTP_403` 分類 `API_KEY_RESTRICTED`、`fallback_used=false` | `BLOCKED` |
-| Google Maps Browser | Render runtime-config 回報 Browser key 已設定；地圖路線仍需先取得 Google Routes 方案，故目前不把真實路線標為 PASS | `BLOCKED`（依 Google Routes） |
+| Google Maps Browser | Render runtime-config 當時回報 Browser key 已設定；該輪仍需先取得 Google Routes 方案，因此未把真實路線標為 PASS | `BLOCKED`（該輪） |
 | TDX | 未設定 credentials | `OPTIONAL／NOT_CONFIGURED` |
 | 本機品質 | `pytest --basetemp=.pytest-verify-20260905`：`83 passed、4 skipped`；Ruff／mypy 通過；前端 TypeScript／ESLint 通過、Vite build 在 ASCII drive 通過 | `LOCAL PASS`；Vitest 受 Windows sandbox 路徑限制 |
 | 安全／Dispatch | Secret pattern `0`、real env tracked `0`、workflow `0`、公開驗收 Dispatch requests `0` | `PASS` |
@@ -556,4 +558,4 @@ Render 部署：`https://ai-dispatch-control-tower.onrender.com/`，service `ai-
 - `POST /api/v1/plans/compare` 現在回傳每種方案的 `primary_goal` 與 `tradeoff`，前端依 API 欄位顯示，不以名稱猜測。
 - 新增 `request_missing_fields` strict tool，資訊不足的臨時訂單會以欄位清單要求補充，不再因 Agent 未選工具而回傳泛用 `AGENT_RUN_FAILED`。
 - Google Routes HTTP 錯誤現在只保留安全分類（`API_NOT_ENABLED`、`BILLING_DISABLED`、`INVALID_API_KEY`、`WRONG_API_RESTRICTION`、`QUOTA_EXCEEDED`、`REQUEST_INVALID`、`API_KEY_RESTRICTED` 或 `OTHER`），不記錄 response body、headers 或 key。
-- 本輪 deterministic quality gate：`pytest 82 passed、4 skipped`；frontend TypeScript／ESLint／Vitest `4 passed`／Vite build 通過。公開 Render 的 simulated plan 可完成 40/40 與 Validator；AUTO Google plan 目前回傳 `502 PROVIDER_UNAVAILABLE`，未宣稱 Live PASS。
+- 該輪 deterministic quality gate：`pytest 82 passed、4 skipped`；frontend TypeScript／ESLint／Vitest `4 passed`／Vite build 通過。公開 Render 的 simulated plan 可完成 40/40 與 Validator；AUTO Google plan 當時回傳 `502 PROVIDER_UNAVAILABLE`，未宣稱 Live PASS。

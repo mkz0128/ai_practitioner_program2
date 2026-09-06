@@ -4,6 +4,8 @@
 
 已收到 `APPROVE_IMPLEMENTATION`；目前已啟用本機 Feature Code 實作。Render 部署設定限定於 `feat/frontend-control-tower` 的 Free 測試服務，不啟用 Actions、不合併 `main`、不執行 Dispatch。
 
+競賽核心流程已可展示：40 張合成訂單、4 台車、OR-Tools 正式方案、方案檢查、Google 道路地圖、OpenAI Agent、急單 Preview 與人工確認均有執行證據。新 Google Key 已通過最低成本 Live 連線；最新 Commit 的完整 40 單 Google 流程只在正式 Demo 執行一次，以免重複計費。TDX 為未來可選擴充，不是本次展示缺口。
+
 ## 真實來源
 
 - 產品規格：`spec-driven/ACTIVE_SPEC.md`
@@ -70,7 +72,7 @@ python -m venv .venv
 $env:RUN_LIVE_AGENT_E2E='1'; .\.venv\Scripts\python.exe -m pytest tests/test_agent_e2e.py -q; Remove-Item Env:RUN_LIVE_AGENT_E2E
 ```
 
-Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。存在 credentials 時，live gate 使用 `gpt-5-mini`；缺少或受限的 Provider 會明確顯示降級或阻塞，不以 mock、simulated、fallback 或 skipped test 冒充 Live PASS。Backend deterministic core 與 OpenAI Agent runtime 已通過本機驗證；Google Routes、Google Maps 與 TDX 的 Live 狀態必須以當次環境及實際呼叫結果為準，整體專案仍為 `IN_PROGRESS`。
+Keyless suite 包含使用 `ScriptedModel` 的實際 Agents SDK runner、strict deterministic tools 與 prompt-injection guardrails。存在 credentials 時，live gate 使用 `gpt-5-mini`；缺少或受限的 Provider 會明確顯示降級或阻塞，不以 mock、simulated、fallback 或 skipped test 冒充 Live PASS。Backend deterministic core、OpenAI Agent runtime、Google Routes 最低成本 Live 與公開 Google Maps 均已有目前證據；整體專案因企業擴充與跨重啟永久保存未納入本次競賽完成範圍，狀態仍為 `IN_PROGRESS`。
 
 ## 前端交付快速開始
 
@@ -227,4 +229,4 @@ Render Blueprint 固定部署 `feat/frontend-control-tower`、`singapore` region
 
 公開展示服務啟用 `DEMO_ACCESS_PASSWORD` 時，`/health`、Swagger 與登入端點保持可讀，其餘 `/api/v1/*` 端點需先登入；密碼不會進入前端 bundle。SQLite 使用 `/tmp/dispatch.db`，服務休眠、重啟或重新部署後資料可能重置，需重新匯入 Excel。Render 公開驗收必須確認沒有 localhost 請求，且全程不呼叫 `/dispatch`。
 
-目前程式與本機健康／SPA／展示登入 smoke checks 已完成；公開部署仍需 Render 登入／GitHub OAuth，以及確認已輪替且可安全使用的 Provider keys。未完成公開部署前，不宣稱 Render Live PASS。
+目前 Render Free 測試服務已部署於 `https://ai-dispatch-control-tower.onrender.com/`，健康檢查、SPA、展示登入與公開核心流程均已有驗收證據。重新建立另一個 Render 服務時才需要重新執行 GitHub OAuth 與 Secret 設定；現有部署不需要重建。

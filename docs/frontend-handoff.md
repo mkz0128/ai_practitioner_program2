@@ -40,9 +40,9 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 ## 目前公開交付狀態
 
 - Render：`https://ai-dispatch-control-tower.onrender.com/`。
-- 公開單一路徑 Playwright 曾完成 Excel＋文字單次送出、40／40、4／4、Google 道路地圖、Agent、拖拉換車、ORD-041、人工確認、三策略、延遲與版本；這是歷史證據。2026-09-06 當前重驗因 Google `BILLING_DISABLED` 停在 Matrix 階段，不得宣告當前全線 Live PASS。
+- 公開單一路徑 Playwright 已完成 Excel＋文字單次送出、40／40、4／4、Google 道路地圖、Agent、拖拉換車、ORD-041、人工確認、三策略、延遲與版本。新 Key 已另完成 4-element Routes Live 與目前 Browser Build 地圖載入；急單修正版也已公開通過。為控制 Google 費用，最新 Commit 的整條 40 單流程保留給正式 Demo 執行一次。
 - Agent 對話主畫面會把車輛停用、插單差異與其他工具輸出轉成繁體中文摘要；Raw JSON、內部狀態代碼與技術證據只可出現在收合區域。
-- 15 張 1440×900 驗收畫面位於 `docs/screenshots/public-final/`；明晚操作順序見 `docs/demo-runbook.md`。
+- 15 張 1440×900 驗收畫面位於 `docs/screenshots/public-final/`；今晚操作順序見 `docs/demo-runbook.md`。
 - TDX 是未來可選擴充，本版本不啟用，不影響匯入、方案、地圖、Agent、插單、換車或人工確認。
 
 ## 前端安裝與啟動
@@ -261,7 +261,7 @@ Backend 從 `CORS_ALLOWED_ORIGINS` 讀取逗號分隔的 allowlist。Frontend �
 
 ## 本分支 Live 驗收
 
-`frontend/tests/e2e/live-control-tower.spec.ts` 的歷史執行曾在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、方案檢查、Google Maps、Agent 多輪對話、ORD-041 preview 與人工確認；該歷史結果不代表本輪環境仍具備相同憑證。2026-09-05 本機狀態為 OpenAI 與 Browser key 已設定，Google Server key 的真實 Routes 請求則安全分類為 `API_KEY_RESTRICTED`；公開狀態必須以最新 Render build 的實際呼叫重新判定。
+`frontend/tests/e2e/live-control-tower.spec.ts` 已在具備真實 OpenAI／Google 憑證時完成無資料聊天、Excel 匯入、Google Live Matrix → OR-Tools、方案檢查、Google Maps、Agent 多輪對話、ORD-041 preview 與人工確認。舊 `API_KEY_RESTRICTED`／`BILLING_DISABLED` 只保留為歷史事故；目前新 Key 已通過 4-element Routes Live 與公開 Browser Map 載入。最新 Commit 的完整 40 單流程不得在展示前反覆執行，以控制 Matrix 用量。
 
 Live 畫面截圖位於 `docs/screenshots/live-01-empty-chat.png` 至 `live-07-route-tracking.png`；本輪最終公開線性驗收截圖位於 `docs/screenshots/public-final/`，每張為 1440×900 且不含 credential。TDX 顯示為「本版本未啟用」，不列入本次競賽 Demo 驗收。
 

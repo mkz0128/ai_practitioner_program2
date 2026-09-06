@@ -21,7 +21,7 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 - `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
 - `/api/v1/agent/chat` 會將每則訊息交給 `src/agent/runtime.py` 的 `Runner.run`；Agent 以 strict allowlist 選擇 deterministic tool，API 只回傳工具 evidence 與 evidence-grounded 摘要。OpenAI 憑證缺少或 provider 失敗時，回傳明確錯誤，不產生假回答。
 - 本次競賽 Demo 的 Live 鏈為 Google Routes／Maps、OR-Tools、OpenAI Agent 與前端；TDX 介面保持向後相容，但屬未來可選擴充，不參與本輪完成判定或阻塞核心 API。
-- 2026-09-06 當前環境的 Google Routes 回應為 HTTP 403，官方 `ErrorInfo.reason=BILLING_DISABLED`；API 依契約回傳 `502 PROVIDER_UNAVAILABLE`、`fallback_used=false`，不得記錄成 Live PASS。
+- 歷史上曾收到 HTTP 403／`BILLING_DISABLED`；目前新 Key 已通過 4-element 最低成本 Live 方案且未 fallback。API 的失敗契約仍維持 `502 PROVIDER_UNAVAILABLE`、`fallback_used=false`，不能把失敗或模擬資料記成 Live PASS。
 - 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
 
 ## 錯誤封套

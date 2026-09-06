@@ -83,22 +83,22 @@
 | FR-IMP-001／FR-IMP-002 | 原始必要 | Excel 四表匯入與 order／package／field 欄位驗證 | 完成 | `src/services/importer.py`；`tests/test_import_validation.py`、`tests/test_competition_acceptance.py` | 無核心缺口 | 後端 | `.xlsx` fixture | 40 orders／80 packages 可匯入；缺欄位回傳欄位級錯誤與 `requires_manual_review` | 無效資料拒絕，不猜測 |
 | FR-IMP-003 | 原始必要 | 包裹件數與每張訂單重量加總 | 完成 | `Order.total_weight_kg`；import／planning tests | 無核心缺口 | 後端 | 合法 packages | 件數、重量與 fixture 總重一致 | 欄位錯誤進入人工複核 |
 | FR-PLAN-004 | 原始必要 | 車輛載重、可用狀態與服務區域限制 | 完成 | `src/services/planner.py`、`src/services/validator.py`；競賽驗收 | 無核心缺口 | 後端 | vehicle／zone data | 零超載、零跨區、`UNASSIGNABLE` 明確列出 | 不合法訂單列入 `unassigned_orders` |
-| FR-PLAN-001／FR-OPT-001 | 原始必要 | OR-Tools 分車與配送順序 | 完成（可接 simulated 或 Google Matrix） | `build_ortools`；`tests/test_planning.py`、`tests/test_top5_features.py` | 當前環境是否具備 Google 憑證需另行驗證 | 後端 | `MatrixResult` | Capacity／Time Dimensions、三種 objective 與 Validator 通過 | provider 失敗時明確回報，不宣稱 Live |
-| FR-OPT-002 | 原始必要 | 三種可解釋方案 | 完成（本機 deterministic） | `src/services/planner.py`、`POST /api/v1/plans/compare`、`tests/test_top5_features.py` | 公開 Google Live 驗收仍受 provider 權限阻塞 | 後端／前端 | 同一 Dataset 與 Matrix | `FASTEST` 時間最佳、`BALANCED` 載重差最小、`STABLE` 最小時段餘裕最大，三者皆經獨立 Validator | Provider 失敗不得以 fallback 冒稱 Live |
-| FR-PLAN-005 | 原始必要 | AM／PM、午休、每站 3 分鐘與 `DEPOT-001` 往返 | 完成（僅 simulated matrix） | planner／validator；time-window acceptance | 尚未以 live travel duration 驗證 | 後端 | 固定矩陣與時段 | 零 time-window violations，路線回到 depot | `TIME_WINDOW_CONFLICT` |
+| FR-PLAN-001／FR-OPT-001 | 原始必要 | OR-Tools 分車與配送順序 | 完成 | `build_ortools`；`tests/test_planning.py`、`tests/test_top5_features.py`；公開 Google 40 單方案 | 無核心缺口 | 後端 | `MatrixResult` | Capacity／Time Dimensions、三種 objective 與 Validator 通過 | provider 失敗時明確回報，不宣稱 Live |
+| FR-OPT-002 | 原始必要 | 三種可解釋方案 | 完成 | `src/services/planner.py`、`POST /api/v1/plans/compare`、`tests/test_top5_features.py` 與公開策略比較 | 無核心缺口 | 後端／前端 | 同一 Dataset 與 Matrix | `FASTEST` 時間最佳、`BALANCED` 載重差最小、`STABLE` 最小時段餘裕最大，三者皆經獨立 Validator | Provider 失敗不得以 fallback 冒稱 Live |
+| FR-PLAN-005 | 原始必要 | AM／PM、午休、每站 3 分鐘與 `DEPOT-001` 往返 | 完成 | planner／validator、time-window acceptance 與既有公開 Google 40 單方案 | 無核心缺口 | 後端 | 固定矩陣與時段 | 零 time-window violations，路線回到 depot | `TIME_WINDOW_CONFLICT` |
 | FR-PLAN-007 | 原始必要 | 獨立 Validator | 完成 | `src/services/validator.py`；各 planning／competition tests | 無核心缺口 | 後端 | Plan 與 matrix | 每個可確認 plan 先通過 Validator | 失敗則不可確認 |
-| FR-BAS-001／FR-BAS-003 | 原始必要 | 超重重新分配與 unassigned reconciliation | 完成（固定 Demo） | Z4 112 kg acceptance；Baseline／OR-Tools evidence | 尚未接入 live provider | 後端 | 40-order fixture | `VEH-002` 不超過 100 kg，合法使用 `VEH-003` | `UNASSIGNABLE` |
-| FR-URG-001／FR-URG-006～009 | 原始必要 | 單筆／多筆臨時插單資料蒐集、摘要確認、共同 Preview、最小變動與前後差異 | 完成（Mock／simulated／增量 Matrix 契約） | `src/agent/urgent_workflow.py`、`urgent_insert_batch_preview`、`tests/test_urgent_insertion_workflow.py`、`tests/test_urgent_batch_api.py` | 公開 Google 增量流程需部署後執行一次代表性驗收 | 後端／前端 | 未出發 plan、完整合法新訂單、既有 Matrix | 缺漏一次列清、摘要後才 Preview；多筆共用一個新版本並經 Validator | 無合法插入才 `FULL_REPLAN`；失敗不污染 current plan |
+| FR-BAS-001／FR-BAS-003 | 原始必要 | 超重重新分配與 unassigned reconciliation | 完成 | Z4 112 kg acceptance；快速初步方案／OR-Tools evidence | 無核心缺口；此例外情境使用可重現矩陣，不需額外 Google 計費 | 後端 | 40-order fixture | `VEH-002` 不超過 100 kg，合法使用 `VEH-003` | `UNASSIGNABLE` |
+| FR-URG-001／FR-URG-006～009 | 原始必要 | 單筆／多筆臨時插單資料蒐集、摘要確認、共同 Preview、最小變動與前後差異 | 完成 | `src/agent/urgent_workflow.py`、`urgent_insert_batch_preview`、`tests/test_urgent_insertion_workflow.py`、`tests/test_urgent_batch_api.py`；公開 ORD-041 摘要→Preview→人工確認 | Google 模式的增量計費僅在正式 Demo 使用既有 Matrix 驗收，不重算 40 單完整 Matrix | 後端／前端 | 未出發 plan、完整合法新訂單、既有 Matrix | 缺漏一次列清、摘要後才 Preview；多筆共用一個新版本並經 Validator | 無合法插入才 `FULL_REPLAN`；失敗不污染 current plan |
 | FR-STATE-001 | 原始必要 | 人工確認與方案版本管理 | 完成（SQLite 執行期持久化） | `confirm_plan`、`list_plan_versions`、`restore_plan`、SQLite repository tests | Render Free 跨重啟永久保存仍受檔案系統限制 | 後端 | 精確 `plan_id`／version、人工人工確認 | 每次復原建立新版本並重新 Validator；Dispatch 預設停用 | stale version 拒絕 |
-| FR-AGENT-001 | 原始必要 | 單一 Agent 支援 daily dispatch、載重、unassigned、urgent preview 與資料澄清及通用事件工具 | 完成（runtime 與 HTTP orchestration） | `src/agent/runtime.py`、`src/api/main.py::agent_chat`、`tests/test_agent_sdk_scenarios.py` | 真實 OpenAI 服務需當前憑證才能標示 Live | 後端／共同 | Agents SDK runtime | 每則對話進入 `Runner.run`；strict tool evidence 回覆 | 無 key 時明確 503 |
-| FR-AGENT-002／FR-AGENT-003 | 原始必要 | OpenAI Agent 真正呼叫 deterministic Tool | 完成（可執行；Live 依環境） | `/api/v1/agent/chat` → `run_dispatch_agent` → `Runner.run`；`tests/test_agent_sdk_scenarios.py` | 公開環境若缺 key 必須標示 BLOCKED，不能以 mock 取代 | 後端／共同 | OpenAI credentials（僅 live gate） | Agent tool call trace、Validator evidence、evidence grounding | 缺 key 回傳 503 |
-| REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 部分完成（strict wiring；當前 Live 需憑證） | `src/providers/google_routes.py`、`_build_matrix`、provider wiring tests | 需在當前環境重新取得 provider response 才能標示 Live | 後端 | Google server key、terms／quota review | real matrix response 可追蹤且失敗明確；不得以 simulated 宣稱 live | 缺 key 明確標示 `SIMULATED`；已設定 key 失敗回傳 provider error |
-| REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 完成（可執行 strict path；Live 依憑證） | `_build_matrix`、`create_plan`、matrix hash/version consistency test | 公開驗收仍需當前 provider evidence | 後端 | REQ-ORIG-001 | 同一 MatrixResult identity 傳入 solver 並由 Validator 通過 | provider 失敗不得靜默降級 |
-| REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 部分完成 | `frontend/src/components/MapPanel.tsx`與歷史 Render 公開地圖證據 | 當前 Routes 因 `BILLING_DISABLED` 無法重驗同方案四車道路 polyline | 前端 | Browser key、Google Routes 方案 | 瀏覽器實際顯示 Google map／40 Markers／4 polylines，Console 無 Google error | 無 key 時保留列表並顯示未設定，不冒稱 Live |
+| FR-AGENT-001 | 原始必要 | 單一 Agent 支援 daily dispatch、載重、unassigned、urgent preview 與資料澄清及通用事件工具 | 完成（公開 Live） | `src/agent/runtime.py`、`src/api/main.py::agent_chat`、`tests/test_agent_sdk_scenarios.py`、公開 `RunResult` | 無核心缺口 | 後端／共同 | Agents SDK runtime | 每則對話進入 `Runner.run`；strict tool evidence 回覆 | 無 key 時明確 503 |
+| FR-AGENT-002／FR-AGENT-003 | 原始必要 | OpenAI Agent 真正呼叫 deterministic Tool | 完成（公開 Live） | `/api/v1/agent/chat` → `run_dispatch_agent` → `Runner.run`；24-case Live Runner 與公開 tool evidence | 無核心缺口 | 後端／共同 | OpenAI credentials（僅 live gate） | Agent tool call trace、Validator evidence、evidence grounding | 缺 key 回傳 503 |
+| REQ-ORIG-001 | 原始必要 | Google Routes 真實 distance／duration | 完成（Live） | `src/providers/google_routes.py`、`_build_matrix`、provider wiring tests；新 Key 的 4-element 最低成本測試回傳 560 m／167 s，無 fallback | 最新 Commit 的完整 40 單呼叫保留給正式 Demo，避免重複計費 | 後端 | Google server key、terms／quota review | real matrix response 可追蹤且失敗明確；不得以 simulated 宣稱 live | 缺 key 明確標示 `SIMULATED`；已設定 key 失敗回傳 provider error |
+| REQ-ORIG-002 | 原始必要 | Google Routes Matrix 真正進入 OR-Tools | 完成 | `_build_matrix`、`create_plan`、matrix hash/version consistency test；既有公開 40 單同源證據與目前最小 Live 方案均通過 | 無核心缺口 | 後端 | REQ-ORIG-001 | 同一 MatrixResult identity 傳入 solver 並由 Validator 通過 | provider 失敗不得靜默降級 |
+| REQ-ORIG-003 | 原始必要 | Google Maps Browser 顯示地圖、Marker、路線 | 完成（公開 Live） | `frontend/src/components/MapPanel.tsx`；公開 Render 已顯示 Google map／40 Markers／4 道路 polylines，現在的 Browser Key 也已通過單次載入 | 無核心缺口 | 前端 | Browser key、Google Routes 方案 | 瀏覽器實際顯示 Google map／40 Markers／4 polylines，Console 無 Google error | 無 key 時保留列表並顯示未設定，不冒稱 Live |
 | REQ-EXT-TDX-001 | 未來可選擴充 | TDX OAuth、真實路況與道路事件查詢 | 本版本未啟用 | 既有 `src/providers/tdx.py` 與 mock tests 保留 | 本輪不申請憑證、不做 Live 驗收 | 後端 | 未來產品決策與 TDX credentials | 若未來啟用，須以真實 response 與授權錯誤驗收 | 主畫面顯示「本版本未啟用」，不阻塞核心 Demo |
 | REQ-EXT-TDX-002 | 未來可選擴充 | TDX 指出受影響路線與配送風險 | 本版本未啟用 | 既有 `correlate_events_to_plan` 與 mock coverage 保留 | 尚未排入本輪 | 後端／共同 | REQ-EXT-TDX-001、路線資料 | 未來須讓風險可追溯至真實 TDX evidence | 不參與本輪完成判定 |
-| REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 完成（控制塔 UI；Provider 狀態依環境） | `frontend/`、RTL tests、`docs/frontend-handoff.md` | 當前公開環境仍需再次確認 credentials 與瀏覽器流程 | 前端 | REST API、Browser key | 三條操作流程與 evidence 畫面可在瀏覽器完成 | provider 降級狀態必須明確顯示 |
-| REQ-ORIG-007 | 原始必要 | Google／OR-Tools／OpenAI Agent／前端整合驗證 | 阻塞 | backend／frontend keyless tests 與 OpenAI Live 通過；公開 Playwright 實際停在 Google Matrix 403 | Google Cloud `BILLING_DISABLED`；本輪禁止修改 Billing | 共同 | Google Billing／credentials、OpenAI credentials | 瀏覽器到真實 provider 的完整流程通過且正式派車 requests 為 0 | Live 失敗須明確標示，不以 simulated 取代 |
+| REQ-ORIG-006 | 原始必要 | 前端完整顯示訂單、車輛、載重、路線與 Agent | 完成 | `frontend/`、RTL tests、`docs/frontend-handoff.md` 與公開控制塔驗收 | 無核心缺口 | 前端 | REST API、Browser key | 三條操作流程與 evidence 畫面可在瀏覽器完成 | provider 降級狀態必須明確顯示 |
+| REQ-ORIG-007 | 原始必要 | Google／OR-Tools／OpenAI Agent／前端整合驗證 | 競賽 Demo 已就緒 | 公開 40 單 Matrix→OR-Tools→Map、OpenAI Runner、拖拉、ORD-041 與人工確認均有證據；急單修正版另有公開驗收 | 最新 Commit 的單次全線演練於正式 Demo 執行，以免重複產生付費 Matrix | 共同 | Google／OpenAI credentials | 瀏覽器到真實 provider 的完整流程通過且正式派車 requests 為 0 | Live 失敗須明確標示，不以 simulated 取代 |
 
 ### 企業級擴充功能（B 類）
 
@@ -167,11 +167,11 @@
 
 ### 核心 deterministic 功能
 
-固定 simulated matrix 範圍內的 Import／validation、package weight aggregation、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／diff、REST／OpenAPI、single Agent runtime／tool layer、provider wiring／status、frontend control tower、tests、README 與 frontend handoff 均已有實作或測試證據。`FR-STATE-001` 的 durable lifecycle persistence、Live Provider E2E 與完整前後端 Live E2E 仍為部分完成或未完成，詳見上方現況表。
+Import／validation、package weight aggregation、deterministic planning／validator、route／map payload、overload redistribution、urgent preview／diff、REST／OpenAPI、single Agent runtime／tool layer、Google provider wiring、frontend control tower 與執行期版本管理均已有實作及測試證據。Render Free 的跨重啟永久保存不是競賽必要功能，仍列為已知平台限制。
 
 ### 原始必要功能的整合工作（A 類）
 
-以下能力原本即屬產品必要範圍，不得改列為 P1 或可選功能；本輪只記錄缺口，不開始實作：
+以下能力原本即屬產品必要範圍，不得改列為 P1 或可選功能：
 
 1. Google Routes 提供真實 distance／duration。
 2. Google Routes Matrix 真正進入 OR-Tools 排程。
@@ -181,7 +181,7 @@
 
 TDX OAuth、真實路況與路線風險已移至未來可選擴充，不列入本次競賽 Demo 完成條件。
 
-第 1 至第 6 項已完成 keyless wiring 或 local UI 的部分範圍，但仍需相應 credentials 與瀏覽器證據；第 7 項尚未完成。simulated、mock、fallback 或 skipped test 不能作為 A 類 Live Integration 完成證據。
+以上五項均已有程式、測試與公開證據。新 Key 已完成最低成本 Google Live 連線；為控制費用，最新 Commit 的完整 40 單全線驗收只在正式 Demo 執行一次。simulated、mock、fallback 或 skipped test 仍不得冒充 Live Integration 證據。
 
 ## 需求變更規則
 

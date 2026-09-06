@@ -8,7 +8,7 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE_40_ORDER；GOOGLE_MAPS_PUBLIC_LIVE；PUBLIC_FLOW_PARTIAL；TDX_EXCLUDED`
+- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_MINIMAL_LIVE_CURRENT；GOOGLE_ROUTES_PUBLIC_LIVE_40_ORDER_EVIDENCE；GOOGLE_MAPS_PUBLIC_LIVE；COMPETITION_DEMO_READY；TDX_EXCLUDED`
 - Frontend Integration status：`CORE_DEMO_COMPLETE`（公開網站已完成急單缺欄追問、ORD-041 自動查詢、摘要、Preview、差異與人工確認；本輪未重算完整 Google Matrix）
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
@@ -24,41 +24,40 @@
 | 包裹件數與單件重量加總 | 原始必要 | 完成 | `Order.total_weight_kg`、import／planning tests | 無核心缺口 |
 | 車輛載重與服務區域 | 原始必要 | 完成 | `src/services/planner.py`、`src/services/validator.py`、競賽驗收 | 無核心缺口 |
 | OR-Tools 分車與順序 | 原始必要 | 完成 | `build_ortools`、規劃測試；公開 Google Matrix→OR-Tools 為 40／40 且方案檢查通過 | 無核心缺口 |
-| 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成（simulated） | planner／validator time-window tests | 尚未以 live duration 驗證 |
+| 時段／午休／服務時間／Depot 往返 | 原始必要 | 完成 | planner／validator time-window tests 與既有公開 Google 40 單方案 | 無核心缺口 |
 | 獨立 Validator | 原始必要 | 完成 | `src/services/validator.py` 與 planning／competition tests | 無核心缺口 |
 | 超重重新分配 | 原始必要 | 完成 | Z4 112 kg acceptance、獨立方案檢查與公開最佳化方案證據 | 無核心缺口 |
-| 臨時插單 Preview 與差異 | 原始必要 | 完成 | `try_minimal_insert`、`compute_plan_diff`；公開 ORD-041 Google Live 預覽與人工確認 | 無核心缺口 |
+| 臨時插單 Preview 與差異 | 原始必要 | 完成 | `try_minimal_insert`、`compute_plan_diff`；既有公開 Google ORD-041 證據，以及目前急單狀態機的公開摘要→Preview→人工確認 | 無核心缺口 |
 | 人工確認與方案版本管理 | 原始必要 | 完成（確認狀態與 current pointer 已持久化） | API lifecycle tests、SQLite immutable version tests、confirm persistence regression | 無本輪核心缺口 |
 | OpenAI Agent 真正呼叫 Tool | 原始必要 | 完成 | `src/agent/runtime.py`、`/api/v1/agent/chat`；24 個 Live Runner 與公開線性 E2E 均驗證 `RunResult`／strict tool evidence | 無核心缺口 |
-| Google Routes 真實距離／時間 | 原始必要 | 完成（最小連線） | 2026-09-06 新 Key 以 1 起點／1 終點完成 4-element 一單方案：Google Live 560 m／167 s、無 fallback | 新版部署後仍須只執行一次完整 40 單公開驗收 |
-| Google Matrix 進入 OR-Tools | 原始必要 | 完成（最小連線） | `DS-C349CA0963F8` → `PLAN-F4853769674C`，`provider_mode=GOOGLE`、ORTOOLS、1／1、Validator 通過 | 完整 40 單同源證據待新版部署後驗收 |
-| Google Maps Browser 地圖 | 原始必要 | 完成（目前公開 Build） | 公開 Render origin 實際載入 runtime Browser key 與 Google 底圖；無 development-only 字樣、Google console error 或重複載入 | 新版部署後與完整方案四車路線一起重驗 |
+| Google Routes 真實距離／時間 | 原始必要 | 完成（Live） | 2026-09-06 新 Key 以 4-element 一單方案取得 560 m／167 s、無 fallback；另有既有公開 40 單完整證據 | 正式 Demo 只執行一次最新 40 單流程，避免重複計費 |
+| Google Matrix 進入 OR-Tools | 原始必要 | 完成 | `DS-C349CA0963F8` → `PLAN-F4853769674C`，`provider_mode=GOOGLE`、OR-Tools、1／1、方案檢查通過；既有公開 40 單同源證據 | 無核心缺口 |
+| Google Maps Browser 地圖 | 原始必要 | 完成（公開 Live） | 公開 Render 實際載入 runtime Browser key、Google 底圖、四車道路路線與 40 站；Console／page error 0 | 無核心缺口 |
 | TDX OAuth／真實路況查詢 | 未來可選擴充 | 本版本未啟用 | 既有 adapter 保留，但不列入本次 Demo 流程 | 未排入本輪 |
 | TDX 路線風險判斷 | 未來可選擴充 | 本版本未啟用 | 既有 deterministic correlation 保留 | 未排入本輪 |
 | 前端完整操作流程 | 原始必要 | 完成 | 公開 Excel→Agent→Plan→Map→拖拉 Preview→ORD-041→人工確認驗收 | 無核心缺口 |
-| 全整合前後端 Live E2E | 原始必要 | 部分完成 | Google 最小 Routes 與 Browser Map 已恢復；新版尚未部署 | 部署後從空白首頁只跑一次 40 單＋ORD-041 增量流程 |
-| 任意結構化臨時插單與連續版本 | 原始必要 | 完成（Mock／simulated） | `UrgentUnderstanding`、`UrgentWorkflowState`、batch preview 與 31 個 targeted tests | 部署後以 ORD-041 執行一組公開代表性流程；多筆壓力測試維持非付費 |
+| 全整合前後端 Live E2E | 原始必要 | 競賽 Demo 已就緒 | 既有完整公開 Google 流程，加上目前急單修正版的公開分段驗收 | 最新 Commit 的全線流程在正式 Demo 從空白首頁只跑一次 |
+| 任意結構化臨時插單與連續版本 | 原始必要 | 完成 | `UrgentUnderstanding`、`UrgentWorkflowState`、batch preview、31 個 targeted tests 與公開 ORD-041 摘要→Preview→確認 | 多筆壓力測試維持非付費；Google 增量只在正式 Demo 使用 |
 
 ## NOW
 
-等待使用者依 `docs/demo-runbook.md` 進行今晚展示；保留 Google Matrix 成本上限與人工確認邊界。
+依 `docs/demo-runbook.md` 進行今晚單次正式 Demo；完整 Google Matrix 不得自動重跑。
 
 ## NEXT
 
 1. 展示前先確認公開首頁與 `/health` 正常。
-2. 依 Demo 手冊操作正式 40 單流程；沒有使用者明確同意不得重新取得完整 Google Matrix。
-3. TDX 維持未來可選擴充，不影響本次展示。
+2. 依 Demo 手冊從空白首頁操作一次正式 40 單流程；失敗時不得自動重跑 Google Matrix。
+3. 展示後記錄實際結果、Matrix 用量與正式派車 requests=0。
 
 ## BLOCKED
 
-- `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
-- `PUBLIC-E2E-001 — Resolved`：Render `3a83958` 已公開驗證「幫我插入一張急單」進入缺欄追問；`ORD-041` 由既有示範資料補齊後進入摘要，接著產生 V2 Preview 並由人工確認，40→41 張、未安排 0、方案檢查通過。全程使用 `SIMULATED` 路線資料，Google Matrix 新增 0 elements。
+- 無競賽 Demo 阻塞。Render Free 跨重啟永久保存與企業擴充不屬於今晚完成條件。
 
 ## OPEN ISSUES
 
-- `EXT-001 — Resolved`：Google Browser key 已設定並通過 Live Playwright；P0 Benchmark 仍固定使用 simulated matrix 以維持可重現。
-- `EXT-002 — Scope Decision`：TDX 已由本輪明確排除並移至未來可選擴充，不影響核心 Demo 或完成判定。
-- `EXT-003 — Resolved minimal check`：2026-09-06 新 Key 已通過 4-element Google Routes 最小方案與公開 Browser Map 載入；完整 40 單結果仍須以新版部署後的單次公開驗收為準。
+- `DEMO-COST-001`：正式 Demo 的 40 單 Matrix 預算為 1,681 elements；若加 ORD-041 增量，上限為 1,764 elements。失敗時不得自動重跑。
+- `PLATFORM-001`：Render Free 使用暫存 SQLite，服務重啟後可能要重新匯入資料；不影響單次展示。
+- `EXT-002`：TDX、ERP／WMS、GPS 與跨重啟永久保存是未來可選擴充，不是今晚缺口。
 
 ## 2026-09-05 歷史公開紀錄（已由 2026-09-06 驗收取代）
 
@@ -91,6 +90,12 @@
 
 ## DONE THIS ROUND
 
+- 將 Active Spec、需求、架構、API 契約、前端交接、實作計畫、README、Demo 手冊、驗證報告與本狀態文件統一為目前事實：舊 Google 403／Billing 問題只保留為歷史；新 Key 最低成本 Live 已通過；正式 40 單全線流程只在今晚 Demo 執行一次。
+- 將「模擬延遲 20 分鐘」明確定義為：使用既有 ETA 往後推 20 分鐘並重新檢查時段餘裕，不使用 GPS、不呼叫 Google、不修改正式方案。
+
+### 本輪之前已完成的歷史紀錄
+
+以下依發生順序保留，不代表仍待處理；其中的「尚待部署」、403 或 Billing 描述是當時狀態，已由本文件頂端的目前狀態取代。
 - Render `3a83958` 已為 Live；公開瀏覽器確認 `幫我插入 ORD-041` 直接顯示完整摘要與「產生插單預覽／修改／取消」，不再要求重複輸入示範單資料。
 - 公開低成本完整急單流程：先建立 simulated OR-Tools V1，再由 Agent 完成 `COLLECTING → REVIEW_READY → PREVIEW_READY`；Preview 方案檢查通過，人工確認為 V2，41 張全數安排、未安排 0。沒有呼叫 Dispatch，也沒有新增 Google Matrix elements。
 - 最終 Backend 全量為 `251 passed、28 skipped、0 failed`；28 個 skipped 全是明確 opt-in 的外部 Live gates，未冒充本輪通過。
@@ -103,13 +108,13 @@
 - 修正真實模型可能同時輸出 structured order 與相同 reference ID，或先建立匿名草稿後才補訂單編號的情況；兩者不再被誤判為重複訂單或多出空白急單。
 - 前端在摘要後顯示「產生插單預覽／修改／取消」，只有使用者選擇預覽才計算；多筆結果逐張顯示車輛與站序，原方案在人工確認前不變。
 - Backend 全量 `248 passed、28 skipped`，通用急單 targeted `31 passed`；Ruff、mypy、OpenAPI／19-path contract 通過。Frontend TypeScript、ESLint、Vitest `24 passed`、production build 與 keyless Playwright `2 passed、3 opt-in skipped` 通過。
-- OpenAI 急單 Live smoke 已驗證 `COLLECTING → REVIEW_READY`，任意 `URG-DEMO-901` 不直接 Preview；Google 新 Key 的 4-element 最小方案與公開 Browser Map 均通過，未 fallback，尚待新版部署後的一次完整公開驗收。
+- OpenAI 急單 Live smoke 已驗證 `COLLECTING → REVIEW_READY`，任意 `URG-DEMO-901` 不直接 Preview；Google 新 Key 的 4-element 最小方案與公開 Browser Map 均通過，未 fallback；當時尚待後續版本部署。
 - 新增 `.agent/skills/taiwan-plain-language/SKILL.md`，規定所有回覆使用精簡的臺灣繁體中文，並以 10 歲小孩也能理解的白話說明。
 - Render 已部署 Commit `c32791561afc921e0a0d5cff5517ca243cd0c8fd` 且狀態為 Live。公開驗收已實際完成 40／40、4／4、Google Matrix→OR-Tools、Google 道路地圖、車輛切換、訂單理由及六則 Agent strict-tool 問答；沒有 Dispatch request。
 - 公開驗收在急單缺欄案例停於過時 assertion；產品正確進入 `COLLECTING` 並一次列出七個必要欄位。驗收腳本已改讀 `urgent_insertion_workflow`，並取消會額外花費 Google elements 的超重公開 Preview；TypeScript、ESLint 及 Playwright test discovery 通過。
 - 更新 `AGENTS.md`，將此回覆風格 Skill 設為每輪必讀；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 修正 Agent 將既有上下文 `ORD-001` 誤當新急單 ID：本輪原始訊息與 application metadata 已分離，tool boundary 會拒絕未出現於本輪訊息的偷渡 ID。
-- Agent 工具選擇使用有界 3 次嘗試；Google 錯誤分類器支援 list-shaped Compute Route Matrix 錯誤回應，當前精確分類為 `BILLING_DISABLED`。
+- Agent 工具選擇使用有界 3 次嘗試；Google 錯誤分類器支援 list-shaped Compute Route Matrix 錯誤回應，該次精確分類為 `BILLING_DISABLED`。
 - Backend `224 passed、28 skipped`；112-case corpus 相關 suite `120 passed`；24-case Live Runner 加 Responses strict-tool smoke `25 passed`。
 - Frontend TypeScript、ESLint、Vitest `23 passed`、production build 通過；本機 Playwright `2 passed、3 skipped`。公開三條 Playwright 流程均在 Google Matrix 階段收到 `502 PROVIDER_UNAVAILABLE`，未宣告公開全線通過。
 
@@ -218,11 +223,16 @@
 
 ## LAST VALIDATION
 
+- 2026-09-06 文件對齊：11 份權威／交付文件已統一目前狀態；Markdown code fences、`git diff --check` 與變更內容 Secret scan 均通過。此輪未修改 Feature Code、未呼叫 Google、未執行正式派車。
 - 2026-09-06 公開最終急單驗收（Render `3a83958`）：缺欄追問、ORD-041 deterministic lookup、訂單摘要、單次 Preview、獨立方案檢查、人工確認 V2 全部通過；確認後 41 張全數安排、未安排 0。Google Matrix 新增 0 elements；Dispatch requests 0。
 - 2026-09-06 本機最終全量：`251 passed、28 skipped、0 failed`（5 分 39 秒）；Ruff、mypy、Frontend TypeScript、ESLint、Vitest `24 passed`、Vite build 與 secret scan 均通過。
 - 2026-09-06 本機最終回歸：Backend `248 passed、28 skipped`；Ruff、mypy、OpenAPI snapshot／19-path contract 通過。Frontend TypeScript、ESLint、Vitest `24 passed`、Vite production build、Playwright keyless `2 passed、3 opt-in skipped`。
 - 2026-09-06 Provider 最小驗證：Google Routes 4 elements → OR-Tools 1／1、560 m／167 s、方案檢查通過；公開 Browser Map 載入成功且 Console／page error 0。OpenAI 急單兩輪皆為 `RunResult`，狀態由 `COLLECTING` 正確前進至 `REVIEW_READY`，沒有提前 Preview。
 - Secret gate：高信心 tracked pattern 0、敏感檔案 tracked 0、GitHub Actions 0；`.env` 與 `frontend/.env.local` 均由 Git 排除。Dispatch requests 0。
+
+### 歷史驗證封存（不代表目前狀態）
+
+以下項目保留各次修正與事故軌跡；遇到 `BILLING_DISABLED`、`API_KEY_RESTRICTED`、未部署或舊測試數字時，只能解讀為當時結果。現在的權威狀態以上方 `CURRENT PHASE`、`現況查證摘要` 與本節最前五點為準。
 
 - 回覆規則驗證：Skill frontmatter 與目錄格式通過 `quick_validate.py`；`git diff --check` 通過。
 - 日期：`2026-09-06 Asia/Taipei`。
@@ -324,7 +334,7 @@
 - 新增隨機資料瀏覽器證據：`random-01-attached.png`、`random-02-base-plan.png`、`random-03-insert-1.png`、`random-04-insert-2.png`、`random-05-final-plan.png`（1440×900，未含 secrets）。
 - 新增純附件瀏覽器證據：`random-06-attachment-only.png`（1440×900，未含 secrets）。
 
-## 2026-09-05 本輪實作閘門（以最新工作樹為準）
+## 2026-09-05 歷史實作閘門
 
 - `pytest --basetemp=.pytest-local-temp-run`：`56 passed、4 skipped`（歷史快照）。四個 skipped 是明確 opt-in 的 Responses、Agents SDK、HTTP Agent 與 Google provider gates；未將 skipped 視為 Live PASS。
 - `ruff check src tests scripts` 與 `mypy src`：通過。
@@ -338,7 +348,7 @@
 
 `Backend Core deterministic：DONE`；`OpenAI Agents SDK direct live：LOCAL_LIVE_PASS`；`HTTP Agent live：BLOCKED`；`Google Routes／Browser Maps：BLOCKED（provider／credential）`；`TDX：OPTIONAL／NOT_CONFIGURED`；`Overall Project：IN_PROGRESS`。
 
-## 2026-09-05 最新實作驗證（本次工作樹）
+## 2026-09-05 歷史實作驗證
 
 - 新增結構化 Agent session 的 `dataset_id`、`frozen_stop_ids`、`pending_order` 與 `last_preview_version` 指標；明確 dataset context 不會被舊 plan pointer 覆蓋，且不保存 workbook 或 credential。
 - `change_frozen_stops`、`change_order_constraint`、`change_vehicle_availability` 與 `reassign_order_preview` 會阻擋會移動凍結站點的候選方案；新增 SDK 回歸測試。

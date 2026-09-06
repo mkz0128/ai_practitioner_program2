@@ -1,5 +1,11 @@
 # 變更紀錄
 
+## 2026-09-06 — 文件現況對齊
+
+- 將 Google `BILLING_DISABLED`／`API_KEY_RESTRICTED` 明確改列為歷史事故；目前狀態以新 Key 的 4-element Routes Live、公開 Browser Map 與既有完整 40 單公開證據為準。
+- 將競賽核心標記為「Demo 已就緒」，並說明最新 Commit 的完整 40 單 Google 流程只在正式 Demo 執行一次，避免重複 Matrix 費用。
+- 補充「延遲 20 分鐘」是以既有 ETA 進行情境推演，不使用 GPS、不重新呼叫 Google，也不修改正式方案。
+
 ## 2026-09-06 — 通用急單語意入口防誤排
 
 - 新增 strict `begin_urgent_insertion`：主 Agent 若理解到新增臨時訂單，只能把使用者提供的事實交給確定性急單狀態機，不能誤呼叫 `plan_dispatch`、直接 Preview 或改動方案。
@@ -11,10 +17,10 @@
 
 - 將本輪原始使用者訊息與 application metadata 分離，防止舊的 `ORD-001` 上下文被當成新急單 ID；資料不足時改為要求必要欄位。
 - Agent evidence-only 對話使用有界三次嘗試，不執行無限重試。
-- Google Routes 安全錯誤分類已支援 list-shaped response；當前本機與 Render 的官方原因均為 `BILLING_DISABLED`，未使用 fallback，也未冒稱 Live PASS。
-- 當前驗證：Backend `224 passed、28 skipped`；112-case corpus suite `120 passed`；OpenAI 24-case Live Runner 與 strict-tool smoke `25 passed`；Frontend Vitest `23 passed`，TypeScript、ESLint、Vite build、Ruff、mypy 通過。
+- Google Routes 安全錯誤分類已支援 list-shaped response；該次本機與 Render 的官方原因均為 `BILLING_DISABLED`，未使用 fallback，也未冒稱 Live PASS。此狀態後來已由新 Key 的成功證據取代。
+- 該次驗證：Backend `224 passed、28 skipped`；112-case corpus suite `120 passed`；OpenAI 24-case Live Runner 與 strict-tool smoke `25 passed`；Frontend Vitest `23 passed`，TypeScript、ESLint、Vite build、Ruff、mypy 通過。
 
-## 2026-09-06 — 明晚 Demo 穩定性與公開線性驗收
+## 2026-09-06 — Demo 穩定性與公開線性驗收
 
 - 公開 Render 以同一個 Chromium 會話從空白首頁完整跑完 Excel、40／40、4／4、Google 地圖、Agent、拖拉換車、取消、ORD-041、人工確認、三策略、延遲與版本，結果 `1 passed`；未處理錯誤與正式派車請求皆為 0。
 - 視覺驗收發現車輛停用與延遲回答仍可能顯示 JSON／英文內部欄位；已 regression-first 改為證據導向的繁體中文摘要，並補強 ORD-041 差異摘要與未知 JSON fail-closed 顯示。
@@ -34,7 +40,7 @@
 - `preview_urgent_insert` 在 Agents SDK 選定工具後，可從 deterministic 示範資料註冊表解析 ORD-041；任意新訂單仍使用 strict structured schema，不新增 Regex 或關鍵字意圖路由。
 - 新增「沒有 pending context 也能解析文件化示範訂單」回歸測試；完整後端為 `216 passed、28 skipped`，Ruff、mypy 與 secret scan 通過。
 - Render `cb53615` 公開驗收通過 40／40 Google Matrix→OR-Tools、真實 Google 地圖、三策略同 Matrix、拖拉換車 Preview、ORD-041 40→41、人工確認及 10／20／30 分鐘延遲預覽。
-- 公開 Agent 回傳 `RunResult` 與 strict tool evidence；Prompt injection 被拒絕，Console 未處理錯誤與正式派車請求皆為 0。TDX 因憑證未設定維持外部阻塞。
+- 公開 Agent 回傳 `RunResult` 與 strict tool evidence；Prompt injection 被拒絕，Console 未處理錯誤與正式派車請求皆為 0。TDX 在該次紀錄中因憑證未設定列為外部阻塞，後續已排除於競賽 Demo。
 
 ## 2026-09-05 — 公開驗收前的控制塔與 Provider 狀態修正
 
@@ -97,7 +103,7 @@
 - 修正前端服務狀態列：Browser key 由 runtime config 設定時，Google Maps 狀態顯示為已設定，不再誤報未設定。
 - 修正 OR-Tools 路線結果重建：以求解器原始順序計算路線指標，避免合法車輛路線被最近鄰重排誤判為不可行；新增回歸測試。
 - Agent 回應若為工具 JSON，前端改以 evidence-first 繁體中文摘要呈現，避免 Raw JSON 出現在主要對話畫面；新增 Vitest 回歸測試。
-- 新增公開驗收與競賽缺口紀錄；CSV（目前四表 `.xlsx` 契約）與 TDX Live 仍明確標示為阻塞／加分項，不冒稱完成。
+- 新增公開驗收與競賽缺口紀錄；CSV（目前四表 `.xlsx` 契約）與 TDX Live 在該次紀錄中列為缺口／加分項，後續 TDX 已排除於競賽 Demo。
 - 保持 Dispatch requests 為 0；未執行正式環境操作、付費資源、force push 或合併 `main`。
 
 ### 2026-09-05 公開驗收修正

@@ -81,7 +81,7 @@ API gate 統計原有 13 組 documented method/path 加上 5 組進階 routes，
 
 Urgent insertion 先在 eligible existing routes 的合法位置執行 deterministic minimum-change search；preview 保留 base plan algorithm／identity，回傳 before／after dataset hashes 與 assigned weights，並標示 `MINIMAL_CHANGE`。只有 candidate 無法通過 independent Validator 時，才產生帶有 scope／moved-order metadata 的 `FULL_REPLAN`。
 
-上述核心能力的「完成」僅適用於固定 simulated matrix 與本機 deterministic scope。實際實作現況為：confirm／restore 的 state 與 current-version pointer 會回寫 SQLite；HTTP `/api/v1/agent/chat` 已經接入相同的 `Runner.run` runtime，並可在 `plan_dispatch` 後保存 plan；Google Routes adapter 的 strict wiring 會在有 key 時拒絕靜默 fallback；TDX 已具備 OAuth／event projection／risk correlation adapter，但 Live 狀態仍依 credentials 判定；`frontend/` 已提供 Agent-first control tower。不得將 keyless 測試通過解讀為當前環境的 Live Provider 證據。
+上述核心能力已具備 deterministic／simulated 測試、OpenAI Agent 公開證據、Google Routes 最低成本 Live、既有公開 40 單同源流程與 Google Maps 公開證據。confirm／restore 的 state 與 current-version pointer 會回寫 SQLite；HTTP `/api/v1/agent/chat` 已接入 `Runner.run` runtime，並可在 `plan_dispatch` 後保存 plan；Google Routes adapter 的 strict wiring 會拒絕靜默 fallback；`frontend/` 已提供 Agent-first control tower。TDX 保留 adapter 但本版本不啟用。不得把 keyless 測試當作 Live Provider 證據。
 
 ## 驗證標準
 
@@ -103,7 +103,7 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 4. 前端完整呈現訂單、車輛、載重、路線、例外、Agent 與 urgent preview／confirm。
 5. 執行 Google、OR-Tools、OpenAI Agent 與前端的完整 Live E2E；simulated、mock、fallback、skipped 不得替代。
 
-目前查證結果：第 1、2 項已完成 provider wiring 與 keyless proof；本輪 Live 呼叫已到達 Google，但官方回覆 `BILLING_DISABLED`，且 strict 模式未啟用 fallback，因此公開完整流程仍為外部阻塞。第 3、4 項已有 React control tower、Google Maps 整合與完整 API client；第 5 項須在 Google Cloud 專案 Billing 恢復後從公開網站重跑。TDX 為未來可選擴充，本版本顯示「本版本未啟用」，不影響核心 Demo 的功能判定。詳細 Requirement ID、證據與驗收方式見 `docs/requirements.md` 與 `docs/project-status.md`。
+目前查證結果：第 1～4 項均已完成程式、測試與公開證據；新 Key 也已通過 4-element Routes Live 與公開 Browser Map 載入。舊 `BILLING_DISABLED` 是已解除的歷史事故。第 5 項已有完整公開歷史證據與急單修正版的分段公開證據；最新 Commit 的單次完整 40 單流程保留給正式 Demo，避免重複計費。TDX 為未來可選擴充，本版本顯示「本版本未啟用」，不影響核心 Demo。詳細 Requirement ID、證據與驗收方式見 `docs/requirements.md` 與 `docs/project-status.md`。
 
 ### 本輪實作切片
 
@@ -178,13 +178,13 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 | Plan race／stale preview | wrong confirmation | immutable versions + optimistic concurrency |
 | Provider cost loop | denial of wallet | quotas、cache、timeouts、retries、Agent limits |
 
-## 本輪通用 Agent 與進階功能實際驗證
+## 歷史通用 Agent 與進階功能驗證快照
 
 - 已在 `src/agent/runtime.py` 實作 strict schema tools：三種策略比較、延遲模擬、車輛可用性、時段／優先順序、凍結站點、換車預覽、任意單筆／批次臨時插單與版本查詢；所有規劃輸出均重新執行 independent Validator。
 - `src/api/main.py::agent_chat` 以 `Runner.run` 為唯一對話編排入口，並在 Agent 選擇 `plan_dispatch` 後保存 `plan_id/version`；前端附件流程不再直接呼叫 `createPlan`。
 - 本機 deterministic quality gates 為 `56 passed、4 skipped`（歷史快照）；前端 typecheck、ESLint、Vitest 3 tests、Vite build、Ruff、mypy 均通過。OpenAI Responses 與 direct Agents SDK live gates 各自通過。
-- 本輪 Google Routes live gate 實際回傳 `GOOGLE_HTTP_403`，未啟用 fallback；Browser key 與 TDX credentials 未設定。HTTP Agent live gate 在 Windows in-process ASGI harness 觸發 OR-Tools 原生 abort，均標記 `BLOCKED`，不得以歷史結果或 simulated 測試替代。
-- 下一個唯一必要工作是：在隔離的 Linux／公開執行環境修正 HTTP Agent 與 OR-Tools 的執行緒／程序邊界，並重新取得 Google server／Browser key 後完成公開 Live E2E；此工作不包含 Dispatch 或正式部署。
+- 該輪 Google Routes live gate 實際回傳 `GOOGLE_HTTP_403`，未啟用 fallback；Browser key 與 TDX credentials 當時未設定。HTTP Agent live gate 在 Windows in-process ASGI harness 觸發 OR-Tools 原生 abort。這些問題後來已由 Linux／Render 公開驗收及新 Key 的成功證據取代。
+- 該輪的下一步是移至隔離的 Linux／公開執行環境驗收；此步驟後來已完成，且始終不包含正式派車。
 
 ## Render Free 測試部署工作包
 
@@ -196,7 +196,7 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 4. 在本機完成 production image、container、SPA deep-link、health、OpenAPI、secret scan 與 no-Dispatch checks 後，才進行 Render Dashboard 建立與公開網址驗收。
 5. 公開驗收必須逐項分開記錄 OpenAI、Google Routes、Google Maps、Excel→Plan→Map→Agent 與連續插單結果；TDX 維持 `OPTIONAL／NOT_CONFIGURED` 時不得標示 Live PASS。
 
-目前 Docker daemon、Render 登入／GitHub OAuth 與已輪替 Provider keys 均是外部前置條件；未具備時只完成可驗證的程式與 Blueprint，不宣稱部署完成。
+Render Free 服務已建立並部署於 `https://ai-dispatch-control-tower.onrender.com/`。未來重新建立服務時，Docker daemon、Render 登入／GitHub OAuth 與安全的 Provider keys 仍是外部前置條件；不得把本段重新建立服務的條件誤寫成目前尚未部署。
 
 ## 檢查點
 
@@ -205,10 +205,10 @@ Urgent insertion 先在 eligible existing routes 的合法位置執行 determini
 - 使用 live key 前，確認 secret restrictions、quota／budget 與 provider terms。
 - 任何 deployment 或 Git push 前，依規範取得獨立 Conditional LGTM。
 
-## 2026-09-05 通用 Agent／進階功能實作結果
+## 2026-09-05 歷史通用 Agent／進階功能實作結果
 
 - `src/agent/runtime.py` 維持單一 `Runner.run` 編排，並以 strict schema tool 支援三策略比較、延遲風險、車輛可用性、時段／優先順序、凍結站點、任意換車與單筆／批次臨時插單；凍結站點若會被候選方案移動則回傳 `FROZEN_STOP_CONFLICT`。
 - `src/api/main.py` 與 `src/repositories/sqlite.py` 保存 dataset／plan／version／session pointer；明確 dataset context 不會被過期 plan pointer 覆蓋，且 session 只保留受控識別資訊與 bounded history。
 - `frontend/src/components/PlanInsights.tsx` 將三種策略、延遲 10／20／30 分鐘預覽、版本檢視與復原草稿接入控制塔；拖拉換車仍使用非破壞性 preview，須人工確認後才建立新 current pointer。
-- 品質結果：後端 `78 passed、4 skipped`；前端 TypeScript、ESLint、Vitest `3 passed`、Vite build 通過；Playwright regression `2 passed、3 skipped`。OpenAI Responses 與 direct Agents SDK 明確 live gate 各 `1 passed`；Google Routes live gate 為 `GOOGLE_HTTP_403`，HTTP Agent gate 受 Windows OR-Tools native abort 阻塞。
-- 本輪不執行 Dispatch、部署、正式環境操作或 force push；Google／Browser／TDX 的公開 Live 狀態仍需依當前受限憑證與執行環境重新驗收。
+- 該次品質結果：後端 `78 passed、4 skipped`；前端 TypeScript、ESLint、Vitest `3 passed`、Vite build 通過；Playwright regression `2 passed、3 skipped`。OpenAI Responses 與 direct Agents SDK 明確 live gate 各 `1 passed`；Google Routes 當時為 `GOOGLE_HTTP_403`，HTTP Agent gate 受 Windows OR-Tools native abort 阻塞。
+- 該輪未執行正式派車、部署、正式環境操作或 force push；後續公開 Live 狀態已記錄於 `docs/validation-report.md` 的最上方權威區段。

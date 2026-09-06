@@ -75,7 +75,7 @@ application_agent_count: 1
 - Google provider interface、settings、health/status、timeout/fallback 與 strict Matrix／geometry wiring；既有 TDX adapter 保留，但 TDX 明確排除於本次競賽 Demo，僅屬未來可選擴充。
 - REST、OpenAPI/Swagger、sample payloads，以及由 environment 設定的 CORS。
 
-以上「已完成核心功能」限定於目前可重現的 deterministic／simulated provider 範圍與已測試的 provider wiring。SQLite 的 confirm／version state 會回寫 repository；Render Free 跨重啟永久保存仍受本地檔案系統限制。HTTP `/api/v1/agent/chat` 已接入相同的 SDK `Runner.run` runtime，並在 Agent 執行 `plan_dispatch` 後保存 plan；OpenAI／Google 的當前 Live 狀態仍須依環境憑證判定。`frontend/` 已提供 control tower 與 provider 降級提示。
+「已完成核心功能」包含 deterministic／simulated 驗證、OpenAI Agent 公開執行證據、Google Routes 最低成本 Live、既有公開 40 單同源流程與 Google Maps 公開地圖證據。SQLite 的 confirm／version state 會回寫 repository；Render Free 跨重啟永久保存仍受暫存檔案系統限制。HTTP `/api/v1/agent/chat` 已接入 SDK `Runner.run` runtime，並在 Agent 執行 `plan_dispatch` 後保存 plan；`frontend/` 已提供 control tower 與 provider 降級提示。
 
 ### 原始必要功能的整合缺口
 
@@ -89,13 +89,13 @@ application_agent_count: 1
 
 | 原始必要能力 | 現況 | 實際證據與缺口 |
 |---|---|---|
-| Google Routes live distance／duration | 外部阻塞 | 歷史曾有 Live 證據；2026-09-06 當前公開與本機請求均為 HTTP 403，官方 `ErrorInfo.reason=BILLING_DISABLED`，fallback=false。 |
-| Google Matrix 進入 OR-Tools | 部分完成（wiring verified） | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性 test；尚缺真實 provider E2E。 |
-| Google Maps Browser 地圖 | 部分完成 | Browser key 已設定且歷史公開底圖證據保留；當前無法在同一方案上重驗四車 Live 道路路線，不沿用歷史 PASS。 |
+| Google Routes live distance／duration | 完成（目前最小 Live 與既有完整公開證據） | 新 Key 已完成 4-element 最低成本 Live 測試，回傳合法距離／時間且未 fallback；既有公開 40 單完整證據保留。舊 `BILLING_DISABLED` 僅是歷史事故。 |
+| Google Matrix 進入 OR-Tools | 完成 | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性測試與既有公開 40 單 Matrix→OR-Tools 證據均已通過。 |
+| Google Maps Browser 地圖 | 完成（公開 Live） | 公開 Render 已實際載入 Google 底圖、四車道路路線與站點；新 Browser Key 也已完成目前 Build 的最低成本載入驗證。 |
 | TDX OAuth／真實路況／道路事件 | 未來可選擴充（本版本未啟用） | 既有 `src/providers/tdx.py` 與 mock coverage 保留；本輪不申請憑證、不做 Live 驗收。 |
 | TDX 受影響路線／配送風險 | 未來可選擴充（本版本未啟用） | 既有 `correlate_events_to_plan` 保留，不影響 Google／OR-Tools／Agent 核心 Demo。 |
 | 前端完整操作與 Agent 顯示 | 完成（控制塔 UI；Live 依環境） | `frontend/` React/Vite/MUI、API client、Agent-first attachment flow、RTL tests；公開 Live 需當前憑證。 |
-| 全整合前後端 Live E2E | 部分完成 | keyless/provider-neutral/contract gates 與 runtime tool tests 通過；仍需在當前公開環境重新執行完整 provider E2E。 |
+| 全整合前後端 Live E2E | 競賽 Demo 已就緒 | 核心流程已有公開分段與完整歷史證據；急單修正後的公開流程也已獨立通過。為避免重複產生 1,681 個 Matrix elements，最新 Commit 的單次全線演練保留給正式 Demo。 |
 
 ### 企業級擴充功能
 
