@@ -1,5 +1,11 @@
 # 變更紀錄
 
+## 2026-09-06 — 通用急單語意入口防誤排
+
+- 新增 strict `begin_urgent_insertion`：主 Agent 若理解到新增臨時訂單，只能把使用者提供的事實交給確定性急單狀態機，不能誤呼叫 `plan_dispatch`、直接 Preview 或改動方案。
+- `/api/v1/agent/chat` 現在會把主 Runner 的急單 evidence 接回既有 `COLLECTING → REVIEW_READY → PREVIEW_READY` 流程；沒有 Regex、關鍵字或固定 `ORD-041` 意圖路由。
+- 新增第一輪語意漏判回歸、無副作用 strict-tool 測試，並將 112 筆 Agent 語料中的急單案例改為新的安全入口。
+
 ## 2026-09-06 — Agent 急單上下文與 Google 錯誤分類
 
 - 將本輪原始使用者訊息與 application metadata 分離，防止舊的 `ORD-001` 上下文被當成新急單 ID；資料不足時改為要求必要欄位。

@@ -2,19 +2,15 @@
 
 ## 2026-09-06 當前權威驗證
 
-- Render 已成功部署 `c32791561afc921e0a0d5cff5517ca243cd0c8fd`。公開線性驗收從空白首頁完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換、ORD-001 理由及六則 Agent 問答。
-- 唯一一次公開流程在「幫我插入一張急單」停止：產品正確回傳 `urgent_insertion_workflow`／`COLLECTING` 並列出缺少欄位，但測試仍期待舊 `request_missing_fields`。這是測試過時，不是產品錯誤。
-- 該次流程已使用一組 41×41 Google Matrix（1,681 elements）；尚未執行 ORD-041 的 83-element 增量。依使用者設定的成本停止點，未自動重跑，Dispatch requests 為 0。
-- 驗收腳本已改為新狀態機契約；超重案例只驗證「摘要後等待確認」並取消，不在公開流程新增 Google Matrix。TypeScript、ESLint 與 Playwright test discovery 通過。完整公開後半段仍待明確重跑授權。
-
-- Backend deterministic：`248 passed、28 skipped、0 failed`（使用專案內 `--basetemp`）；Ruff、mypy 通過。28 個 skipped 仍是下方列出的明確 opt-in Live gates，不是以跳過隱藏功能失敗。
-- 通用急單 targeted suite：`31 passed`；另新增匿名草稿補上訂單編號，以及模型同時輸出 structured order／reference ID 時的去重回歸。單筆、多筆、部分缺欄、重複、超載、時段衝突、不可安排、取消與確認繞過均不污染 current plan。
-- OpenAI 急單 Live smoke：兩輪都實際回傳 `RunResult`。第一輪「我要加一張臨時配送單」進入 `COLLECTING` 並一次列出必要欄位；第二輪提供任意 `URG-DEMO-901` 完整資料後進入 `REVIEW_READY`，只顯示摘要，沒有直接建立 Preview；usage 回傳實際 token 數而非固定 0。
-- Google Routes 新 Key 最小驗證：以一張合成訂單產生 4 Matrix elements，`provider_mode=GOOGLE`、ORTOOLS、1／1 完整安排、560 m／167 s、方案檢查通過、無 simulated fallback。
-- Google Maps Browser 新 Key 最小驗證：公開 Render origin 實際載入 runtime key 與 Google 底圖；沒有 development-only 字樣、Google key／referrer console error、page error 或重複載入。
-- Frontend：TypeScript、ESLint、Vitest `24 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。三個 skipped 是明確 opt-in 的 live／random flows，部署後會另行執行唯一一次公開線性流程。
-- API contract：19 個 OpenAPI paths 全部宣告並由 contract／snapshot tests 覆蓋；原有 13 組介面保持相容，新增 batch urgent preview 為向後相容擴充。
-- 目前尚未宣告新版公開完整通過：必須先 Push 並等待 Render 部署，再從空白首頁只跑一次 40 單 Google Matrix＋ORD-041 增量流程。TDX 本版排除；Dispatch requests 維持 `0`。
+- 上一輪公開流程已完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換與前六則 Agent 問答；但「幫我插入一張急單」被錯選為 `plan_dispatch`，因此當次公開流程未通過急單驗收。該輪已使用 1,681 Matrix elements，沒有自動重跑，Dispatch requests 為 0。
+- 根因是第一個 strict 急單語意結果偶發回傳 `NONE`，而主 Agent 當時沒有安全的急單入口，只能在其他工具中誤選。現在新增無副作用的 strict `begin_urgent_insertion`；它只收集欄位，API 隨即交回同一個確定性狀態機，不能規劃、取得 Matrix、套用或確認方案。
+- 真實 OpenAI `gpt-5-mini` 已重新驗證三種主 Agent 語句：「幫我插入一張急單」、「幫我插入 ORD-041」與一張完整任意急單，均選用 `begin_urgent_insertion`，沒有選 `plan_dispatch`，且沒有呼叫 Google。
+- Backend 全量：`250 passed、28 skipped、0 failed`；112 筆 Agent corpus 單獨執行為 `116 passed`。Ruff、mypy、OpenAPI／contract 皆隨全量測試通過。
+- 通用急單測試涵蓋：只說要插單、單筆完整、缺重量／時段、多筆、部分缺欄、既有 ORD-041、不存在 ID、重複 ID、超載、時段衝突、無法安排、取消及提示注入；Preview 失敗不污染目前方案。
+- Frontend：TypeScript、ESLint、Vitest `24 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。三個 skipped 是需明確開啟的外部 Live／隨機流程，沒有用 skipped 隱藏本次後端急單失敗。
+- Secret scan：高信心 Secret `0`、追蹤敏感檔案 `0`、GitHub Actions `0`；`.env` 與 `frontend/.env.local` 仍被 Git 排除。
+- Google Routes 新 Key 的既有最小證據仍是 4 elements：`provider_mode=GOOGLE`、1／1 完整安排、560 m／167 s、無 simulated fallback。這次修正與本機驗證沒有新增 Google Matrix 用量。
+- 下一個公開驗收只驗證急單的缺欄追問、摘要、Preview 與人工確認，優先使用 simulated／既有方案；不得再自動重算 41×41 Google Matrix。TDX 本版排除，正式派車仍停用。
 
 ## 2026-09-06 歷史 Demo 閘門快照（非當前權威）
 

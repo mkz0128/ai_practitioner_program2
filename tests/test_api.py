@@ -291,3 +291,66 @@ def test_agent_dataset_context_persists_plan_selected_by_runner(monkeypatch) -> 
     assert body["plan_version"] == 1
     assert store.get_plan(body["plan_id"], 1) is not None
     assert matrix_preferences == [True]
+
+
+def test_agent_chat_routes_main_runner_urgent_intake_into_state_machine(monkeypatch) -> None:
+    """A first-pass semantic miss must not turn an urgent order into a new plan."""
+    store.datasets.clear()
+    store.plans.clear()
+    store.current_versions.clear()
+    with SAMPLE_WORKBOOK.open("rb") as workbook:
+        imported = client.post(
+            "/api/v1/datasets/import-excel",
+            files={
+                "file": (
+                    SAMPLE_WORKBOOK.name,
+                    workbook,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+    dataset_id = imported.json()["dataset_id"]
+    created = client.post(
+        "/api/v1/plans",
+        json={
+            "dataset_id": dataset_id,
+            "algorithm": "ORTOOLS",
+            "route_provider_preference": "SIMULATED",
+        },
+    )
+    assert created.status_code == 201, created.text
+    plan_id = created.json()["plan_id"]
+
+    async def false_first_pass(message, state):
+        return UrgentUnderstanding(is_urgent_insertion=False), object()
+
+    async def main_runner_urgent_intake(message, dataset, matrix, **kwargs):
+        context = DispatchAgentContext(dataset=dataset, matrix=matrix)
+        context.evidence.append(
+            {
+                "tool": "begin_urgent_insertion",
+                "action": "ADD_OR_UPDATE",
+                "orders": [],
+                "referenced_order_ids": [],
+            }
+        )
+        return "已收到臨時插單要求。", context, object()
+
+    monkeypatch.setattr("src.api.main.understand_urgent_message", false_first_pass)
+    monkeypatch.setattr("src.api.main.run_dispatch_agent", main_runner_urgent_intake)
+    monkeypatch.setattr("src.api.main.settings.openai_api_key", "test-openai-key")
+    response = client.post(
+        "/api/v1/agent/chat",
+        json={
+            "session_id": "URGENT-MISROUTE-REGRESSION",
+            "message": "幫我插入一張急單",
+            "context": {"plan_id": plan_id, "plan_version": 1},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["evidence"][0]["tool"] == "urgent_insertion_workflow"
+    assert body["evidence"][0]["data"]["stage"] == "COLLECTING"
+    assert body["plan_id"] == plan_id
+    assert store.get_plan(plan_id).version == 1

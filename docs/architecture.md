@@ -67,7 +67,7 @@ tests/
 
 Runtime gate 是由 `Runner.run` 執行的實際 OpenAI Agents SDK `Agent`，不是只包裝 prompt。Strict allowlist 包含 `plan_dispatch`、查詢／解釋工具、三策略比較、延遲模擬、車輛可用性、時段／優先順序、凍結站點、換車預覽、版本查詢與通用臨時插單工具。每個 planning tool 在回傳精簡 evidence 前，都會呼叫 deterministic planner 與 independent Validator。Model 只能摘要 evidence 已存在的值，不得計算 weights、routes、legality 或 metrics。
 
-急單對話使用獨立的 strict `UrgentUnderstanding` 輸出，但不讓模型直接修改方案。每一則訊息仍由 `Runner.run` 做語意理解；接著 `UrgentWorkflowState` 確定性狀態機固定執行 `COLLECTING → REVIEW_READY → PREVIEW_REQUESTED → PREVIEW_READY`。缺漏、重複、取消與繞過確認都在程式層 fail closed。使用者看過全部急單摘要並選擇預覽後，後端才呼叫 batch preview；Agent 的舊單筆插單工具不在此對話路徑的 allowlist，避免繞過狀態機。
+急單對話使用獨立的 strict `UrgentUnderstanding` 輸出，但不讓模型直接修改方案。每一則訊息仍由 `Runner.run` 做語意理解；接著 `UrgentWorkflowState` 確定性狀態機固定執行 `COLLECTING → REVIEW_READY → PREVIEW_REQUESTED → PREVIEW_READY`。主 Agent 另保留只蒐集結構化事實的 strict `begin_urgent_insertion` 安全入口：若第一個語意結果誤判為一般訊息，但主 Runner 正確理解為急單，API 會把同一份結構化資料送進相同狀態機，絕不改跑整份排程。缺漏、重複、取消與繞過確認都在程式層 fail closed。使用者看過全部急單摘要並選擇預覽後，後端才呼叫 batch preview；舊單筆插單工具不在 HTTP 對話路徑的 allowlist，避免繞過狀態機。
 
 Keyless SDK E2E suite 使用 SDK 的 `ScriptedModel`，在沒有 network access 的情況下執行實際 tool dispatch 與 guardrail pipeline。Opt-in live gate 使用 `OpenAIResponsesModel` 與 `gpt-5-mini`、`parallel_tool_calls=false`、`max_tokens=2048`、`max_turns=4`，停用 sensitive data tracing，並要求只呼叫一次 planning tool。
 

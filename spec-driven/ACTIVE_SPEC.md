@@ -135,6 +135,7 @@ application_agent_count: 1
 ## 2.1 本輪通用 Agent 與進階功能實作
 
 - `/api/v1/agent/chat` 會建立結構化 `AgentSession`，每則訊息進入 `Runner.run`；所有配送計算只由 strict allowlisted tools 與 deterministic services 執行。
+- 臨時插單只允許由 strict `UrgentUnderstanding` 或主 Runner 的 `begin_urgent_insertion` 蒐集結構化事實；後續補資料、摘要、Preview 與人工確認均由固定狀態機控制，模型不能把急單改跑成整份正式排程。
 - 已提供三策略比較、延遲風險預覽、車輛可用性預覽、時段／優先順序變更預覽、凍結站點狀態、通用換車預覽、批次臨時插單與版本復原 API。
 - 所有變更均先產生 `PROPOSED` preview，重新執行 Validator，且確認條件禁止不完整或有未安排訂單的版本；`DISPATCH_ENABLED` 預設為 `false`。
 - 護欄以 Unicode 正規化與 pattern guardrail 阻擋規則繞過、直接 Dispatch、假造 Validator、秘密／系統提示揭露等變形輸入；輸出再經 evidence grounding 檢核。

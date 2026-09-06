@@ -107,6 +107,40 @@ class MultipleUrgentOrderInput(BaseModel):
     orders: list[StructuredUrgentOrderInput] = Field(min_length=1, max_length=5)
 
 
+class UrgentIntakeOrderInput(BaseModel):
+    """Facts extracted for the urgent workflow; every field may still be missing."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    order_id: str | None = None
+    zone_code: str | None = None
+    city: str | None = None
+    district: str | None = None
+    location_label: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    time_slot: Literal["AM", "PM"] | None = None
+    declared_package_count: int | None = Field(default=None, ge=1, le=3)
+    package_weight_kg: float | None = Field(default=None, gt=0)
+    priority: Literal["NORMAL", "HIGH"] | None = None
+
+
+class UrgentIntakeInput(BaseModel):
+    """Semantic handoff to the deterministic urgent-order state machine."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    action: Literal[
+        "ADD_OR_UPDATE",
+        "MODIFY",
+        "PREVIEW",
+        "CANCEL",
+        "BYPASS_CONFIRMATION",
+    ]
+    orders: list[UrgentIntakeOrderInput] = Field(default_factory=list, max_length=20)
+    referenced_order_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
 class MissingFieldsInput(BaseModel):
     """Strict list of fields that the dispatcher must provide before planning."""
 
@@ -228,8 +262,8 @@ def assistant_help(
 
     This tool is intentionally not a data-missing or action router.  Requests to
     create, insert, change, or otherwise modify a delivery plan must use a
-    structured action tool (or ``request_missing_fields`` when required data is
-    absent), even when the dataset has not been loaded.
+    structured action tool. Urgent-order requests use ``begin_urgent_insertion``;
+    the deterministic state machine then reports any missing fields.
     """
     _tool_started(ctx.context, "assistant_help", {"topic": topic})
     messages = {
@@ -267,6 +301,24 @@ def request_missing_fields(
 ) -> str:
     """Ask for only the structured fields required before an urgent preview."""
     return _record_missing_fields(ctx.context, request.fields)
+
+
+@function_tool(strict_mode=True)
+def begin_urgent_insertion(
+    ctx: RunContextWrapper[DispatchAgentContext], request: UrgentIntakeInput
+) -> str:
+    """Hand an urgent-order intent to the deterministic state machine without planning.
+
+    This semantic safety net records only facts supplied by the user. It never
+    invokes the optimizer, changes a plan, fetches a route matrix, or confirms
+    a proposal.
+    """
+    payload = request.model_dump(mode="json")
+    _tool_started(ctx.context, "begin_urgent_insertion", payload)
+    evidence = {"tool": "begin_urgent_insertion", **payload}
+    ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "begin_urgent_insertion")
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
 def _record_missing_fields(
@@ -986,9 +1038,9 @@ def _preview_urgent_order(context: DispatchAgentContext, pending: Order, tool_na
 def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Preview the exact order ID explicitly supplied by the user.
 
-    Never call this tool when the user did not provide an order ID; use
-    request_missing_fields instead. The deterministic service may resolve a
-    documented synthetic fixture for an explicitly supplied ID.
+    This legacy compatibility tool is not exposed on the HTTP chat path. The
+    current flow uses ``begin_urgent_insertion`` first, then lets deterministic
+    code report missing fields or resolve an explicitly supplied fixture ID.
     """
     normalized_order_id = order_id.strip().upper()
     pending = ctx.context.pending_order
@@ -1346,6 +1398,7 @@ def create_dispatch_agent(
     else:
         model = model_override
     tools: list[Any] = [
+        begin_urgent_insertion,
         plan_dispatch,
         highest_load_vehicle,
         inspect_plan_overview,
@@ -1381,6 +1434,11 @@ def create_dispatch_agent(
             "request semantically and select only the allowlisted strict tool that matches it. "
             "Never use a keyword rule, calculate weights, routes, legality, metrics, risk or "
             "versions yourself. Deterministic tool evidence is the sole source of truth. "
+            "Use begin_urgent_insertion whenever the user's meaning is to add one or more "
+            "temporary, extra, urgent, or newly arrived delivery orders, including a vague "
+            "request with no order fields. It only collects supplied facts and hands control "
+            "to the deterministic urgent-order state machine. Never use plan_dispatch for an "
+            "urgent-order request, even when a current plan already exists. "
             "Use plan_dispatch for a new formal plan; it always uses OR-Tools and Baseline is "
             "never a selectable formal-plan algorithm. When application state says a validated "
             "dataset is present and the user asks to import, use, arrange, or create a plan from "
@@ -1397,12 +1455,11 @@ def create_dispatch_agent(
             "change_frozen_stops for freeze/unfreeze requests, "
             "using stop_count when the user refers to the first N stops instead of inventing IDs, "
             "reassign_order_preview for a requested vehicle move, and query_plan_version for "
-            "version questions. For a new urgent order, extract only supplied fields into the "
-            "strict preview_structured_urgent_insert schema; if required fields are absent, call "
-            "request_missing_fields with only those fields and ask for them, even when no dataset "
-            "is loaded. If the current request explicitly supplies an order ID, call "
-            "preview_urgent_insert with that exact ID; the deterministic tool may resolve a "
-            "documented fixture. Never infer or substitute a demo order ID when the user did not "
+            "version questions. For a new urgent order, extract only supplied fields into "
+            "begin_urgent_insertion; missing fields are checked later by deterministic code. "
+            "The legacy preview tools may appear only in isolated compatibility tests and must "
+            "not replace begin_urgent_insertion for a new conversational request. Never infer "
+            "or substitute a demo order ID when the user did not "
             "provide one. This current-turn rule takes precedence over an "
             "earlier request_missing_fields turn. An action request to add, insert, or fit an "
             "urgent/new order is not a "

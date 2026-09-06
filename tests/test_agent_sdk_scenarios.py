@@ -64,6 +64,30 @@ async def test_sdk_daily_dispatch_calls_planner_and_validator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sdk_urgent_intake_only_records_structure_without_planning() -> None:
+    _, context, _ = await _run_tool(
+        "幫我插入一張急單",
+        "begin_urgent_insertion",
+        {
+            "request": {
+                "action": "ADD_OR_UPDATE",
+                "orders": [],
+                "referenced_order_ids": [],
+            }
+        },
+    )
+    assert context.evidence == [
+        {
+            "tool": "begin_urgent_insertion",
+            "action": "ADD_OR_UPDATE",
+            "orders": [],
+            "referenced_order_ids": [],
+        }
+    ]
+    assert context.plan is None
+
+
+@pytest.mark.asyncio
 async def test_plan_evidence_vehicle_count_counts_non_empty_routes() -> None:
     _, context, _ = await _run_tool(
         "Create today's daily dispatch plan.",

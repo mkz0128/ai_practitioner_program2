@@ -95,7 +95,7 @@ pnpm run build
 3. POST plans
 4. GET plan 與 map-data
 5. Render vehicles/stops/exceptions/provider badge
-6. 急單資料齊全後先顯示整批摘要；使用者選擇「產生插單預覽」才呼叫 batch preview 並顯示 diff
+6. 急單資料齊全後先顯示整批摘要；使用者選擇「產生插單預覽」才呼叫 batch preview 並顯示 diff。即使第一輪語意判斷漏掉「急單」，主 Runner 也只能把資料交回同一個狀態機，不得誤跑整份正式排程。
 7. 人工針對精確 plan/version 按下 confirm
 8. 本控制塔不呼叫 `/dispatch`；若未來另有核准的營運流程，才由具權限的系統執行。
 ```

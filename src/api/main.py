@@ -31,6 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.runtime import run_dispatch_agent
 from src.agent.urgent_workflow import (
+    UrgentOrderDraft,
+    UrgentUnderstanding,
     UrgentWorkflowState,
     advance_urgent_workflow,
     understand_urgent_message,
@@ -1892,37 +1894,15 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         session.plan_id = record.plan_id
         session.plan_version = record.version
 
-    try:
-        urgent_state = UrgentWorkflowState.model_validate(session.urgent_workflow or {})
-        urgent_understanding, urgent_run = await understand_urgent_message(
-            payload.message, urgent_state
-        )
-    except InputGuardrailTripwireTriggered:
-        return _error(
-            request,
-            400,
-            "PROMPT_INJECTION_BLOCKED",
-            "訊息包含不可執行的規則繞過要求。",
-        )
-    except Exception as exc:
-        provider_runtime_state["openai"] = "failed"
-        status_code, error_code, message, retryable = _classify_agent_error(exc)
-        return _error(
-            request,
-            status_code,
-            error_code,
-            message,
-            provider="OPENAI",
-            exception_type=type(exc).__name__,
-            fallback_used=False,
-            retryable=retryable,
-        )
+    urgent_state = UrgentWorkflowState.model_validate(session.urgent_workflow or {})
 
-    if urgent_understanding.is_urgent_insertion or urgent_understanding.action != "NONE":
+    def finish_urgent_workflow(
+        understanding: UrgentUnderstanding, runner_result: Any
+    ) -> Any:
         existing_ids = {order.order_id for order in dataset.orders}
         workflow = advance_urgent_workflow(
             urgent_state,
-            urgent_understanding,
+            understanding,
             fixture_lookup=get_demo_urgent_order,
             existing_order_ids=existing_ids,
         )
@@ -1991,7 +1971,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         _save_agent_session(payload.session_id, session)
         provider_runtime_state["openai"] = "connected"
         urgent_usage = getattr(
-            getattr(urgent_run, "context_wrapper", None), "usage", None
+            getattr(runner_result, "context_wrapper", None), "usage", None
         )
         return {
             "session_id": payload.session_id,
@@ -2006,9 +1986,37 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             "provider_mode": record.matrix.provider_mode if record else matrix.provider_mode,
             "plan_id": record.plan_id if record else None,
             "plan_version": record.version if record else None,
-            "runner_result_type": type(urgent_run).__name__,
+            "runner_result_type": type(runner_result).__name__,
             "request_id": _request_id(request),
         }
+
+    try:
+        urgent_understanding, urgent_run = await understand_urgent_message(
+            payload.message, urgent_state
+        )
+    except InputGuardrailTripwireTriggered:
+        return _error(
+            request,
+            400,
+            "PROMPT_INJECTION_BLOCKED",
+            "訊息包含不可執行的規則繞過要求。",
+        )
+    except Exception as exc:
+        provider_runtime_state["openai"] = "failed"
+        status_code, error_code, message, retryable = _classify_agent_error(exc)
+        return _error(
+            request,
+            status_code,
+            error_code,
+            message,
+            provider="OPENAI",
+            exception_type=type(exc).__name__,
+            fallback_used=False,
+            retryable=retryable,
+        )
+
+    if urgent_understanding.is_urgent_insertion or urgent_understanding.action != "NONE":
+        return finish_urgent_workflow(urgent_understanding, urgent_run)
 
     # Context identifiers are application-controlled data. Include only the
     # selected order identifier as a hint so the model must still invoke the
@@ -2102,6 +2110,29 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         )
 
     provider_runtime_state["openai"] = "connected"
+
+    # The dedicated structured interpreter is the primary urgent-order gate.
+    # If that model pass ever says NONE but the main Runner semantically selects
+    # the safe intake tool, hand the same structured facts to the deterministic
+    # workflow. This prevents an urgent request from being misapplied as a new
+    # full plan without adding regex or keyword routing.
+    urgent_intake = next(
+        (item for item in context.evidence if item.get("tool") == "begin_urgent_insertion"),
+        None,
+    )
+    if urgent_intake is not None:
+        intake_understanding = UrgentUnderstanding(
+            is_urgent_insertion=True,
+            action=urgent_intake["action"],
+            orders=[
+                UrgentOrderDraft.model_validate(item)
+                for item in urgent_intake.get("orders", [])
+            ],
+            referenced_order_ids=[
+                str(item) for item in urgent_intake.get("referenced_order_ids", [])
+            ],
+        )
+        return finish_urgent_workflow(intake_understanding, result)
 
     # A plan requested through the Agent is persisted here, after the SDK has
     # selected and executed plan_dispatch.  This keeps the conversation as the

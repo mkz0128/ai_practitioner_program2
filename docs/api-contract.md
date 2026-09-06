@@ -444,6 +444,8 @@ Response:
 
 此 endpoint 不得捏造 facts 或繞過 confirmation。OpenAI 不可用時回傳 `503 AGENT_UNAVAILABLE`；其他 REST endpoints 仍可使用。
 
+臨時插單對話的回應固定使用 `urgent_insertion_workflow` evidence。第一次只蒐集使用者提供的欄位；缺欄時回傳 `COLLECTING`，完整時回傳 `REVIEW_READY`。只有使用者在看過摘要後選擇「產生插單預覽」，才會回傳 `PREVIEW_READY` 與批次差異。主 Agent 的 `begin_urgent_insertion` 只負責把 strict 結構化事實交給狀態機，不會建立方案、取得 Matrix、套用變更或確認方案。
+
 ### `GET /api/v1/providers/status`
 
 ```json

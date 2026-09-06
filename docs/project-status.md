@@ -9,7 +9,7 @@
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
 - Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE_40_ORDER；GOOGLE_MAPS_PUBLIC_LIVE；PUBLIC_FLOW_PARTIAL；TDX_EXCLUDED`
-- Frontend Integration status：`PARTIAL`（公開網站已完成 40／40、4／4、Google 道路地圖及前六則 Agent 問答；驗收腳本在新急單狀態機的舊工具名稱 assertion 停止，尚未完成 ORD-041 後半段）
+- Frontend Integration status：`PARTIAL`（公開網站已完成 40／40、4／4、Google 道路地圖及前六則 Agent 問答；急單誤跑正式排程已於本機修正並完成回歸，等待新版部署後的低成本公開驗證）
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -41,18 +41,18 @@
 
 ## NOW
 
-等待使用者決定是否授權第二次公開驗收；程式與驗收腳本已修正，不能在原「失敗即停止」成本限制下自行重跑。
+修正通用臨時插單的 Agent 語意入口，完成不重算 40 單 Google Matrix 的測試、部署與公開驗收。
 
 ## NEXT
 
-1. 若取得明確授權，執行修正後的單次公開線性驗收。
-2. 驗證 ORD-041 摘要、預覽、人工確認及版本流程。
-3. 依公開結果更新最終驗證紀錄；不得自動重跑昂貴 Matrix。
+1. Push 至 `feat/frontend-control-tower` 並等待 Render 自動部署。
+2. 以公開環境驗證缺欄追問、摘要、預覽與人工確認；不得重算完整 Google Matrix。
+3. 記錄公開驗收結果與 Google 新增用量。
 
 ## BLOCKED
 
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
-- `PUBLIC-E2E-001`：唯一一次公開線性驗收已在完成 40 單 Google Matrix、地圖與六則 Agent 問答後停止。原因是測試仍期待舊 `request_missing_fields`，實際正確回傳新 `urgent_insertion_workflow/COLLECTING`。依使用者「失敗即停止、不得重跑」成本規則，第二次執行需要新的明確授權。
+- `PUBLIC-E2E-001`：上一輪公開線性驗收在完成 40 單 Google Matrix、地圖與六則 Agent 問答後停止；「幫我插入一張急單」被誤選為 `plan_dispatch`。本機已以 strict `begin_urgent_insertion` 與狀態機接回修正，尚待新版部署後做不重算完整 Matrix 的公開驗證。
 
 ## OPEN ISSUES
 
@@ -91,6 +91,9 @@
 
 ## DONE THIS ROUND
 
+- 修正急單第一輪語意偶發漏判：主 Agent 新增無副作用的 strict `begin_urgent_insertion`；API 只把結構化事實交給既有急單狀態機，不會誤跑 `plan_dispatch`、直接 Preview、重抓 Matrix 或改動正式方案。
+- 新增兩個回歸測試並更新 112 筆 Agent corpus 契約；真實 OpenAI 三個代表語句均選對新工具。Backend `250 passed、28 skipped`、corpus `116 passed`、Ruff／mypy 通過。
+- Frontend TypeScript、ESLint、Vitest `24 passed`、Vite build 通過；本機 Playwright `2 passed、3 個明確 opt-in skipped`。Secret 高信心命中 0；本輪 Google Matrix 新增用量 0。
 - 新增 `UrgentUnderstanding` 與 `UrgentWorkflowState`：每則急單訊息先經 OpenAI Agents SDK `Runner.run` 產生 strict structured output，再由程式固定控制補資料、摘要、預覽與取消；不使用 Regex、關鍵字或固定 `ORD-041` 路由。
 - 新增單筆／多筆共用的 `/api/v1/plans/{plan_id}/urgent-insert/batch-preview`；多張急單共用同一個 base version、同一份 Preview 與獨立方案檢查，Google 模式只增量延伸既有 Matrix。
 - 修正真實模型可能同時輸出 structured order 與相同 reference ID，或先建立匿名草稿後才補訂單編號的情況；兩者不再被誤判為重複訂單或多出空白急單。

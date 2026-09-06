@@ -15,7 +15,7 @@ LIVE_CASES = [
     ("你可以協助調度員做哪些事？", "assistant_help"),
     ("今天的 Excel 要有哪些欄位才可以排車？", "assistant_help"),
     ("你如何避免貨物超過車輛載重？", "assistant_help"),
-    ("幫我插入 ORD-041。", "preview_urgent_insert"),
+    ("幫我插入 ORD-041。", "begin_urgent_insertion"),
     ("目前哪一台車裝得最重？", "highest_load_vehicle"),
     ("請用目前方案說明 ORD-001 為什麼分到這台車。", "explain_assignment"),
     ("為什麼目前方案要這樣分車？", "inspect_plan_overview"),
@@ -33,11 +33,11 @@ LIVE_CASES = [
     ("把 ORD-001 改給 VEH-004，先檢查是否可行。", "reassign_order_preview"),
     ("目前是哪個方案版本？", "query_plan_version"),
     ("這個方案我同意了，接下來要怎麼人工確認？", "prepare_confirmation"),
-    ("幫我插入一張急單", "request_missing_fields"),
+    ("幫我插入一張急單", "begin_urgent_insertion"),
     (
         "新增急單 TMP-901，Z1、臺北市中正區、青年路服務點，座標 25.0324,121.5199，"
         "下午配送，1 件、2 公斤、包裹 TMP-PKG-901、一般優先，請先預覽。",
-        "preview_structured_urgent_insert",
+        "begin_urgent_insertion",
     ),
     ("請匯入這份訂單並建立今天的配送方案。", "plan_dispatch"),
 ]
