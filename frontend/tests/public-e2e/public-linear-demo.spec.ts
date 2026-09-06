@@ -140,19 +140,19 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
   for (const [prompt, expectedTool] of prompts) await send(page, prompt, expectedTool)
   await expect(page.locator('.chat-bubble.agent').last()).not.toContainText('AGENT_RUN_FAILED')
   await capture(page, '07-agent-plan-explanation.png')
-  await send(page, '幫我插入一張急單', 'request_missing_fields')
+  await send(page, '幫我插入一張急單', 'urgent_insertion_workflow')
   await expect(page.locator('.chat-bubble.agent').last()).toContainText(/還需要補充|配送欄位/)
   await capture(page, '08-missing-fields.png')
-  await send(
+  const overweightSummary = await send(
     page,
     '新增急單 ORD-OVER-901，配送區域 Z1，城市是新北市，行政區填板橋，地點標示超重測試點，座標 25.0114,121.4618，上午配送，共 3 件包裹、每件 50 公斤；包裹編號 PKG-OVER-901-A、PKG-OVER-901-B、PKG-OVER-901-C 都屬於 ORD-OVER-901，高優先，請只預覽不要套用。',
-    'preview_structured_urgent_insert',
+    'urgent_insertion_workflow',
   )
-  await expect(page.locator('.chat-bubble.agent').last()).toContainText('這筆訂單目前無法合法安排')
-  await page.getByRole('button', { name: '變更差異' }).click()
-  await expect(page.getByText('目前不可套用')).toBeVisible({ timeout: 180_000 })
-  await expect(page.getByRole('button', { name: '套用變更' })).toBeDisabled()
+  expect(overweightSummary.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('REVIEW_READY')
+  await expect(page.locator('.chat-bubble.agent').last()).toContainText(/產生插單預覽|確認/)
   await capture(page, '08b-overweight-unassignable.png')
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.locator('.chat-bubble.agent').last()).toContainText(/已取消|原方案/)
   await send(page, '三號車今天不能出車，其他車先幫忙重新安排，但不要直接套用。', 'change_vehicle_availability')
   await capture(page, '09-vehicle-unavailable-preview.png')
 

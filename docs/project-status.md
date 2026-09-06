@@ -8,8 +8,8 @@
 - Backend P0 status（deterministic／simulated 範圍）：`DONE`
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
-- Live Provider Integration：`OPENAI_LOCAL_LIVE；GOOGLE_ROUTES_LOCAL_LIVE_MINIMAL；GOOGLE_MAPS_PUBLIC_LIVE；PUBLIC_FULL_FLOW_PENDING_DEPLOY；TDX_EXCLUDED`
-- Frontend Integration status：`PARTIAL`（keyless／simulated 流程與 Browser map 已通過；新版急單狀態機等待部署後的一次完整公開驗收）
+- Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE_40_ORDER；GOOGLE_MAPS_PUBLIC_LIVE；PUBLIC_FLOW_PARTIAL；TDX_EXCLUDED`
+- Frontend Integration status：`PARTIAL`（公開網站已完成 40／40、4／4、Google 道路地圖及前六則 Agent 問答；驗收腳本在新急單狀態機的舊工具名稱 assertion 停止，尚未完成 ORD-041 後半段）
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -41,18 +41,18 @@
 
 ## NOW
 
-將已通過本機驗證的單筆／多筆急單狀態機部署到 Render，接著只跑一次 40 單＋ORD-041 增量公開驗收。
+等待使用者決定是否授權第二次公開驗收；程式與驗收腳本已修正，不能在原「失敗即停止」成本限制下自行重跑。
 
 ## NEXT
 
-1. Push `feat/frontend-control-tower` 並等待 Render Auto Deploy。
-2. 從空白首頁執行一次 `public-linear-demo.spec.ts`，總 Matrix elements 以 1,764 為上限。
-3. 依公開結果更新最終驗證紀錄；不得重跑昂貴 Matrix。
+1. 若取得明確授權，執行修正後的單次公開線性驗收。
+2. 驗證 ORD-041 摘要、預覽、人工確認及版本流程。
+3. 依公開結果更新最終驗證紀錄；不得自動重跑昂貴 Matrix。
 
 ## BLOCKED
 
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
-- 目前沒有已知外部阻塞；Google 新 Key 的最小 Routes 與 Browser Map 測試已成功。若唯一一次完整公開流程失敗，依成本規則停止並記錄實際錯誤，不自動重跑。
+- `PUBLIC-E2E-001`：唯一一次公開線性驗收已在完成 40 單 Google Matrix、地圖與六則 Agent 問答後停止。原因是測試仍期待舊 `request_missing_fields`，實際正確回傳新 `urgent_insertion_workflow/COLLECTING`。依使用者「失敗即停止、不得重跑」成本規則，第二次執行需要新的明確授權。
 
 ## OPEN ISSUES
 
@@ -98,6 +98,8 @@
 - Backend 全量 `248 passed、28 skipped`，通用急單 targeted `31 passed`；Ruff、mypy、OpenAPI／19-path contract 通過。Frontend TypeScript、ESLint、Vitest `24 passed`、production build 與 keyless Playwright `2 passed、3 opt-in skipped` 通過。
 - OpenAI 急單 Live smoke 已驗證 `COLLECTING → REVIEW_READY`，任意 `URG-DEMO-901` 不直接 Preview；Google 新 Key 的 4-element 最小方案與公開 Browser Map 均通過，未 fallback，尚待新版部署後的一次完整公開驗收。
 - 新增 `.agent/skills/taiwan-plain-language/SKILL.md`，規定所有回覆使用精簡的臺灣繁體中文，並以 10 歲小孩也能理解的白話說明。
+- Render 已部署 Commit `c32791561afc921e0a0d5cff5517ca243cd0c8fd` 且狀態為 Live。公開驗收已實際完成 40／40、4／4、Google Matrix→OR-Tools、Google 道路地圖、車輛切換、訂單理由及六則 Agent strict-tool 問答；沒有 Dispatch request。
+- 公開驗收在急單缺欄案例停於過時 assertion；產品正確進入 `COLLECTING` 並一次列出七個必要欄位。驗收腳本已改讀 `urgent_insertion_workflow`，並取消會額外花費 Google elements 的超重公開 Preview；TypeScript、ESLint 及 Playwright test discovery 通過。
 - 更新 `AGENTS.md`，將此回覆風格 Skill 設為每輪必讀；本輪未修改 Feature Code、API、演算法或測試邏輯。
 - 修正 Agent 將既有上下文 `ORD-001` 誤當新急單 ID：本輪原始訊息與 application metadata 已分離，tool boundary 會拒絕未出現於本輪訊息的偷渡 ID。
 - Agent 工具選擇使用有界 3 次嘗試；Google 錯誤分類器支援 list-shaped Compute Route Matrix 錯誤回應，當前精確分類為 `BILLING_DISABLED`。

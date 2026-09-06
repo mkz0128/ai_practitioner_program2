@@ -2,6 +2,11 @@
 
 ## 2026-09-06 當前權威驗證
 
+- Render 已成功部署 `c32791561afc921e0a0d5cff5517ca243cd0c8fd`。公開線性驗收從空白首頁完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換、ORD-001 理由及六則 Agent 問答。
+- 唯一一次公開流程在「幫我插入一張急單」停止：產品正確回傳 `urgent_insertion_workflow`／`COLLECTING` 並列出缺少欄位，但測試仍期待舊 `request_missing_fields`。這是測試過時，不是產品錯誤。
+- 該次流程已使用一組 41×41 Google Matrix（1,681 elements）；尚未執行 ORD-041 的 83-element 增量。依使用者設定的成本停止點，未自動重跑，Dispatch requests 為 0。
+- 驗收腳本已改為新狀態機契約；超重案例只驗證「摘要後等待確認」並取消，不在公開流程新增 Google Matrix。TypeScript、ESLint 與 Playwright test discovery 通過。完整公開後半段仍待明確重跑授權。
+
 - Backend deterministic：`248 passed、28 skipped、0 failed`（使用專案內 `--basetemp`）；Ruff、mypy 通過。28 個 skipped 仍是下方列出的明確 opt-in Live gates，不是以跳過隱藏功能失敗。
 - 通用急單 targeted suite：`31 passed`；另新增匿名草稿補上訂單編號，以及模型同時輸出 structured order／reference ID 時的去重回歸。單筆、多筆、部分缺欄、重複、超載、時段衝突、不可安排、取消與確認繞過均不污染 current plan。
 - OpenAI 急單 Live smoke：兩輪都實際回傳 `RunResult`。第一輪「我要加一張臨時配送單」進入 `COLLECTING` 並一次列出必要欄位；第二輪提供任意 `URG-DEMO-901` 完整資料後進入 `REVIEW_READY`，只顯示摘要，沒有直接建立 Preview；usage 回傳實際 token 數而非固定 0。
