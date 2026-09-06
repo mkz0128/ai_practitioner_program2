@@ -2,7 +2,11 @@
 
 ## 2026-09-06 當前權威驗證
 
-- 上一輪公開流程已完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換與前六則 Agent 問答；但「幫我插入一張急單」被錯選為 `plan_dispatch`，因此當次公開流程未通過急單驗收。該輪已使用 1,681 Matrix elements，沒有自動重跑，Dispatch requests 為 0。
+- Render `3a83958317df237637e6e9b097073a2b8ced9e0e` 已部署為 Live；公開急單流程的既有誤路由已解除。
+- 公開瀏覽器輸入「幫我插入 ORD-041」後，Agent 直接從 deterministic 示範資料查得完整欄位並顯示繁體中文摘要及三個下一步按鈕，沒有要求無關欄位，也沒有直接修改方案。
+- 公開低成本驗收以 simulated OR-Tools V1 為基準，流程依序通過 `COLLECTING → REVIEW_READY → PREVIEW_READY`；Preview 的獨立方案檢查通過，人工確認後建立 V2，41 張全數安排、未安排 0。Google Matrix 新增 0 elements，Dispatch requests 0。
+- 本機全量測試為 `251 passed、28 skipped、0 failed`；28 個 skipped 均為需明確開啟的外部 Live gates。本輪未以 skipped、mock 或 simulated 冒稱 Google Live。
+- 上一輪公開流程已完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換與前六則 Agent 問答；當時「幫我插入一張急單」曾錯選為 `plan_dispatch`。該輪使用 1,681 Matrix elements，沒有自動重跑，Dispatch requests 為 0；此問題已由本節上述部署修正。
 - 根因是第一個 strict 急單語意結果偶發回傳 `NONE`，而主 Agent 當時沒有安全的急單入口，只能在其他工具中誤選。現在新增無副作用的 strict `begin_urgent_insertion`；它只收集欄位，API 隨即交回同一個確定性狀態機，不能規劃、取得 Matrix、套用或確認方案。
 - 真實 OpenAI `gpt-5-mini` 已重新驗證三種主 Agent 語句：「幫我插入一張急單」、「幫我插入 ORD-041」與一張完整任意急單，均選用 `begin_urgent_insertion`，沒有選 `plan_dispatch`，且沒有呼叫 Google。
 - Commit `cfec21f` 部署後，公開首頁實測「幫我插入一張急單」正確進入 `COLLECTING`，補一張完整任意訂單及同時兩張完整急單都進入 `REVIEW_READY`，取消後原方案不變，Console errors 為 0。驗收也發現模型可能把單純 `ORD-041` 放在 `orders[].order_id`；已新增 deterministic fixture lookup 回歸，等待下一版部署後重驗 Preview／Confirm。

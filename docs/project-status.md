@@ -9,7 +9,7 @@
 - OpenAI Agent status（`Runner.run`／strict-tool runtime）：`PUBLIC_LIVE_PASS`（公開環境實際回傳 `RunResult` 並執行 strict tool）
 - Backend Core（deterministic／simulated 範圍）：`CORE_COMPLETE`
 - Live Provider Integration：`OPENAI_PUBLIC_LIVE；GOOGLE_ROUTES_PUBLIC_LIVE_40_ORDER；GOOGLE_MAPS_PUBLIC_LIVE；PUBLIC_FLOW_PARTIAL；TDX_EXCLUDED`
-- Frontend Integration status：`PARTIAL`（公開網站已完成 40／40、4／4、Google 道路地圖及前六則 Agent 問答；急單誤跑正式排程已於本機修正並完成回歸，等待新版部署後的低成本公開驗證）
+- Frontend Integration status：`CORE_DEMO_COMPLETE`（公開網站已完成急單缺欄追問、ORD-041 自動查詢、摘要、Preview、差異與人工確認；本輪未重算完整 Google Matrix）
 - Enterprise Extensions：`PLANNED`
 - Overall Project status：`IN_PROGRESS`
 - 工作分支：`feat/frontend-control-tower`（不自動合併 `main`）
@@ -41,18 +41,18 @@
 
 ## NOW
 
-修正通用臨時插單的 Agent 語意入口，完成不重算 40 單 Google Matrix 的測試、部署與公開驗收。
+等待使用者依 `docs/demo-runbook.md` 進行今晚展示；保留 Google Matrix 成本上限與人工確認邊界。
 
 ## NEXT
 
-1. Push 至 `feat/frontend-control-tower` 並等待 Render 自動部署。
-2. 以公開環境驗證缺欄追問、摘要、預覽與人工確認；不得重算完整 Google Matrix。
-3. 記錄公開驗收結果與 Google 新增用量。
+1. 展示前先確認公開首頁與 `/health` 正常。
+2. 依 Demo 手冊操作正式 40 單流程；沒有使用者明確同意不得重新取得完整 Google Matrix。
+3. TDX 維持未來可選擴充，不影響本次展示。
 
 ## BLOCKED
 
 - `DEPLOY-001`：已解除；Render 測試服務目前為 Live，公開驗收僅限測試環境，仍不得 Dispatch、部署正式環境或建立付費資源。
-- `PUBLIC-E2E-001`：上一輪公開線性驗收在完成 40 單 Google Matrix、地圖與六則 Agent 問答後停止；「幫我插入一張急單」被誤選為 `plan_dispatch`。本機已以 strict `begin_urgent_insertion` 與狀態機接回修正，尚待新版部署後做不重算完整 Matrix 的公開驗證。
+- `PUBLIC-E2E-001 — Resolved`：Render `3a83958` 已公開驗證「幫我插入一張急單」進入缺欄追問；`ORD-041` 由既有示範資料補齊後進入摘要，接著產生 V2 Preview 並由人工確認，40→41 張、未安排 0、方案檢查通過。全程使用 `SIMULATED` 路線資料，Google Matrix 新增 0 elements。
 
 ## OPEN ISSUES
 
@@ -91,6 +91,9 @@
 
 ## DONE THIS ROUND
 
+- Render `3a83958` 已為 Live；公開瀏覽器確認 `幫我插入 ORD-041` 直接顯示完整摘要與「產生插單預覽／修改／取消」，不再要求重複輸入示範單資料。
+- 公開低成本完整急單流程：先建立 simulated OR-Tools V1，再由 Agent 完成 `COLLECTING → REVIEW_READY → PREVIEW_READY`；Preview 方案檢查通過，人工確認為 V2，41 張全數安排、未安排 0。沒有呼叫 Dispatch，也沒有新增 Google Matrix elements。
+- 最終 Backend 全量為 `251 passed、28 skipped、0 failed`；28 個 skipped 全是明確 opt-in 的外部 Live gates，未冒充本輪通過。
 - 修正急單第一輪語意偶發漏判：主 Agent 新增無副作用的 strict `begin_urgent_insertion`；API 只把結構化事實交給既有急單狀態機，不會誤跑 `plan_dispatch`、直接 Preview、重抓 Matrix 或改動正式方案。
 - 新增兩個回歸測試並更新 112 筆 Agent corpus 契約；真實 OpenAI 三個代表語句均選對新工具。Backend `250 passed、28 skipped`、corpus `116 passed`、Ruff／mypy 通過。
 - Frontend TypeScript、ESLint、Vitest `24 passed`、Vite build 通過；本機 Playwright `2 passed、3 個明確 opt-in skipped`。Secret 高信心命中 0；本輪 Google Matrix 新增用量 0。
@@ -215,6 +218,8 @@
 
 ## LAST VALIDATION
 
+- 2026-09-06 公開最終急單驗收（Render `3a83958`）：缺欄追問、ORD-041 deterministic lookup、訂單摘要、單次 Preview、獨立方案檢查、人工確認 V2 全部通過；確認後 41 張全數安排、未安排 0。Google Matrix 新增 0 elements；Dispatch requests 0。
+- 2026-09-06 本機最終全量：`251 passed、28 skipped、0 failed`（5 分 39 秒）；Ruff、mypy、Frontend TypeScript、ESLint、Vitest `24 passed`、Vite build 與 secret scan 均通過。
 - 2026-09-06 本機最終回歸：Backend `248 passed、28 skipped`；Ruff、mypy、OpenAPI snapshot／19-path contract 通過。Frontend TypeScript、ESLint、Vitest `24 passed`、Vite production build、Playwright keyless `2 passed、3 opt-in skipped`。
 - 2026-09-06 Provider 最小驗證：Google Routes 4 elements → OR-Tools 1／1、560 m／167 s、方案檢查通過；公開 Browser Map 載入成功且 Console／page error 0。OpenAI 急單兩輪皆為 `RunResult`，狀態由 `COLLECTING` 正確前進至 `REVIEW_READY`，沒有提前 Preview。
 - Secret gate：高信心 tracked pattern 0、敏感檔案 tracked 0、GitHub Actions 0；`.env` 與 `frontend/.env.local` 均由 Git 排除。Dispatch requests 0。
