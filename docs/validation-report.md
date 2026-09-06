@@ -2,14 +2,14 @@
 
 ## 2026-09-06 當前權威驗證
 
-- Backend deterministic：`224 passed、28 skipped、0 failed`（使用專案內 `--basetemp`）；Ruff、mypy 通過。
-- 112-case Agent corpus 數量與 12 類分布符合要求，相關 suite `120 passed`。
-- OpenAI Live：24-case `Runner.run` corpus 加 Responses strict-tool smoke `25 passed`；未使用昂貴模型。
-- Frontend：TypeScript、ESLint、Vitest `23 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。
-- Render `/health`：HTTP 200。公開線性 E2E 實際從空白首頁開始，但在 Google Matrix 階段收到 HTTP 403；官方 `ErrorInfo.reason=BILLING_DISABLED`、`fallback_used=false`。
-- Google 分類器已新增 list-shaped Compute Route Matrix 錯誤回應測試，不再誤標為 `API_KEY_RESTRICTED`。依本輪限制不修改 Billing，Google Routes／完整公開 E2E 為 `BLOCKED`，不是 Live PASS。
-- 公開 Playwright：`3 failed`；線性 Demo、ORD-041 專案流程與超重插單流程都在建立 Google Live 基礎方案時收到 HTTP 502 `PROVIDER_UNAVAILABLE`，沒有 fallback，也沒有進入後續步驟。
-- TDX：本版未啟用，不列入完成條件。Dispatch requests：`0`。
+- Backend deterministic：`248 passed、28 skipped、0 failed`（使用專案內 `--basetemp`）；Ruff、mypy 通過。28 個 skipped 仍是下方列出的明確 opt-in Live gates，不是以跳過隱藏功能失敗。
+- 通用急單 targeted suite：`31 passed`；另新增匿名草稿補上訂單編號，以及模型同時輸出 structured order／reference ID 時的去重回歸。單筆、多筆、部分缺欄、重複、超載、時段衝突、不可安排、取消與確認繞過均不污染 current plan。
+- OpenAI 急單 Live smoke：兩輪都實際回傳 `RunResult`。第一輪「我要加一張臨時配送單」進入 `COLLECTING` 並一次列出必要欄位；第二輪提供任意 `URG-DEMO-901` 完整資料後進入 `REVIEW_READY`，只顯示摘要，沒有直接建立 Preview；usage 回傳實際 token 數而非固定 0。
+- Google Routes 新 Key 最小驗證：以一張合成訂單產生 4 Matrix elements，`provider_mode=GOOGLE`、ORTOOLS、1／1 完整安排、560 m／167 s、方案檢查通過、無 simulated fallback。
+- Google Maps Browser 新 Key 最小驗證：公開 Render origin 實際載入 runtime key 與 Google 底圖；沒有 development-only 字樣、Google key／referrer console error、page error 或重複載入。
+- Frontend：TypeScript、ESLint、Vitest `24 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。三個 skipped 是明確 opt-in 的 live／random flows，部署後會另行執行唯一一次公開線性流程。
+- API contract：19 個 OpenAPI paths 全部宣告並由 contract／snapshot tests 覆蓋；原有 13 組介面保持相容，新增 batch urgent preview 為向後相容擴充。
+- 目前尚未宣告新版公開完整通過：必須先 Push 並等待 Render 部署，再從空白首頁只跑一次 40 單 Google Matrix＋ORD-041 增量流程。TDX 本版排除；Dispatch requests 維持 `0`。
 
 ## 2026-09-06 歷史 Demo 閘門快照（非當前權威）
 

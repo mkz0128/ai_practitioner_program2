@@ -40,12 +40,14 @@
 | FR-EXP-001 | 只能使用 structured tool evidence 解釋 assignments。 | Agent eval；reason schema tests |
 | FR-EXP-002 | 每個已分配 Plan stop 都暴露 zone eligibility、weight、post-load/utilization、time legality 與 matrix distance/order basis 的 deterministic evidence。 | Plan API evidence acceptance test |
 | FR-MAP-001 | 回傳 depot、stops、coordinates、route polyline、color、sequence、ETA 與 leg metrics。 | Map-data response snapshot |
-| FR-URG-001 | 將恰好一張出發前 urgent order 預覽為新的 immutable version。 | GD-006；lifecycle tests |
+| FR-URG-001 | 將一張或多張出發前急單一起建立為單一 immutable preview version；資料不齊時先一次列出各單缺漏。 | `tests/test_urgent_insertion_workflow.py`；`tests/test_urgent_batch_api.py` |
 | FR-URG-002 | 回傳 before/after assignment、sequence、distance/time、load 與 conflict diff。 | Preview contract tests |
 | FR-URG-006 | Urgent preview 計算非 placeholder 的 reassignment、sequence、load 與 distance/time deltas，並獨立驗證 candidate。 | Demo flow 與 order-41 acceptance test |
 | FR-URG-007 | Urgent preview 比較精確的 base algorithm/version/dataset identity，並回傳 before／after hashes、assigned weight、unassigned IDs 與 per-vehicle loads。 | OR-Tools base regression test |
 | FR-URG-003 | 要求對精確 plan/version 進行明確人工確認。 | Transition tests；AC-002 |
 | FR-URG-004 | `DISPATCHED` 後拒絕 automatic insertion。 | GD-007；AC-006 |
+| FR-URG-008 | 急單自然語言先由 Agents SDK strict structured output 擷取；其後由確定性狀態機固定控制「補資料→摘要→預覽→人工確認」，不得用 Regex、關鍵字或固定 `ORD-041` 路由。 | `tests/test_urgent_insertion_workflow.py` |
+| FR-URG-009 | 多筆急單必須以同一個 base plan 與同一批 Matrix 增量資料共同計算；Google 模式只延伸既有 Matrix，不得重建原 40 單 Matrix。 | `tests/test_urgent_batch_api.py` |
 | FR-STATE-001 | 持久化並 audit `DRAFT→VALIDATED→PROPOSED→CONFIRMED→DISPATCHED`。 | State-machine tests |
 | FR-AGENT-001 | 一個 Agent 透過 strict tools 支援配送查詢、規劃、突發事件、風險與版本等自然語言 intents。 | Tool-routing Evals |
 | FR-AGENT-002 | Agents SDK Agent 在回答 daily dispatch、load、unassigned 與 urgent-preview requests 前，必須呼叫 deterministic planning／evidence tool。 | `tests/test_agent_sdk_scenarios.py`；live opt-in E2E |
@@ -86,7 +88,7 @@
 | FR-PLAN-005 | 原始必要 | AM／PM、午休、每站 3 分鐘與 `DEPOT-001` 往返 | 完成（僅 simulated matrix） | planner／validator；time-window acceptance | 尚未以 live travel duration 驗證 | 後端 | 固定矩陣與時段 | 零 time-window violations，路線回到 depot | `TIME_WINDOW_CONFLICT` |
 | FR-PLAN-007 | 原始必要 | 獨立 Validator | 完成 | `src/services/validator.py`；各 planning／competition tests | 無核心缺口 | 後端 | Plan 與 matrix | 每個可確認 plan 先通過 Validator | 失敗則不可確認 |
 | FR-BAS-001／FR-BAS-003 | 原始必要 | 超重重新分配與 unassigned reconciliation | 完成（固定 Demo） | Z4 112 kg acceptance；Baseline／OR-Tools evidence | 尚未接入 live provider | 後端 | 40-order fixture | `VEH-002` 不超過 100 kg，合法使用 `VEH-003` | `UNASSIGNABLE` |
-| FR-URG-001／FR-URG-006／FR-URG-007 | 原始必要 | 臨時插單 Preview、最小變動與前後差異 | 完成（固定 simulated matrix） | `try_minimal_insert`、`compute_plan_diff`；Demo regression | live route matrix 尚未接入 | 後端 | 未出發 plan、合法新訂單 | `MINIMAL_CHANGE`、before／after、Validator evidence | 無合法插入才 `FULL_REPLAN` |
+| FR-URG-001／FR-URG-006～009 | 原始必要 | 單筆／多筆臨時插單資料蒐集、摘要確認、共同 Preview、最小變動與前後差異 | 完成（Mock／simulated／增量 Matrix 契約） | `src/agent/urgent_workflow.py`、`urgent_insert_batch_preview`、`tests/test_urgent_insertion_workflow.py`、`tests/test_urgent_batch_api.py` | 公開 Google 增量流程需部署後執行一次代表性驗收 | 後端／前端 | 未出發 plan、完整合法新訂單、既有 Matrix | 缺漏一次列清、摘要後才 Preview；多筆共用一個新版本並經 Validator | 無合法插入才 `FULL_REPLAN`；失敗不污染 current plan |
 | FR-STATE-001 | 原始必要 | 人工確認與方案版本管理 | 完成（SQLite 執行期持久化） | `confirm_plan`、`list_plan_versions`、`restore_plan`、SQLite repository tests | Render Free 跨重啟永久保存仍受檔案系統限制 | 後端 | 精確 `plan_id`／version、人工人工確認 | 每次復原建立新版本並重新 Validator；Dispatch 預設停用 | stale version 拒絕 |
 | FR-AGENT-001 | 原始必要 | 單一 Agent 支援 daily dispatch、載重、unassigned、urgent preview 與資料澄清及通用事件工具 | 完成（runtime 與 HTTP orchestration） | `src/agent/runtime.py`、`src/api/main.py::agent_chat`、`tests/test_agent_sdk_scenarios.py` | 真實 OpenAI 服務需當前憑證才能標示 Live | 後端／共同 | Agents SDK runtime | 每則對話進入 `Runner.run`；strict tool evidence 回覆 | 無 key 時明確 503 |
 | FR-AGENT-002／FR-AGENT-003 | 原始必要 | OpenAI Agent 真正呼叫 deterministic Tool | 完成（可執行；Live 依環境） | `/api/v1/agent/chat` → `run_dispatch_agent` → `Runner.run`；`tests/test_agent_sdk_scenarios.py` | 公開環境若缺 key 必須標示 BLOCKED，不能以 mock 取代 | 後端／共同 | OpenAI credentials（僅 live gate） | Agent tool call trace、Validator evidence、evidence grounding | 缺 key 回傳 503 |

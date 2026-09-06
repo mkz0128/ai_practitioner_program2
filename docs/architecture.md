@@ -67,6 +67,8 @@ tests/
 
 Runtime gate 是由 `Runner.run` 執行的實際 OpenAI Agents SDK `Agent`，不是只包裝 prompt。Strict allowlist 包含 `plan_dispatch`、查詢／解釋工具、三策略比較、延遲模擬、車輛可用性、時段／優先順序、凍結站點、換車預覽、版本查詢與通用臨時插單工具。每個 planning tool 在回傳精簡 evidence 前，都會呼叫 deterministic planner 與 independent Validator。Model 只能摘要 evidence 已存在的值，不得計算 weights、routes、legality 或 metrics。
 
+急單對話使用獨立的 strict `UrgentUnderstanding` 輸出，但不讓模型直接修改方案。每一則訊息仍由 `Runner.run` 做語意理解；接著 `UrgentWorkflowState` 確定性狀態機固定執行 `COLLECTING → REVIEW_READY → PREVIEW_REQUESTED → PREVIEW_READY`。缺漏、重複、取消與繞過確認都在程式層 fail closed。使用者看過全部急單摘要並選擇預覽後，後端才呼叫 batch preview；Agent 的舊單筆插單工具不在此對話路徑的 allowlist，避免繞過狀態機。
+
 Keyless SDK E2E suite 使用 SDK 的 `ScriptedModel`，在沒有 network access 的情況下執行實際 tool dispatch 與 guardrail pipeline。Opt-in live gate 使用 `OpenAIResponsesModel` 與 `gpt-5-mini`、`parallel_tool_calls=false`、`max_tokens=2048`、`max_turns=4`，停用 sensitive data tracing，並要求只呼叫一次 planning tool。
 
 Responses API request shape 與 Chat Completions 分開鎖定：`input` 與 `max_output_tokens` 是 top-level fields，每個 strict function tool 具備 top-level `name`、`description`、`parameters` 與 `strict`。Nested Chat Completions `function` envelope 對 Responses 無效，分類為 `missing_required_parameter`（HTTP 400），不得改用更昂貴 model 重試。Live Agent gate 前會先 smoke-test direct text 與 strict-tool requests。
@@ -314,10 +316,14 @@ DRAFT -> VALIDATED -> PROPOSED -> CONFIRMED -> DISPATCHED
 
 ## Request Flow — Urgent Insert
 
-1. 載入精確 base version 並要求 pre-dispatch state。
-2. Validate order／packages。
-3. 對副本重新最佳化；validate candidate。
-4. 將 preview 持久化為新 version，不移動 current pointer。
+1. `Runner.run` 以 strict schema 擷取一張或多張急單，只保留使用者提供的資料。
+2. 狀態機逐張檢查配送位置、區域、重量、件數、AM／PM 與優先程度；若缺漏，一次列出後停止。
+3. 只有訂單編號時先查既有示範／資料來源；查不到便要求補資料，不猜值。
+4. 欄位完整後顯示整批摘要，等待使用者選擇預覽、修改或取消。
+5. 使用者選擇預覽後，載入精確 base version 並要求 pre-dispatch state。
+6. 對同一份副本共同加入全部急單；Google 模式使用 `extend_matrix` 增量補齊新節點，不呼叫完整 `build`。
+7. 先嘗試最小變動，再在必要時明確執行 full replan；獨立 Validator 驗證整批 candidate。
+8. 將整批 preview 持久化為一個新 version，不移動 current pointer；失敗不寫入。
 5. 回傳 before／after／diff；明確 confirmation 才能套用精確 version。
 
 ## Error 與 Resilience Design

@@ -20,6 +20,7 @@ EXPECTED_PATHS = {
     "/api/v1/plans/{plan_id}/reassign/preview",
     "/api/v1/plans/{plan_id}/map-data",
     "/api/v1/plans/{plan_id}/urgent-insert/preview",
+    "/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
     "/api/v1/plans/{plan_id}/confirm",
     "/api/v1/plans/{plan_id}/dispatch",
     "/api/v1/agent/chat",

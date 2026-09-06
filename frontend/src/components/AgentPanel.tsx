@@ -18,6 +18,11 @@ interface Message {
   progress?: string[]
 }
 
+function urgentStage(item: Message): string | null {
+  const data = item.evidence?.find((evidence) => evidence.tool === 'urgent_insertion_workflow')?.data
+  return typeof data?.stage === 'string' ? data.stage : null
+}
+
 interface AgentPanelProps {
   onChat: (message: string, attachment?: File, onProgress?: ChatProgress) => Promise<ChatSubmitResult>
   onUseExample?: () => Promise<File>
@@ -41,9 +46,11 @@ export function friendlyText(text: string, evidence: ChatResponse['evidence'] = 
   const highestLoadEvidence = evidence.find((item) => item.tool === 'highest_load_vehicle')?.data
   const missingFieldsEvidence = evidence.find((item) => item.tool === 'request_missing_fields')?.data
   const vehicleAvailabilityEvidence = evidence.find((item) => item.tool === 'change_vehicle_availability')?.data
+  const urgentWorkflowEvidence = evidence.find((item) => item.tool === 'urgent_insertion_workflow')?.data
   const urgentInsertEvidence = evidence.find((item) =>
     item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert')?.data
   const delayEvidence = evidence.find((item) => item.tool === 'simulate_delay')?.data
+  if (urgentWorkflowEvidence) return normalized
   if (missingFieldsEvidence && Array.isArray(missingFieldsEvidence.missing_fields)) {
     const labels: Record<string, string> = {
       order_id: '訂單編號', zone_code: '配送區域', city: '城市', district: '行政區',
@@ -122,6 +129,13 @@ function evidenceSummary(tool: string, data: Record<string, unknown>): string {
   if (tool === 'highest_load_vehicle') return `已從驗證方案找出載重最高的車輛：${String(data.vehicle_id ?? '—')}。`
   if (tool === 'explain_assignment') return '這份說明來自訂單、車輛容量、服務區域與時段驗證結果。'
   if (tool === 'preview_urgent_insert' || tool === 'preview_structured_urgent_insert') return `已取得插單前後差異，影響 ${data.affected_vehicle_count ?? '—'} 台車，等待人工確認。`
+  if (tool === 'urgent_insertion_workflow') {
+    if (data.stage === 'COLLECTING') return '已逐張檢查臨時訂單欄位；資料未完整前不會開始計算。'
+    if (data.stage === 'REVIEW_READY') return '已整理全部臨時訂單；等待你選擇預覽、修改或取消。'
+    if (data.stage === 'PREVIEW_READY') return '已用同一份方案一次計算全部臨時訂單；尚未套用。'
+    if (data.stage === 'CANCELLED') return '已取消臨時插單，原方案沒有變更。'
+    return '臨時插單仍受資料檢查、預覽及人工確認保護。'
+  }
   if (tool === 'request_missing_fields') return '已整理缺少的配送欄位，請補齊後再預覽。'
   if (tool === 'change_vehicle_availability') return `已建立 ${String(data.vehicle_id ?? '指定車輛')} 的可用狀態變更預覽，尚未套用。`
   if (tool === 'inspect_plan_overview') return '已依目前方案確認訂單完整性、車輛載重與需要人工處理的項目。'
@@ -221,6 +235,7 @@ export function AgentPanel({ onChat, onUseExample, onStop, busy }: AgentPanelPro
             <div className="bubble-head"><span className={`bubble-avatar ${item.role}`}>{item.role === 'agent' ? 'AI' : '你'}</span><span className="bubble-role">{item.role === 'agent' ? 'AI 助理' : '你'}</span></div>
             {item.attachment && <div className="message-attachment"><span>📎</span><span><strong>{item.attachment.name}</strong><small>Excel · XLSX</small></span></div>}
             {item.text && <div>{item.text}</div>}
+            {urgentStage(item) === 'REVIEW_READY' && <div className="empty-suggestions" aria-label="臨時插單下一步"><button type="button" className="example-button" onClick={() => void send('產生插單預覽')} disabled={busy}>產生插單預覽</button><button type="button" className="example-button" onClick={() => setMessage('我要修改剛才的臨時訂單：')} disabled={busy}>修改</button><button type="button" className="example-button" onClick={() => void send('取消這次臨時插單')} disabled={busy}>取消</button></div>}
             {item.progress && item.progress.length > 0 && <div className="agent-progress">{item.progress.map((step, stepIndex) => <div className="progress-step" key={step}><span className={stepIndex < item.progress!.length - 1 || Boolean(item.text) ? 'done' : 'active'}>{stepIndex < item.progress!.length - 1 || Boolean(item.text) ? '✓' : '•'}</span>{step}</div>)}</div>}
             {item.evidence?.length ? <details className="evidence-disclosure"><summary>查看計算依據</summary>{item.evidence.map((evidence, evidenceIndex) => <div className="evidence-card" key={`${evidence.tool}-${evidenceIndex}`}><span className="evidence-check">✓</span><span>{evidenceSummary(evidence.tool, evidence.data)}</span></div>)}</details> : null}
           </div>)}

@@ -29,15 +29,15 @@ test('公開站通用超重插單證據會顯示且禁止套用', async ({ page 
   await input.fill('新增急單 ORD-OVER-901，配送區域 Z1，城市是新北市，行政區填板橋，地點標示超重測試點，座標 25.0114,121.4618，上午配送，共 3 件包裹、每件 50 公斤；包裹編號 PKG-OVER-901-A、PKG-OVER-901-B、PKG-OVER-901-C 都屬於 ORD-OVER-901，高優先，請只預覽不要套用。')
   await input.press('Enter')
   const response = await responsePromise
-  const body = await response.json() as { evidence?: Array<{ tool?: string; data?: Record<string, unknown> }> }
-  const data = body.evidence?.find((item) => item.tool === 'preview_structured_urgent_insert')?.data
-  expect(data?.status).toBe('PREVIEWED')
-  expect(data?.feasible).toBe(false)
-  expect(data?.before).toBeTruthy()
-  expect(data?.after).toBeTruthy()
-  expect(data?.comparison).toBeTruthy()
-  expect(data?.diff).toBeTruthy()
-  await expect(page.locator('.chat-bubble.agent').last()).toContainText('這筆訂單目前無法合法安排')
-  await expect(page.getByText('目前不可套用')).toBeVisible()
-  await expect(page.getByRole('button', { name: '套用變更' })).toBeDisabled()
+  const body = await response.json() as { evidence?: Array<{ tool?: string; data?: { stage?: string } }> }
+  expect(response.status()).toBe(200)
+  expect(body.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('REVIEW_READY')
+  const previewPromise = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.request().method() === 'POST')
+  await page.getByRole('button', { name: '產生插單預覽' }).click()
+  const preview = await previewPromise
+  const previewBody = await preview.json() as { error?: { code?: string } }
+  expect(preview.status()).toBe(409)
+  expect(previewBody.error?.code).toBe('URGENT_INSERT_UNASSIGNABLE')
+  await expect(page.locator('.chat-bubble.agent').last()).toContainText(/無法合法安排|原方案未變更/)
+  await expect(page.getByRole('button', { name: '套用變更' })).toHaveCount(0)
 })

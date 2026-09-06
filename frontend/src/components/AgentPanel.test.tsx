@@ -84,4 +84,14 @@ describe('Agent 對外訊息格式', () => {
     expect(text).not.toContain('delay_minutes')
     expect(text).not.toContain('GREEN')
   })
+
+  it('通用插單狀態機直接顯示後端白話，不露出技術欄位', () => {
+    const text = friendlyText(
+      '我理解的臨時訂單如下：TMP-101、TMP-102。請選擇產生插單預覽、修改或取消。',
+      [{ tool: 'urgent_insertion_workflow', data: { stage: 'REVIEW_READY', orders: [] } }],
+    )
+    expect(text).toContain('TMP-101、TMP-102')
+    expect(text).toContain('產生插單預覽')
+    expect(text).not.toContain('REVIEW_READY')
+  })
 })

@@ -38,9 +38,15 @@ test('公開站建立正式方案後可由 Agent 預覽 ORD-041', async ({ page 
   await input.fill('幫我插入 ORD-041。')
   await input.press('Enter')
   const response = await responsePromise
-  const body = await response.json() as { runner_result_type?: string; evidence?: Array<{ tool?: string }> ; error?: { code?: string } }
+  const body = await response.json() as { runner_result_type?: string; evidence?: Array<{ tool?: string; data?: { stage?: string } }> ; error?: { code?: string } }
   expect(response.status(), body.error?.code ?? 'UNKNOWN_AGENT_ERROR').toBe(200)
   expect(body.runner_result_type).toBe('RunResult')
-  expect(body.evidence?.some((item) => item.tool === 'preview_urgent_insert')).toBeTruthy()
+  expect(body.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('REVIEW_READY')
+  const previewPromise = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.request().method() === 'POST')
+  await page.getByRole('button', { name: '產生插單預覽' }).click()
+  const preview = await previewPromise
+  const previewBody = await preview.json() as { evidence?: Array<{ tool?: string; data?: { stage?: string } }> }
+  expect(preview.status()).toBe(200)
+  expect(previewBody.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('PREVIEW_READY')
   await expect(page.getByText('局部變更預覽')).toBeVisible({ timeout: 180_000 })
 })

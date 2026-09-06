@@ -7,7 +7,8 @@
 3. `docs/validation-report.md`
 4. `.agent/guardrails.md`
 5. `.agent/developer.md`
-6. `.agent/skills/` 下與本輪相關的檔案
+6. `.agent/skills/taiwan-plain-language/SKILL.md`（每輪必讀）
+7. `.agent/skills/` 下與本輪相關的其他檔案
 
 每輪進度流程：
 
@@ -29,6 +30,7 @@
 
 永久規則：
 
+- 所有對使用者的回覆都必須遵守 `taiwan-plain-language` Skill：使用臺灣繁體中文、先講結論、避免廢話，並用 10 歲小孩也聽得懂的短句解釋。
 - 本產品固定使用一個 application Agent，不得加入 handoffs、A2A 或 multi-Agent topology。
 - LLM 只負責 intent understanding、tool selection、error summarization 與 evidence-grounded explanation。
 - Weight arithmetic、dataset validation、assignment、routing、time windows、plan transitions 與所有 numeric claims 均由 deterministic code 負責。

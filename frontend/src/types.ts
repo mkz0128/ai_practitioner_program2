@@ -69,6 +69,8 @@ export interface Plan {
   timezone: string
   provider_mode: ProviderMode
   matrix_hash?: string
+  matrix_reused?: boolean
+  matrix_elements_added?: number
   matrix_version?: string
   algorithm: 'BASELINE' | 'ORTOOLS'
   objective?: 'FASTEST' | 'BALANCED' | 'STABLE'
@@ -189,8 +191,18 @@ export interface UrgentPreview {
     base_dataset_hash: string
     preview_dataset_hash: string
   }
+  inserted_orders?: Array<{
+    order_id: string
+    vehicle_id: string | null
+    sequence: number | null
+    status: 'ASSIGNED' | 'UNASSIGNED'
+  }>
+  validator?: { valid: boolean; violations: Record<string, number>; errors: string[] }
+  provider_mode?: ProviderMode
+  matrix_hash?: string
   diff: {
-    inserted_order_id: string
+    inserted_order_id?: string | null
+    inserted_order_ids?: string[]
     reassigned_orders: Array<Record<string, unknown>>
     sequence_changes: Array<Record<string, unknown>>
     vehicle_load_changes: Array<Record<string, unknown>>

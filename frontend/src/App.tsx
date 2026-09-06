@@ -248,6 +248,13 @@ export default function App() {
       }
       const previewEvidence = response.evidence.find((item) =>
         item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert')
+      const urgentWorkflowEvidence = response.evidence.find((item) => item.tool === 'urgent_insertion_workflow')
+      const workflowPreview = urgentWorkflowEvidence?.data.preview
+      if (workflowPreview && typeof workflowPreview === 'object' && activePlan) {
+        const previewResult = workflowPreview as UrgentPreview
+        setPreview(previewResult)
+        setMapData(await getMapData(activePlan.plan_id, previewResult.preview_version, controller.signal))
+      }
       const structuredPreview = previewEvidence ? previewPayload(previewEvidence.data) : null
       const rejectedPreview = previewEvidence && activePlan
         ? rejectedPreviewFromEvidence(previewEvidence.data, activePlan)
@@ -256,7 +263,7 @@ export default function App() {
         // An infeasible deterministic preview is evidence worth showing, but it
         // must never be persisted as a candidate version or become confirmable.
         setPreview(rejectedPreview)
-      } else if (structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
+      } else if (!workflowPreview && structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
         // The Agent tool remains evidence-only; this REST preview creates the
         // proposed immutable version used by the human confirmation button.
         setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, structuredPreview.order, structuredPreview.packages, controller.signal))

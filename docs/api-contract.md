@@ -15,7 +15,7 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 
 ## 整合現況與未來邊界
 
-原有 13 組 REST method/path 維持相容；目前另加入 5 組進階 preview／比較／版本路由，因此 OpenAPI 現在共 18 組正式介面。以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
+原有 13 組 REST method/path 維持相容；目前另加入 6 組進階 preview／比較／版本路由，因此 OpenAPI 現在共 19 組正式介面。以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
 
 - `POST /api/v1/datasets/import-excel` 僅正規化資料；`POST /api/v1/plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 會由 `GoogleRoutesProvider` strict 取得 Matrix，並把同一 hash/version 的 `MatrixResult` 注入 OR-Tools。缺 key 時回傳 `provider_mode=SIMULATED` 與 warning；已設定 key 但呼叫失敗回傳 `502 PROVIDER_UNAVAILABLE`，不靜默 fallback。
 - `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
@@ -273,6 +273,26 @@ Query `version` 為選用。Response：
 
 Google route 的 `provider_mode` 為 `GOOGLE` 且 `matrix_hash`／`matrix_version` 必須與建立 plan 的 response 一致；沒有 Browser key 時前端仍可顯示 simulated preview，但不得標示為 Google live map。
 
+### `POST /api/v1/plans/compare`
+
+Request：`{"dataset_id":"DS-001","plan_id":"PLAN-001","version":1,"route_provider_preference":"AUTO","traffic_mode":"AUTO"}`。若提供 `plan_id/version`，三種策略必須共用該版本的同一份 Matrix，不重新呼叫 Google。Response 回傳 `FASTEST`、`BALANCED`、`STABLE` 各自的 `primary_goal`、`tradeoff`、距離、時間、載重差、最小時段餘裕、未安排訂單與方案檢查結果。
+
+### `GET /api/v1/plans/{plan_id}/versions`
+
+回傳 `current_version` 與全部 immutable versions，包含版本狀態、建立時間、演算法、目標、完整性及方案檢查結果。
+
+### `POST /api/v1/plans/{plan_id}/restore`
+
+Request：`{"source_version":1,"dispatcher_reference":"demo-dispatcher"}`。復原只建立新的 `PROPOSED` version，不覆蓋歷史；來源版本必須完整並重新通過方案檢查，之後仍須人工確認。
+
+### `POST /api/v1/plans/{plan_id}/delay-preview`
+
+Request：`{"version":1,"delay_minutes":20}`。`delay_minutes` 只接受 10、20 或 30；回傳各站 ETA 餘裕、綠黃紅風險與受影響訂單，不修改方案。
+
+### `POST /api/v1/plans/{plan_id}/reassign/preview`
+
+Request：`{"base_plan_version":1,"order_id":"ORD-002","target_vehicle_id":"VEH-004"}`。後端重新檢查容量、區域、時段、完整性與方案檢查，僅建立可取消的 Preview；不符合時回傳 `409 REASSIGNMENT_NOT_FEASIBLE`，原方案不變。
+
 ### `POST /api/v1/plans/{plan_id}/urgent-insert/preview`
 
 Request:
@@ -344,6 +364,39 @@ Response `200`：
 ```
 
 Preview 絕不變更 current plan pointer。`DISPATCHED` 回傳 `409 PLAN_ALREADY_DISPATCHED`；stale version 回傳 `409 PLAN_VERSION_CONFLICT`。
+
+### `POST /api/v1/plans/{plan_id}/urgent-insert/batch-preview`
+
+單筆與多筆急單共用此 non-mutating endpoint；原本的單筆 `/urgent-insert/preview` 保持相容，內部視為只有一個 `orders` 項目的批次。
+
+Request：
+
+```json
+{
+  "base_plan_version": 1,
+  "orders": [
+    {
+      "order": {
+        "order_id": "URG-101",
+        "zone_code": "Z4",
+        "city": "臺北市",
+        "district": "信義",
+        "location_label": "合成測試配送點",
+        "latitude": 25.033,
+        "longitude": 121.565,
+        "time_slot": "PM",
+        "declared_package_count": 1,
+        "priority": "HIGH"
+      },
+      "packages": [
+        {"package_id":"PKG-URG-101-01","order_id":"URG-101","weight_kg":2.0}
+      ]
+    }
+  ]
+}
+```
+
+成功回應包含整批共用的 `base_version`、`preview_version`、`before`、`after`、`diff`、`validator`、`provider_mode`、`matrix_version`，以及逐張 `inserted_orders`。`matrix_reused=true` 表示沿用既有 Matrix；Google 模式的 `matrix_elements_added` 只計新節點增量。任何一張缺欄、重複、超載或時段不可行時，回傳欄位級或不可安排錯誤，且 current plan/version 不變。
 
 ### `POST /api/v1/plans/{plan_id}/confirm`
 

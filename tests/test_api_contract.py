@@ -31,7 +31,7 @@ def _implemented_endpoints() -> set[tuple[str, str]]:
 def test_api_contract_is_fully_implemented() -> None:
     declared = _contract_endpoints()
     implemented = _implemented_endpoints()
-    assert len(declared) == 13
+    assert len(declared) == 19
     assert declared <= implemented
     assert len(implemented & declared) == len(declared)
 
@@ -98,6 +98,40 @@ def test_every_contract_endpoint_has_an_exercised_response() -> None:
     outcomes[("POST", "/api/v1/plans")] = created.status_code
     outcomes[("GET", "/api/v1/plans/{plan_id}")] = 200
     outcomes[("GET", "/api/v1/plans/{plan_id}/map-data")] = 200
+
+    compared = client.post(
+        "/api/v1/plans/compare",
+        json={"dataset_id": dataset_id, "plan_id": plan_id, "version": 1},
+    )
+    assert compared.status_code == 200, compared.text
+    outcomes[("POST", "/api/v1/plans/compare")] = compared.status_code
+
+    versions = client.get(f"/api/v1/plans/{plan_id}/versions")
+    assert versions.status_code == 200, versions.text
+    outcomes[("GET", "/api/v1/plans/{plan_id}/versions")] = versions.status_code
+
+    delay = client.post(
+        f"/api/v1/plans/{plan_id}/delay-preview",
+        json={"version": 1, "delay_minutes": 20},
+    )
+    assert delay.status_code == 200, delay.text
+    outcomes[("POST", "/api/v1/plans/{plan_id}/delay-preview")] = delay.status_code
+
+    target_vehicle = next(
+        vehicle.vehicle_id
+        for vehicle in fixture_dataset.vehicles
+        if vehicle.vehicle_id != created.json()["vehicles"][0]["vehicle_id"]
+    )
+    reassigned = client.post(
+        f"/api/v1/plans/{plan_id}/reassign/preview",
+        json={
+            "base_plan_version": 1,
+            "order_id": order_id,
+            "target_vehicle_id": target_vehicle,
+        },
+    )
+    assert reassigned.status_code in {200, 409}, reassigned.text
+    outcomes[("POST", "/api/v1/plans/{plan_id}/reassign/preview")] = reassigned.status_code
     preview = client.post(
         f"/api/v1/plans/{plan_id}/urgent-insert/preview",
         json={
@@ -125,6 +159,39 @@ def test_every_contract_endpoint_has_an_exercised_response() -> None:
     )
     assert preview.status_code == 200, preview.text
     outcomes[("POST", "/api/v1/plans/{plan_id}/urgent-insert/preview")] = preview.status_code
+    batch_preview = client.post(
+        f"/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
+        json={
+            "base_plan_version": 1,
+            "orders": [
+                {
+                    "order": {
+                        "order_id": "ORD-CONTRACT-042",
+                        "zone_code": "Z4",
+                        "city": z4_order.city,
+                        "district": z4_order.district,
+                        "location_label": "contract batch preview",
+                        "latitude": 25.033,
+                        "longitude": 121.565,
+                        "time_slot": "PM",
+                        "declared_package_count": 1,
+                        "priority": "HIGH",
+                    },
+                    "packages": [
+                        {
+                            "package_id": "PKG-CONTRACT-042",
+                            "order_id": "ORD-CONTRACT-042",
+                            "weight_kg": 1.0,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert batch_preview.status_code == 200, batch_preview.text
+    outcomes[("POST", "/api/v1/plans/{plan_id}/urgent-insert/batch-preview")] = (
+        batch_preview.status_code
+    )
     chat = client.post(
         "/api/v1/agent/chat",
         json={
@@ -153,4 +220,11 @@ def test_every_contract_endpoint_has_an_exercised_response() -> None:
     outcomes[("POST", "/api/v1/plans/{plan_id}/confirm")] = 404
     outcomes[("POST", "/api/v1/plans/{plan_id}/dispatch")] = 404
 
-    assert len(outcomes) == 13
+    restored = client.post(
+        f"/api/v1/plans/{plan_id}/restore",
+        json={"source_version": 1, "dispatcher_reference": "contract-test"},
+    )
+    assert restored.status_code in {200, 409}, restored.text
+    outcomes[("POST", "/api/v1/plans/{plan_id}/restore")] = restored.status_code
+
+    assert len(outcomes) == 19

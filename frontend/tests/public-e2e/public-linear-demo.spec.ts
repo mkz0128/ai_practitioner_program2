@@ -187,7 +187,12 @@ test('公開網站從空白首頁完成明晚線性 Demo', async ({ page }) => {
   await page.getByRole('button', { name: '取消變更' }).click()
   await expect(page.getByText(/已取消這次預覽/)).toBeVisible()
 
-  await send(page, '幫我插入 ORD-041。', 'preview_urgent_insert')
+  const urgentSummary = await send(page, '幫我插入 ORD-041。', 'urgent_insertion_workflow')
+  expect(urgentSummary.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('REVIEW_READY')
+  const urgentPreviewResponse = page.waitForResponse((item) => item.url().includes('/api/v1/agent/chat') && item.request().method() === 'POST')
+  await page.getByRole('button', { name: '產生插單預覽' }).click()
+  const urgentPreviewBody = await (await urgentPreviewResponse).json() as AgentResponseBody
+  expect(urgentPreviewBody.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data?.stage).toBe('PREVIEW_READY')
   await expect(page.getByText('局部變更預覽')).toBeVisible({ timeout: 180_000 })
   await capture(page, '11-ord041-diff.png')
   await page.getByRole('button', { name: '套用變更' }).click()

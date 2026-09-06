@@ -45,7 +45,7 @@ application_agent_count: 1
 
 - 固定 40 單／4 車／5 區資料能在無外部 Key 時完整 Demo。
 - 所有可確認方案通過獨立 validator，零超載、零拆單、零重複、零跨服務區、零硬時段違規。
-- 第 41 張出發前插單以 preview/version/diff 呈現，未確認不覆寫。
+- 一張或多張出發前急單都以相同的摘要、preview、version 與 diff 流程處理；資料不齊時一次列出各單缺漏，未確認不覆寫。
 - 前端可由 OpenAPI、sample payload 與文件獨立串接。
 
 ## 2. What — 範圍與流程
@@ -53,7 +53,7 @@ application_agent_count: 1
 ### 產品工作流程
 
 1. `daily-dispatch`: import → validate → assign → route/order → independently validate → explain → human confirm.
-2. `urgent-order-insertion`: load exact pre-dispatch plan version → validate one new order → re-optimize preview → validate → diff → human confirm.
+2. `urgent-order-insertion`: Agents SDK strict output understands one or many urgent orders → deterministic state machine checks all required fields → user reviews the summary → one batch preview against the exact pre-dispatch version → validate → diff → human confirm.
 
 ### Agent 邊界
 
@@ -273,7 +273,7 @@ urgent_order_timing: after_initial_plan_before_final_dispatch
 plan_states: [DRAFT, VALIDATED, PROPOSED, CONFIRMED, DISPATCHED]
 ```
 
-允許的 forward transitions 都會寫入 audit。Optimizer 建立 `PROPOSED`，不得建立 `CONFIRMED`。Urgent insertion 建立 immutable preview／new version 與 before／after diff，絕不覆寫原 plan。Confirmation 需要精確的 `plan_id` 與 version；`DISPATCHED` plan 的插單回傳 `PLAN_ALREADY_DISPATCHED`。
+允許的 forward transitions 都會寫入 audit。Optimizer 建立 `PROPOSED`，不得建立 `CONFIRMED`。Urgent insertion 支援單筆與多筆同批處理：LLM 只抽取使用者提供的欄位，確定性狀態機負責缺漏檢查、摘要、預覽門檻與取消；完整資料必須先顯示摘要，使用者選擇「產生插單預覽」後，程式才固定建立一個 immutable preview／new version 與 before／after diff。Preview 絕不覆寫原 plan；任何一筆缺欄、重複或不可安排時，都不污染 current version。Confirmation 需要精確的 `plan_id` 與 version；`DISPATCHED` plan 的插單回傳 `PLAN_ALREADY_DISPATCHED`。
 
 ## 7. 技術與版本鎖定
 

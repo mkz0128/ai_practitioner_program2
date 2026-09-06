@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.agent.runtime import DispatchAgentContext
+from src.agent.urgent_workflow import UrgentUnderstanding
 from src.api.main import app, store
 from src.services.matrix import SimulatedRouteProvider
 from src.services.planner import build_baseline
@@ -263,6 +264,9 @@ def test_agent_dataset_context_persists_plan_selected_by_runner(monkeypatch) -> 
         )
         return "已完成確定性配送方案。", context, object()
 
+    async def fake_urgent_understanding(message, state):
+        return UrgentUnderstanding(is_urgent_insertion=False), object()
+
     matrix_preferences: list[bool] = []
 
     def fake_build_matrix(dataset, *, prefer_live):
@@ -270,6 +274,7 @@ def test_agent_dataset_context_persists_plan_selected_by_runner(monkeypatch) -> 
         return SimulatedRouteProvider().build(dataset)
 
     monkeypatch.setattr("src.api.main.run_dispatch_agent", fake_runner)
+    monkeypatch.setattr("src.api.main.understand_urgent_message", fake_urgent_understanding)
     monkeypatch.setattr("src.api.main._build_matrix", fake_build_matrix)
     monkeypatch.setattr("src.api.main.settings.openai_api_key", "test-openai-key")
     response = client.post(

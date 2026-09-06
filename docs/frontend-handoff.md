@@ -29,7 +29,7 @@ Browser key 為選用項目，必須限制於精確 HTTP referrers 與 Maps Java
 
 ## 實作現況與必要功能邊界
 
-`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫原有 13 組 REST routes 與 5 組進階路由，呈現匯入／驗證、車輛載重、ordered stops、Validator、Agent evidence、urgent preview diff、策略比較、延遲風險、版本復原與人工 confirm；策略卡片直接顯示 API 回傳的 `primary_goal` 與 `tradeoff`，不以 `FASTEST` 等名稱猜測目標。不提供自動 Dispatch 或 deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
+`frontend/` 現已提供可執行的 React + TypeScript + Vite + MUI control tower。畫面透過 `frontend/src/api.ts` 呼叫原有 13 組 REST routes 與 6 組進階路由，呈現匯入／驗證、車輛載重、ordered stops、方案檢查、Agent 計算依據、急單 preview diff、策略比較、延遲風險、版本復原與人工 confirm；策略卡片直接顯示 API 回傳的 `primary_goal` 與 `tradeoff`，不以 `FASTEST` 等名稱猜測目標。不提供自動正式派車或 production deployment。RTL、typecheck、lint 與 production build 均可在無外部 key 的環境執行。
 
 `POST /api/v1/plans` 在 `route_provider_preference=AUTO`／`traffic_mode=AUTO` 且有 `GOOGLE_ROUTES_SERVER_API_KEY` 時，strict 取得 Google Matrix 並將同一 hash/version 傳入 OR-Tools；缺 key 時回傳 `SIMULATED` warning，已設定 key 但呼叫失敗則回傳 `PROVIDER_UNAVAILABLE`。`map-data` 對 Google plan 會再取得 encoded route geometry。TDX adapter 已完成 OAuth、事件 projection 與 city／zone／coordinate route-risk correlation；無 credentials 時回傳 `CREDENTIALS_MISSING`。這些 keyless wiring／mock evidence 不等於 Live PASS。
 
@@ -95,14 +95,14 @@ pnpm run build
 3. POST plans
 4. GET plan 與 map-data
 5. Render vehicles/stops/exceptions/provider badge
-6. 可選的 urgent-insert preview 並顯示 diff
+6. 急單資料齊全後先顯示整批摘要；使用者選擇「產生插單預覽」才呼叫 batch preview 並顯示 diff
 7. 人工針對精確 plan/version 按下 confirm
 8. 本控制塔不呼叫 `/dispatch`；若未來另有核准的營運流程，才由具權限的系統執行。
 ```
 
 ## Endpoint request／response 範例
 
-後端已實作 `docs/api-contract.md` 的原有 13 組 method/path 及 5 組進階 method/path；以下是前端所需的 request／response index。除 multipart import 外，所有 body 都是 JSON。
+後端已實作 `docs/api-contract.md` 的原有 13 組 method/path 及 6 組進階 method/path；以下是前端所需的 request／response index。除 multipart import 外，所有 body 都是 JSON。
 
 | Endpoint | Request | 前端處理的 Response |
 |---|---|---|
@@ -115,6 +115,7 @@ pnpm run build
 | `GET /api/v1/plans/{plan_id}` | optional `?version=1` | Plan with `algorithm`, `dataset_hash`, `vehicles`, `unassigned_orders`, `validation` |
 | `GET /api/v1/plans/{plan_id}/map-data` | optional `?version=1` | Map payload with `depot`, `routes`, `stops`, `legs`, `provider_mode` |
 | `POST /api/v1/plans/{plan_id}/urgent-insert/preview` | `{"base_plan_version":1,"order":{...},"packages":[...]}` | `200 {"base_version":1,"preview_version":2,"mode":"MINIMAL_CHANGE","before":{...},"after":{...},"diff":{...}}` |
+| `POST /api/v1/plans/{plan_id}/urgent-insert/batch-preview` | `{"base_plan_version":1,"orders":[{"order":{...},"packages":[...]}]}` | 單筆／多筆共同產生一個 Preview version，並回傳逐單結果、整體差異與 Matrix 增量證據 |
 | `POST /api/v1/plans/{plan_id}/confirm` | `{"version":2,"confirmation":"CONFIRM_PLAN","dispatcher_reference":"frontend-user"}` | `200 {"state":"CONFIRMED","version":2,"audit_event_id":"AUD-*"}` |
 | `POST /api/v1/plans/{plan_id}/dispatch` | `{"version":2,"confirmation":"MARK_DISPATCHED"}` | 預設 `403 DISPATCH_DISABLED`；前端不得呼叫 |
 | `POST /api/v1/agent/chat` | `{"session_id":"SESSION-001","message":"為什麼 ORD-032 改派？","context":{"plan_id":"PLAN-*","plan_version":2,"order_id":"ORD-032"}}` | `200 {"message":"...","evidence":[{"tool":"explain_assignment","data":{...}}]}` |
@@ -136,6 +137,8 @@ Fixture 的 Z4 demand 總重 112 kg，而 `VEH-002` 上限為 100 kg。UI 必須
 ### `ORD-041` urgent insertion
 
 將精確 initial `plan_id`、`base_plan_version=1`、dataset identity 與 OR-Tools plan 送至 preview endpoint。Backend 回傳 immutable preview，不修改 base plan。已驗收結果為 `mode=MINIMAL_CHANGE`：before 40 orders／365 kg，車輛 loads 93／97／152／23 kg；after 367 kg；existing order vehicle moves 0；僅 `VEH-003` 變更；distance +137 m；duration +17 s。呈現 `reassigned_orders`、`sequence_changes`、`vehicle_load_changes` 與兩項 metric deltas，再請人工確認回傳的 preview version。
+
+對話中的 `ORD-041` 只是既有示範 fixture。任意一張或多張急單都走同一流程：Agents SDK strict output 擷取欄位；缺漏時逐張一次列出；完整後顯示整批摘要與「產生插單預覽／修改／取消」；只有使用者選擇預覽才呼叫 batch endpoint。多張急單共用同一個 base version 與一個 preview version，任一失敗都不能污染目前方案。
 
 ### Agent 對話
 

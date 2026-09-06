@@ -30,11 +30,17 @@ from openai import (
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.agent.runtime import run_dispatch_agent
+from src.agent.urgent_workflow import (
+    UrgentWorkflowState,
+    advance_urgent_workflow,
+    understand_urgent_message,
+)
 from src.config import get_settings
 from src.domain.models import Dataset, Order, Package, Priority, Vehicle, VehicleStatus, Zone
 from src.providers.google_routes import GoogleRoutesProvider, GoogleRoutesProviderError
 from src.providers.tdx import TDXProvider, correlate_events_to_plan
 from src.repositories.sqlite import SQLiteRepository
+from src.services.demo_orders import get_demo_urgent_order
 from src.services.errors import ValidationReport
 from src.services.evidence import recommendation_reason
 from src.services.fingerprint import dataset_hash, matrix_hash
@@ -150,6 +156,16 @@ class UrgentInsertRequest(StrictRequest):
     packages: list[Package] = Field(min_length=1, max_length=3)
 
 
+class UrgentOrderBundleRequest(StrictRequest):
+    order: UrgentOrderRequest
+    packages: list[Package] = Field(min_length=1, max_length=20)
+
+
+class UrgentBatchInsertRequest(StrictRequest):
+    base_plan_version: int = Field(ge=1)
+    orders: list[UrgentOrderBundleRequest] = Field(min_length=1, max_length=20)
+
+
 @dataclass
 class DatasetRecord:
     dataset_id: str
@@ -187,6 +203,7 @@ class AgentSession:
     last_preview_version: int | None = None
     last_tool: str | None = None
     pending_order: dict[str, Any] | None = None
+    urgent_workflow: dict[str, Any] = field(default_factory=dict)
     history: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -214,6 +231,7 @@ def _session_payload(session: AgentSession) -> dict[str, Any]:
         "last_preview_version": session.last_preview_version,
         "last_tool": session.last_tool,
         "pending_order": session.pending_order,
+        "urgent_workflow": session.urgent_workflow,
         "history": [[role, _safe_session_text(content)] for role, content in session.history[-12:]],
     }
 
@@ -236,6 +254,7 @@ def _session_from_payload(payload: dict[str, Any]) -> AgentSession:
     last_preview_version = payload.get("last_preview_version")
     last_tool = payload.get("last_tool")
     pending_order = payload.get("pending_order")
+    urgent_workflow = payload.get("urgent_workflow")
     return AgentSession(
         dataset_id=(
             payload.get("dataset_id") if isinstance(payload.get("dataset_id"), str) else None
@@ -261,6 +280,7 @@ def _session_from_payload(payload: dict[str, Any]) -> AgentSession:
         ),
         last_tool=last_tool if isinstance(last_tool, str) else None,
         pending_order=pending_order if isinstance(pending_order, dict) else None,
+        urgent_workflow=urgent_workflow if isinstance(urgent_workflow, dict) else {},
         history=history[-12:],
     )
 
@@ -1291,29 +1311,65 @@ def get_map_data(plan_id: str, request: Request, version: int | None = None) -> 
     }
 
 
-@app.post("/api/v1/plans/{plan_id}/urgent-insert/preview")
-def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: Request) -> Any:
-    base_record = store.get_plan(plan_id, payload.base_plan_version)
+def _urgent_insert_preview_response(
+    plan_id: str,
+    base_plan_version: int,
+    bundles: list[UrgentOrderBundleRequest],
+    request: Request,
+) -> Any:
+    """Create one immutable preview for one or many urgent orders."""
+
+    base_record = store.get_plan(plan_id, base_plan_version)
     if base_record is None:
         return _error(request, 404, "PLAN_NOT_FOUND", "找不到基準規劃版本。")
     if base_record.state == "DISPATCHED":
         return _error(request, 409, "PLAN_ALREADY_DISPATCHED", "已出發的規劃不可插單。")
-    if payload.order.declared_package_count != len(payload.packages):
-        return _error(request, 422, "URGENT_ORDER_INVALID", "宣告件數與插單 package 數量不一致。")
-    if any(package.order_id != payload.order.order_id for package in payload.packages):
-        return _error(request, 422, "URGENT_ORDER_INVALID", "插單 package 必須指向同一張訂單。")
     dataset_record = store.get_dataset(base_record.dataset_id)
     if dataset_record is None:
         return _error(request, 404, "DATASET_NOT_FOUND", "找不到基準資料集。")
-    if payload.order.order_id in {order.order_id for order in dataset_record.dataset.orders}:
-        return _error(request, 422, "URGENT_ORDER_INVALID", "插單訂單 ID 已存在。")
-    new_order = Order.model_validate(
-        payload.order.model_dump() | {"packages": tuple(payload.packages)}
+    incoming_ids = [bundle.order.order_id for bundle in bundles]
+    duplicate_ids = sorted(
+        {order_id for order_id in incoming_ids if incoming_ids.count(order_id) > 1}
+        | {order.order_id for order in dataset_record.dataset.orders}.intersection(incoming_ids)
     )
+    if duplicate_ids:
+        return _error(
+            request,
+            422,
+            "URGENT_ORDER_DUPLICATE",
+            "臨時訂單編號重複，原方案未變更。",
+            duplicate_order_ids=duplicate_ids,
+        )
+    new_orders: list[Order] = []
+    for bundle in bundles:
+        if bundle.order.declared_package_count != len(bundle.packages):
+            return _error(
+                request,
+                422,
+                "URGENT_ORDER_INVALID",
+                f"{bundle.order.order_id} 的件數與包裹資料不一致。",
+                order_id=bundle.order.order_id,
+            )
+        if any(package.order_id != bundle.order.order_id for package in bundle.packages):
+            return _error(
+                request,
+                422,
+                "URGENT_ORDER_INVALID",
+                f"{bundle.order.order_id} 的包裹編號指向錯誤訂單。",
+                order_id=bundle.order.order_id,
+            )
+        new_orders.append(
+            Order.model_validate(
+                bundle.order.model_dump() | {"packages": tuple(bundle.packages)}
+            )
+        )
     new_dataset = dataset_record.dataset.model_copy(
         update={
-            "orders": (*dataset_record.dataset.orders, new_order),
-            "packages": (*dataset_record.dataset.packages, *payload.packages),
+            "orders": (*dataset_record.dataset.orders, *new_orders),
+            "packages": (
+                *dataset_record.dataset.packages,
+                *(package for bundle in bundles for package in bundle.packages),
+            ),
         }
     )
     validation_report = validate_dataset(new_dataset)
@@ -1359,12 +1415,22 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             retryable=exc.code in {"GOOGLE_TIMEOUT", "GOOGLE_REQUEST_FAILED"},
         )
     try:
-        preview_plan = try_minimal_insert(base_record.plan, new_dataset, preview_matrix, new_order)
+        current_plan = base_record.plan
+        preview_plan: PlanResult | None = current_plan
         mode = "MINIMAL_CHANGE"
         full_replan_reason: str | None = None
+        for new_order in new_orders:
+            candidate_plan = try_minimal_insert(
+                current_plan, new_dataset, preview_matrix, new_order
+            )
+            if candidate_plan is None:
+                preview_plan = None
+                break
+            current_plan = candidate_plan
+            preview_plan = candidate_plan
         if preview_plan is None:
             mode = "FULL_REPLAN"
-            full_replan_reason = "NO_LEGAL_SINGLE_ROUTE_INSERTION"
+            full_replan_reason = "NO_LEGAL_BATCH_ROUTE_INSERTION"
             preview_plan = (
                 build_ortools(new_dataset, preview_matrix, settings.solver_time_limit_seconds)
                 if base_record.plan.algorithm == "ORTOOLS"
@@ -1381,17 +1447,48 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             "URGENT_INSERT_UNASSIGNABLE",
             "插單無法在目前方案中合法安排，原方案未變更。",
             plan_id=plan_id,
-            order_id=new_order.order_id,
+            order_ids=incoming_ids,
             reason="PLANNER_NO_FEASIBLE_CANDIDATE",
         )
     preview_validation = validate_plan(new_dataset, preview_plan, preview_matrix)
-    if not preview_validation.valid:
+    unassigned_incoming = [
+        order_id for order_id in incoming_ids if order_id in preview_plan.unassigned_orders
+    ]
+    if not preview_validation.valid or unassigned_incoming:
+        route_by_vehicle = {route.vehicle_id: route for route in base_record.plan.routes}
+        vehicle_by_id = {
+            vehicle.vehicle_id: vehicle for vehicle in dataset_record.dataset.vehicles
+        }
+        order_by_id = {order.order_id: order for order in new_orders}
+        readable_reasons: dict[str, str] = {}
+        for order_id in unassigned_incoming:
+            order = order_by_id[order_id]
+            eligible = [
+                vehicle
+                for vehicle in vehicle_by_id.values()
+                if vehicle.status == VehicleStatus.AVAILABLE
+                and order.zone_code in vehicle.service_zone_codes
+            ]
+            if not eligible:
+                readable_reasons[order_id] = "SERVICE_ZONE_UNAVAILABLE"
+            elif all(
+                order.total_weight_kg
+                > vehicle.max_load_kg
+                - route_by_vehicle[vehicle.vehicle_id].planned_load_kg
+                for vehicle in eligible
+            ):
+                readable_reasons[order_id] = "CAPACITY_LIMIT"
+            else:
+                readable_reasons[order_id] = "TIME_OR_ROUTE_CONFLICT"
         return _error(
             request,
             409,
             "URGENT_INSERT_UNASSIGNABLE",
-            "插單預覽未通過獨立驗證。",
+            "一張或多張臨時訂單目前無法合法安排，原方案未變更。",
             plan_id=plan_id,
+            order_ids=incoming_ids,
+            unassigned_order_ids=unassigned_incoming,
+            unassigned_reasons=readable_reasons,
         )
     preview_version = max(store.plans.get(plan_id, {0: None})) + 1
     preview_record = PlanRecord(
@@ -1449,6 +1546,25 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
         for change in diff["sequence_changes"]
         if change["to_vehicle_id"] is not None
     )
+    inserted_orders = []
+    for order_id in incoming_ids:
+        assignment = next(
+            (
+                (route.vehicle_id, stop.sequence)
+                for route in preview_plan.routes
+                for stop in route.stops
+                if stop.order_id == order_id
+            ),
+            None,
+        )
+        inserted_orders.append(
+            {
+                "order_id": order_id,
+                "vehicle_id": assignment[0] if assignment else None,
+                "sequence": assignment[1] if assignment else None,
+                "status": "ASSIGNED" if assignment else "UNASSIGNED",
+            }
+        )
     return {
         "plan_id": plan_id,
         "base_version": base_record.version,
@@ -1467,10 +1583,44 @@ def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: R
             "base_dataset_hash": dataset_hash(dataset_record.dataset),
             "preview_dataset_hash": dataset_hash(new_dataset),
         },
-        "diff": {"inserted_order_id": new_order.order_id, **diff},
+        "validator": preview_validation.model_dump(mode="json"),
+        "provider_mode": preview_matrix.provider_mode,
+        "matrix_hash": matrix_hash(preview_matrix),
+        "matrix_reused": base_record.matrix.provider_mode == preview_matrix.provider_mode,
+        "matrix_elements_added": (
+            len(new_orders) * len(preview_matrix.node_ids)
+            + len(base_record.matrix.node_ids) * len(new_orders)
+            if preview_matrix.provider_mode == "GOOGLE"
+            else 0
+        ),
+        "inserted_orders": inserted_orders,
+        "diff": {
+            "inserted_order_ids": incoming_ids,
+            "inserted_order_id": incoming_ids[0] if len(incoming_ids) == 1 else None,
+            **diff,
+        },
         "warnings": preview_warnings,
         "request_id": _request_id(request),
     }
+
+
+@app.post("/api/v1/plans/{plan_id}/urgent-insert/preview")
+def urgent_insert_preview(plan_id: str, payload: UrgentInsertRequest, request: Request) -> Any:
+    return _urgent_insert_preview_response(
+        plan_id,
+        payload.base_plan_version,
+        [UrgentOrderBundleRequest(order=payload.order, packages=payload.packages)],
+        request,
+    )
+
+
+@app.post("/api/v1/plans/{plan_id}/urgent-insert/batch-preview")
+def urgent_batch_insert_preview(
+    plan_id: str, payload: UrgentBatchInsertRequest, request: Request
+) -> Any:
+    return _urgent_insert_preview_response(
+        plan_id, payload.base_plan_version, payload.orders, request
+    )
 
 
 @app.post("/api/v1/plans/{plan_id}/confirm")
@@ -1573,6 +1723,77 @@ def provider_status(request: Request) -> dict[str, Any]:
     }
 
 
+def _urgent_workflow_message(
+    stage: str,
+    orders: list[dict[str, Any]],
+    missing: list[dict[str, Any]],
+    duplicate_ids: list[str],
+    preview: dict[str, Any] | None = None,
+) -> str:
+    if stage == "CANCELLED":
+        return "已取消這次臨時插單，原方案沒有變更。"
+    if stage == "BLOCKED" and duplicate_ids:
+        return f"訂單編號重複：{'、'.join(duplicate_ids)}。請修改編號後再試，原方案沒有變更。"
+    if stage == "BLOCKED":
+        return "不能跳過資料檢查、插單預覽或人工確認；原方案沒有變更。"
+    if missing:
+        labels = {
+            "order_id": "訂單編號",
+            "location": "配送地點（地址或座標）",
+            "zone_code": "配送區域",
+            "package_weight_kg": "每件重量",
+            "declared_package_count": "包裹件數",
+            "time_slot": "配送時段",
+            "priority": "優先程度",
+        }
+        details = []
+        for item in missing:
+            fields = [labels.get(str(field), str(field)) for field in item["missing_fields"]]
+            details.append(f"{item['order_ref']} 缺少：{'、'.join(fields)}")
+        return "目前還不能計算。" + "；".join(details) + "。請一次補齊後再繼續。"
+    if stage == "REVIEW_READY":
+        summaries = []
+        for order in orders:
+            count = int(order["declared_package_count"])
+            unit_weight = float(order["package_weight_kg"])
+            summaries.append(
+                f"{order['order_id']}：{order['location_label']}、{order['zone_code']}、"
+                f"{count} 件、每件 {unit_weight:g} 公斤、{order['time_slot']}、"
+                f"{'高' if order['priority'] == 'HIGH' else '一般'}優先"
+            )
+        return (
+            "我理解的臨時訂單如下："
+            + "；".join(summaries)
+            + "。請選擇產生插單預覽、修改或取消。"
+        )
+    if stage == "PREVIEW_READY" and preview is not None:
+        assignments = []
+        for item in preview.get("inserted_orders", []):
+            if item.get("status") == "ASSIGNED":
+                assignments.append(
+                    f"{item['order_id']} 安排至 {item['vehicle_id']} 第 {item['sequence']} 站"
+                )
+        diff = preview.get("diff", {})
+        return (
+            f"已完成 {len(assignments)} 張臨時訂單的同批預覽：{'；'.join(assignments)}。"
+            f"既有訂單換車 {preview.get('moved_order_count', 0)} 張，"
+            f"距離變化 {diff.get('total_distance_delta_m', 0):+,.0f} 公尺，"
+            f"時間變化 {diff.get('total_duration_delta_s', 0):+,.0f} 秒。"
+            "這只是預覽，請由調度員人工確認或取消。"
+        )
+    return "已收到臨時插單要求，原方案尚未變更。"
+
+
+def _save_agent_session(session_id: str, session: AgentSession) -> None:
+    if len(session.history) > 12:
+        session.history = session.history[-12:]
+    repository.save_agent_session(
+        session_id,
+        _session_payload(session),
+        datetime.now(UTC).isoformat(),
+    )
+
+
 @app.post("/api/v1/agent/chat")
 async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     if not settings.openai_api_key:
@@ -1671,6 +1892,124 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         session.plan_id = record.plan_id
         session.plan_version = record.version
 
+    try:
+        urgent_state = UrgentWorkflowState.model_validate(session.urgent_workflow or {})
+        urgent_understanding, urgent_run = await understand_urgent_message(
+            payload.message, urgent_state
+        )
+    except InputGuardrailTripwireTriggered:
+        return _error(
+            request,
+            400,
+            "PROMPT_INJECTION_BLOCKED",
+            "訊息包含不可執行的規則繞過要求。",
+        )
+    except Exception as exc:
+        provider_runtime_state["openai"] = "failed"
+        status_code, error_code, message, retryable = _classify_agent_error(exc)
+        return _error(
+            request,
+            status_code,
+            error_code,
+            message,
+            provider="OPENAI",
+            exception_type=type(exc).__name__,
+            fallback_used=False,
+            retryable=retryable,
+        )
+
+    if urgent_understanding.is_urgent_insertion or urgent_understanding.action != "NONE":
+        existing_ids = {order.order_id for order in dataset.orders}
+        workflow = advance_urgent_workflow(
+            urgent_state,
+            urgent_understanding,
+            fixture_lookup=get_demo_urgent_order,
+            existing_order_ids=existing_ids,
+        )
+        orders = [item.model_dump(mode="json") for item in workflow.state.orders]
+        missing = [item.model_dump(mode="json") for item in workflow.missing_by_order]
+        preview: dict[str, Any] | None = None
+        next_state = workflow.state
+        if workflow.should_preview:
+            if record is None or dataset_record is None:
+                return _error(
+                    request,
+                    409,
+                    "PLAN_REQUIRED",
+                    "請先建立今天的配送方案，再產生插單預覽。",
+                )
+            bundles = []
+            for draft in workflow.complete_orders:
+                order = draft.to_order()
+                bundles.append(
+                    UrgentOrderBundleRequest(
+                        order=UrgentOrderRequest.model_validate(
+                            order.model_dump(exclude={"packages", "total_weight_kg"})
+                        ),
+                        packages=list(order.packages),
+                    )
+                )
+            preview_response = _urgent_insert_preview_response(
+                record.plan_id, record.version, bundles, request
+            )
+            if isinstance(preview_response, JSONResponse):
+                return preview_response
+            preview = preview_response
+            next_state = workflow.state.model_copy(update={"stage": "PREVIEW_READY"})
+            session.last_preview_version = int(preview["preview_version"])
+        session.urgent_workflow = next_state.model_dump(mode="json")
+        session.pending_fields = tuple(
+            f"{item['order_ref']}.{field}"
+            for item in missing
+            for field in item["missing_fields"]
+        )
+        if orders and isinstance(orders[-1].get("order_id"), str):
+            session.order_id = str(orders[-1]["order_id"])
+        evidence_data: dict[str, Any] = {
+            "stage": next_state.stage,
+            "orders": orders,
+            "missing_by_order": missing,
+            "duplicate_order_ids": workflow.duplicate_order_ids,
+            "requires_human_confirmation": preview is not None,
+        }
+        if preview is not None:
+            evidence_data["preview"] = preview
+        final_output = _urgent_workflow_message(
+            next_state.stage,
+            orders,
+            missing,
+            workflow.duplicate_order_ids,
+            preview,
+        )
+        session.history.extend(
+            [
+                ("user", _safe_session_text(payload.message)),
+                ("assistant", _safe_session_text(final_output)),
+            ]
+        )
+        session.last_tool = "urgent_insertion_workflow"
+        _save_agent_session(payload.session_id, session)
+        provider_runtime_state["openai"] = "connected"
+        urgent_usage = getattr(
+            getattr(urgent_run, "context_wrapper", None), "usage", None
+        )
+        return {
+            "session_id": payload.session_id,
+            "agent_run_id": f"RUN-{uuid4().hex[:12].upper()}",
+            "message": final_output,
+            "evidence": [{"tool": "urgent_insertion_workflow", "data": evidence_data}],
+            "requires_human_confirmation": preview is not None,
+            "usage": {
+                "total_tokens": int(getattr(urgent_usage, "total_tokens", 0) or 0),
+                "tool_calls": 0,
+            },
+            "provider_mode": record.matrix.provider_mode if record else matrix.provider_mode,
+            "plan_id": record.plan_id if record else None,
+            "plan_version": record.version if record else None,
+            "runner_result_type": type(urgent_run).__name__,
+            "request_id": _request_id(request),
+        }
+
     # Context identifiers are application-controlled data. Include only the
     # selected order identifier as a hint so the model must still invoke the
     # allowlisted deterministic tool instead of receiving precomputed facts.
@@ -1729,6 +2068,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                     dataset_id=record.dataset_id if record else None,
                     plan_id=record.plan_id if record else None,
                     plan_version=record.version if record else None,
+                    include_urgent_tools=False,
                 )
                 break
             except InputGuardrailTripwireTriggered:
