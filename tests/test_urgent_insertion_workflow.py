@@ -103,6 +103,25 @@ def test_known_fixture_id_is_resolved_before_review() -> None:
     result = _step(new_urgent_workflow(), action="ADD_OR_UPDATE", references=["ORD-041"])
     assert result.state.stage == "REVIEW_READY"
     assert result.complete_orders[0].order_id == "ORD-041"
+
+
+def test_known_fixture_id_inside_structured_order_is_resolved_before_review() -> None:
+    """The model may place a plain ID in orders instead of referenced_order_ids."""
+    understanding = UrgentUnderstanding(
+        is_urgent_insertion=True,
+        action="ADD_OR_UPDATE",
+        orders=[UrgentOrderDraft(order_id="ORD-041")],
+    )
+    result = advance_urgent_workflow(
+        new_urgent_workflow(),
+        understanding,
+        fixture_lookup=get_demo_urgent_order,
+        existing_order_ids=set(),
+    )
+
+    assert result.state.stage == "REVIEW_READY"
+    assert result.complete_orders[0].order_id == "ORD-041"
+    assert result.missing_by_order == []
     assert result.complete_orders[0].package_weight_kg == 2.0
 
 

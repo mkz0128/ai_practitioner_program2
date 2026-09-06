@@ -5,6 +5,7 @@
 - 新增 strict `begin_urgent_insertion`：主 Agent 若理解到新增臨時訂單，只能把使用者提供的事實交給確定性急單狀態機，不能誤呼叫 `plan_dispatch`、直接 Preview 或改動方案。
 - `/api/v1/agent/chat` 現在會把主 Runner 的急單 evidence 接回既有 `COLLECTING → REVIEW_READY → PREVIEW_READY` 流程；沒有 Regex、關鍵字或固定 `ORD-041` 意圖路由。
 - 新增第一輪語意漏判回歸、無副作用 strict-tool 測試，並將 112 筆 Agent 語料中的急單案例改為新的安全入口。
+- 修正模型把單純訂單編號放進 `orders[].order_id` 時未查詢既有 fixture 的缺口；現在不論編號出現在 strict `orders` 或 `referenced_order_ids`，都由同一個 deterministic lookup 補齊，使用者不必重複輸入 ORD-041 資料。
 
 ## 2026-09-06 — Agent 急單上下文與 Google 錯誤分類
 

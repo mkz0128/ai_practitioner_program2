@@ -5,6 +5,7 @@
 - 上一輪公開流程已完成 Excel 匯入、40／40、4／4、Google Matrix→OR-Tools、方案檢查、Google 道路地圖、四車切換與前六則 Agent 問答；但「幫我插入一張急單」被錯選為 `plan_dispatch`，因此當次公開流程未通過急單驗收。該輪已使用 1,681 Matrix elements，沒有自動重跑，Dispatch requests 為 0。
 - 根因是第一個 strict 急單語意結果偶發回傳 `NONE`，而主 Agent 當時沒有安全的急單入口，只能在其他工具中誤選。現在新增無副作用的 strict `begin_urgent_insertion`；它只收集欄位，API 隨即交回同一個確定性狀態機，不能規劃、取得 Matrix、套用或確認方案。
 - 真實 OpenAI `gpt-5-mini` 已重新驗證三種主 Agent 語句：「幫我插入一張急單」、「幫我插入 ORD-041」與一張完整任意急單，均選用 `begin_urgent_insertion`，沒有選 `plan_dispatch`，且沒有呼叫 Google。
+- Commit `cfec21f` 部署後，公開首頁實測「幫我插入一張急單」正確進入 `COLLECTING`，補一張完整任意訂單及同時兩張完整急單都進入 `REVIEW_READY`，取消後原方案不變，Console errors 為 0。驗收也發現模型可能把單純 `ORD-041` 放在 `orders[].order_id`；已新增 deterministic fixture lookup 回歸，等待下一版部署後重驗 Preview／Confirm。
 - Backend 全量：`250 passed、28 skipped、0 failed`；112 筆 Agent corpus 單獨執行為 `116 passed`。Ruff、mypy、OpenAPI／contract 皆隨全量測試通過。
 - 通用急單測試涵蓋：只說要插單、單筆完整、缺重量／時段、多筆、部分缺欄、既有 ORD-041、不存在 ID、重複 ID、超載、時段衝突、無法安排、取消及提示注入；Preview 失敗不污染目前方案。
 - Frontend：TypeScript、ESLint、Vitest `24 passed`、Vite production build 通過；本機 Playwright `2 passed、3 skipped`。三個 skipped 是需明確開啟的外部 Live／隨機流程，沒有用 skipped 隱藏本次後端急單失敗。

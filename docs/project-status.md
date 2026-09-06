@@ -94,6 +94,7 @@
 - 修正急單第一輪語意偶發漏判：主 Agent 新增無副作用的 strict `begin_urgent_insertion`；API 只把結構化事實交給既有急單狀態機，不會誤跑 `plan_dispatch`、直接 Preview、重抓 Matrix 或改動正式方案。
 - 新增兩個回歸測試並更新 112 筆 Agent corpus 契約；真實 OpenAI 三個代表語句均選對新工具。Backend `250 passed、28 skipped`、corpus `116 passed`、Ruff／mypy 通過。
 - Frontend TypeScript、ESLint、Vitest `24 passed`、Vite build 通過；本機 Playwright `2 passed、3 個明確 opt-in skipped`。Secret 高信心命中 0；本輪 Google Matrix 新增用量 0。
+- Render `cfec21f` 公開實測已通過缺欄追問、單筆摘要、多筆同批摘要、取消與 Console error 0；另發現單純 ORD-041 被模型放入另一個合法 strict 欄位時未查 fixture，已 regression-first 修正並通過 18 個狀態機測試。
 - 新增 `UrgentUnderstanding` 與 `UrgentWorkflowState`：每則急單訊息先經 OpenAI Agents SDK `Runner.run` 產生 strict structured output，再由程式固定控制補資料、摘要、預覽與取消；不使用 Regex、關鍵字或固定 `ORD-041` 路由。
 - 新增單筆／多筆共用的 `/api/v1/plans/{plan_id}/urgent-insert/batch-preview`；多張急單共用同一個 base version、同一份 Preview 與獨立方案檢查，Google 模式只增量延伸既有 Matrix。
 - 修正真實模型可能同時輸出 structured order 與相同 reference ID，或先建立匿名草稿後才補訂單編號的情況；兩者不再被誤判為重複訂單或多出空白急單。

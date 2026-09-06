@@ -207,7 +207,27 @@ def advance_urgent_workflow(
             should_preview=False,
         )
 
-    incoming = list(understanding.orders)
+    incoming: list[UrgentOrderDraft] = []
+    for supplied in understanding.orders:
+        normalized_order = supplied.model_copy(
+            update={"order_id": supplied.order_id.strip().upper()}
+            if supplied.order_id
+            else {}
+        )
+        fixture = (
+            fixture_lookup(normalized_order.order_id)
+            if normalized_order.order_id
+            else None
+        )
+        if fixture is not None:
+            # Models may represent a plain order reference as an item containing
+            # only order_id. Resolve that deterministic record regardless of
+            # which strict field carried the ID, while letting explicitly
+            # supplied values override the fixture.
+            normalized_order = _merge_order(
+                UrgentOrderDraft.from_order(fixture), normalized_order
+            )
+        incoming.append(normalized_order)
     structured_ids = {
         item.order_id.strip().upper() for item in incoming if item.order_id
     }

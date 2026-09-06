@@ -46,7 +46,7 @@
 | FR-URG-007 | Urgent preview 比較精確的 base algorithm/version/dataset identity，並回傳 before／after hashes、assigned weight、unassigned IDs 與 per-vehicle loads。 | OR-Tools base regression test |
 | FR-URG-003 | 要求對精確 plan/version 進行明確人工確認。 | Transition tests；AC-002 |
 | FR-URG-004 | `DISPATCHED` 後拒絕 automatic insertion。 | GD-007；AC-006 |
-| FR-URG-008 | 急單自然語言先由 Agents SDK strict structured output 擷取；其後由確定性狀態機固定控制「補資料→摘要→預覽→人工確認」，不得用 Regex、關鍵字或固定 `ORD-041` 路由。主 Runner 若辨識到急單，只能呼叫無副作用的 `begin_urgent_insertion`，不得改跑正式排程或直接建立 Preview。 | `tests/test_urgent_insertion_workflow.py`、`tests/test_api.py::test_agent_chat_routes_main_runner_urgent_intake_into_state_machine`、`tests/test_agent_sdk_scenarios.py::test_sdk_urgent_intake_only_records_structure_without_planning` |
+| FR-URG-008 | 急單自然語言先由 Agents SDK strict structured output 擷取；其後由確定性狀態機固定控制「補資料→摘要→預覽→人工確認」，不得用 Regex、關鍵字或固定 `ORD-041` 路由。主 Runner 若辨識到急單，只能呼叫無副作用的 `begin_urgent_insertion`，不得改跑正式排程或直接建立 Preview；單純訂單編號不論落在 strict `orders` 或 `referenced_order_ids` 都必須由 deterministic lookup 查詢。 | `tests/test_urgent_insertion_workflow.py`、`tests/test_api.py::test_agent_chat_routes_main_runner_urgent_intake_into_state_machine`、`tests/test_agent_sdk_scenarios.py::test_sdk_urgent_intake_only_records_structure_without_planning` |
 | FR-URG-009 | 多筆急單必須以同一個 base plan 與同一批 Matrix 增量資料共同計算；Google 模式只延伸既有 Matrix，不得重建原 40 單 Matrix。 | `tests/test_urgent_batch_api.py` |
 | FR-STATE-001 | 持久化並 audit `DRAFT→VALIDATED→PROPOSED→CONFIRMED→DISPATCHED`。 | State-machine tests |
 | FR-AGENT-001 | 一個 Agent 透過 strict tools 支援配送查詢、規劃、突發事件、風險與版本等自然語言 intents。 | Tool-routing Evals |
