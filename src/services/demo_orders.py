@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.domain.models import Order, Package, Priority
+from src.domain.models import Order, Package, Priority, TimeSlot
 
 
 def get_demo_urgent_order(order_id: str) -> Order | None:
@@ -11,31 +11,34 @@ def get_demo_urgent_order(order_id: str) -> Order | None:
     preview tool and provide the order ID. Arbitrary orders remain supported by
     the strict structured urgent-order tool.
     """
-    fixtures = {
-        "ORD-041": Order(
-            order_id="ORD-041",
-            # Anchor the public demo stop to the existing ORD-001 location.  This
-            # keeps the fixed showcase deterministic across changing live traffic:
-            # at least one already-valid Z1 route can insert the colocated stop
-            # without moving unrelated orders.  Arbitrary structured orders still
-            # use their caller-provided zone and coordinates.
+    def build_fixture(fixture_id: str) -> Order:
+        return Order(
+            order_id=fixture_id,
+            # Keep the public demo stop near the existing Z1 service area but
+            # away from every base-demo coordinate, so an insertion has a real
+            # deterministic distance and duration cost.
             zone_code="Z1",
             city="新北市",
             district="板橋",
             location_label="示範臨時配送點",
-            latitude=25.0114,
-            longitude=121.4618,
-            time_slot="AM",
+            latitude=25.033664,
+            longitude=121.448133,
+            time_slot=TimeSlot.MORNING,
             declared_package_count=1,
             priority=Priority.HIGH,
             note="公開展示用合成訂單",
             packages=(
                 Package(
-                    package_id="PKG-041-01",
-                    order_id="ORD-041",
+                    package_id=f"PKG-{fixture_id}-01",
+                    order_id=fixture_id,
                     weight_kg=2.0,
                 ),
             ),
         )
+
+    normalized_id = order_id.strip().upper()
+    fixtures = {
+        "ORD-041": build_fixture("ORD-041"),
+        "URG-DEMO-041": build_fixture("URG-DEMO-041"),
     }
-    return fixtures.get(order_id.strip().upper())
+    return fixtures.get(normalized_id)

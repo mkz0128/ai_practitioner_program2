@@ -31,7 +31,7 @@ def _implemented_endpoints() -> set[tuple[str, str]]:
 def test_api_contract_is_fully_implemented() -> None:
     declared = _contract_endpoints()
     implemented = _implemented_endpoints()
-    assert len(declared) == 19
+    assert len(declared) == 28
     assert declared <= implemented
     assert len(implemented & declared) == len(declared)
 

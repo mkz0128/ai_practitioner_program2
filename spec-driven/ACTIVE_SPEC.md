@@ -1,166 +1,599 @@
 ---
-spec_id: AI-DISPATCH-MVP
-spec_version: 1.0.0-spec
-status: IMPLEMENTATION_IN_PROGRESS
-current_phase: PHASE_2_FEATURE_IMPLEMENTATION
+spec_id: AI-DISPATCH-V2
+spec_version: 2.0.0
+status: APPROVED_FOR_IMPLEMENTATION
 feature_code_allowed: true
-required_approval_command: APPROVE_IMPLEMENTATION
-approved_product_input_date: 2026-09-01
+required_approval_command: APPROVE_V2
 application_agent_count: 1
+rewritten_on: 2026-09-09
 ---
 
-# AI 智慧配送路線與載重規劃 Agent — Active Specification
+# AI 智慧配送路線與載重規劃 Agent — 規格 v2
 
-## 0. 階段閘門
+## 0. 文件狀態
 
-本文件已吸收使用者確認的產品決策，不再重新訪談。使用者已輸入精確命令 `APPROVE_IMPLEMENTATION`，現在允許在本地沙盒開始 Feature Code。所有部署、Git push、外部付費、IAM、Production 或其他 L2/L3 動作仍需另行範圍核准。
+本檔是**唯一產品規格**。v1 規格與 `SPEC_CHANGE_DRAFT_v2.md` 已於 2026-09-09 刪除並由本檔取代。
 
-`APPROVE_IMPLEMENTATION` 本身不包含部署；本輪使用者另行明確核准的 Render Free 測試服務部署，僅限 `feat/frontend-control-tower`，不包含付費資源、IAM、Production、Dispatch、force push 或合併 `main`。
+取得 `APPROVE_V2` 前不得修改 Feature Code。
 
-### 2026-09-05 正式方案與介面校正
+| 內容 | 檔案 |
+|---|---|
+| 進度 NOW／TODO／DONE | `docs/progress.md` |
+| 專案規則（每次載入） | `CLAUDE.md` |
+| 安全與核准政策 | `.agent/guardrails.md` |
+| 流程規則 | `AGENTS.md` |
 
-- 一般使用者的建立方案、重新規劃與 Agent 排程固定使用 OR-Tools；Baseline 僅是「快速初步方案」比較項，不得確認。
-- 可確認方案必須同時滿足：所有有效訂單完成安排、provider 資料完整、獨立方案檢查通過、無超重／跨區／重複／時段違規及缺少必要資料。
-- 介面只呈現「已安排張數」、「方案檢查」及「是否可確認」等白話結果；solver、matrix、provider 與 tool 細節只能收在技術資訊。
-- 單一控制塔整合對話、地圖、車輛、待處理訂單與方案明細，所有正式資料來自 REST API，不由前端重算或寫死。
-- 「已設定」與「已連線」必須分開；只有外部 Provider 實際成功回應後才顯示已連線。三策略比較必須重用目前方案的同一份 Matrix。
+## 1. 產品定義
 
-## 1. Why — 商業意圖
+**一個調度員可以用講話指揮的配送控制塔。**
 
-### 核心問題
+系統會排班，但核心價值是：**在每個時間點提供數個帶有明確代價的選項，由調度員決定。**
 
-調度人員需要把含區域、位置、時段、包裹與重量的配送訂單，快速轉成合法、可解釋、可人工確認的分車與配送順序。純 LLM 會在數字、限制與狀態上產生不可接受的幻覺；純人工則難以快速處理載重衝突、跨區限制、時段與臨時插單。
+不是「AI 幫你排班」——那是 OR-Tools 的功勞。是「AI 讓調度員在每個當下都有得選，而且知道每個選擇的代價」。
 
-### 使用者
+### 1.1 六項功能（唯一骨架，非此六項一律不做）
 
-- Primary: 配送調度人員，負責匯入、檢查、預覽、確認與派送狀態。
-- Secondary: 前端開發者，依穩定 REST/OpenAPI 合約展示地圖、指標、例外與動畫。
-- Technical operator: 後端開發者，管理 provider 設定、健康狀態、測試和觀測。
+| # | 功能 |
+|---|---|
+| **F1** | 上傳訂單 → 吃不同格式 → 解析缺漏欄位並反問補齊 → OR-Tools 排班 |
+| **F2** | 提出司機限制 → 記入規則 → 以後排班自動套用 |
+| **F3** | **上車前**臨時插單（一張或多張）→ 動態方案卡＋對話修改 → 調度員選擇 |
+| **F4** | **上車後**臨時插單（一張或多張）→ 動態方案卡＋對話修改 → 調度員選擇 |
+| **F5** | **已發車**時，既有訂單須提前抵達 → 重新規劃該車剩餘路線 |
+| **F6** | 配送偏差記錄 → 回饋為排班參數修正 |
 
-### 產品成果
+### 1.2 命題涵蓋率
 
-本系統是一套可解釋的 AI 配送調度 Copilot。單一 OpenAI Agent 負責理解自然語言並調用具明確 Schema 的工具；資料驗證、重量彙總、車輛分配、路線最佳化、配送時段約束及狀態管理，均由確定性程式執行，確保結果可驗證、可解釋且可追溯。所有最終配送方案仍由調度人員確認。系統提供可供前端串接的 REST API 與 Swagger。
+| 命題項目 | 涵蓋 |
+|---|---|
+| C1a 辨識訂單欄位／C1b 缺漏標示 | F1 |
+| C2a 比對載重與服務區域 | F1, F2 |
+| C2b 避免超載、提出重新分配 | F1（推薦理由） |
+| C3a 分群與順序／C3b 說明推薦原因 | F1 |
+| C4a 辨識例外／C4b 例外分類與下一步 | F3, F4, F5 |
+| M1 30 單 3 車／M2 載重使用率／M3 順序與理由 | F1 |
+| M4 超重或時段衝突＋臨時插單重新安排 | F1＋F3 |
+| P1 降低調度時間／P2 避免超載與繞行 | F1 |
+| **P3 哪些衝突仍需調度員決定** | **F3, F4, F5 的方案卡** |
 
-### 成功標準
+### 1.3 兩項刪除決定
 
-- 固定 40 單／4 車／5 區資料能在無外部 Key 時完整 Demo。
-- 所有可確認方案通過獨立 validator，零超載、零拆單、零重複、零跨服務區、零硬時段違規。
-- 一張或多張出發前急單都以相同的摘要、preview、version 與 diff 流程處理；資料不齊時一次列出各單缺漏，未確認不覆寫。
-- 前端可由 OpenAPI、sample payload 與文件獨立串接。
+**超重不是獨立場景。** OR-Tools 的載重是硬約束，求解器不會產出超載方案，不存在「超重 → 重新分配」的戲劇性時刻。命題要求的「展示超重情境」由 F1 的推薦理由涵蓋：「ORD-023（28 kg）未派給 VEH-002，因為會超出 100 kg 上限，改派 VEH-003」——展示的是系統**如何避免**超載。
 
-## 2. What — 範圍與流程
+**時段衝突不是獨立場景。** 它出現在 F3／F4／F5 的方案卡代價欄。
 
-### 產品工作流程
+---
 
-1. `daily-dispatch`: import → validate → assign → route/order → independently validate → explain → human confirm.
-2. `urgent-order-insertion`: Agents SDK strict output understands one or many urgent orders → deterministic state machine checks all required fields → user reviews the summary → one batch preview against the exact pre-dispatch version → validate → diff → human confirm.
+## 2. 現況落差（以原始碼為準）
 
-### Agent 邊界
-
-- 固定使用一個 OpenAI Agent；不得使用 handoff、multi-Agent、A2A 或 AP2。
-- Agent 理解自然語言、選擇 allowlisted function tools、摘要錯誤並解釋 structured evidence。
-- LLM 絕不執行 weight sums、legality checks、vehicle assignment、route ordering、time-window checks、state transitions 或 numeric invention。
-- Algorithms 必須是 function tools/service functions，不得是 Skills。
-
-### 已完成核心功能
-
-- `.xlsx` import/validation，包含四張固定工作表。
-- 40 張訂單範例、4 台車與 5 個營運區域。
-- 確定性的 capacity／zone／time feasibility 與 OR-Tools route planning。
-- 獨立 plan validator 與明確的 partial infeasibility。
-- 以 SQLite 持久化 datasets、plans、versions、assignments、exceptions、audit events 與 Agent session metadata。
-- Initial plan、map data、explanations、urgent order preview、confirmation 與 dispatch state。
-- 使用 strict tools 的 Single Agent，以及 graceful OpenAI degradation。
-- Simulated route matrix／polyline／congestion fallback。
-- Google provider interface、settings、health/status、timeout/fallback 與 strict Matrix／geometry wiring；既有 TDX adapter 保留，但 TDX 明確排除於本次競賽 Demo，僅屬未來可選擴充。
-- REST、OpenAPI/Swagger、sample payloads，以及由 environment 設定的 CORS。
-
-「已完成核心功能」包含 deterministic／simulated 驗證、OpenAI Agent 公開執行證據、Google Routes 最低成本 Live、既有公開 40 單同源流程與 Google Maps 公開地圖證據。SQLite 的 confirm／version state 會回寫 repository；Render Free 跨重啟永久保存仍受暫存檔案系統限制。HTTP `/api/v1/agent/chat` 已接入 SDK `Runner.run` runtime，並在 Agent 執行 `plan_dispatch` 後保存 plan；`frontend/` 已提供 control tower 與 provider 降級提示。
-
-### 原始必要功能的整合缺口
-
-- Google Routes 提供真實距離與行駛時間，且 live Matrix 必須真正進入 OR-Tools 排程。
-- Google Maps Browser API 必須在瀏覽器實際顯示地圖、Marker 與配送路線。
-- TDX OAuth、真實路況／道路事件與路線風險為未來可選擴充，不列入本次競賽 Demo 完成條件。
-- 前端必須完整顯示訂單、車輛、載重、路線、例外與 Agent 對話。
-- Google、OR-Tools、OpenAI Agent 與前端必須完成整合驗證與公開網站 Live E2E；TDX 不在本次驗收鏈中。
-
-上述項目屬原始必要功能，不得重新分類為 P1 或可選功能。現況與證據詳見 `docs/requirements.md` 與 `docs/project-status.md`。
-
-| 原始必要能力 | 現況 | 實際證據與缺口 |
+| 對應 | 現況 | 證據 |
 |---|---|---|
-| Google Routes live distance／duration | 完成（目前最小 Live 與既有完整公開證據） | 新 Key 已完成 4-element 最低成本 Live 測試，回傳合法距離／時間且未 fallback；既有公開 40 單完整證據保留。舊 `BILLING_DISABLED` 僅是歷史事故。 |
-| Google Matrix 進入 OR-Tools | 完成 | `_build_matrix` 將 strict Google `MatrixResult` 傳入 solver；hash/version 一致性測試與既有公開 40 單 Matrix→OR-Tools 證據均已通過。 |
-| Google Maps Browser 地圖 | 完成（公開 Live） | 公開 Render 已實際載入 Google 底圖、四車道路路線與站點；新 Browser Key 也已完成目前 Build 的最低成本載入驗證。 |
-| TDX OAuth／真實路況／道路事件 | 未來可選擴充（本版本未啟用） | 既有 `src/providers/tdx.py` 與 mock coverage 保留；本輪不申請憑證、不做 Live 驗收。 |
-| TDX 受影響路線／配送風險 | 未來可選擴充（本版本未啟用） | 既有 `correlate_events_to_plan` 保留，不影響 Google／OR-Tools／Agent 核心 Demo。 |
-| 前端完整操作與 Agent 顯示 | 完成（控制塔 UI；Live 依環境） | `frontend/` React/Vite/MUI、API client、Agent-first attachment flow、RTL tests；公開 Live 需當前憑證。 |
-| 全整合前後端 Live E2E | 競賽 Demo 已就緒 | 核心流程已有公開分段與完整歷史證據；急單修正後的公開流程也已獨立通過。為避免重複產生 1,681 個 Matrix elements，最新 Commit 的單次全線演練保留給正式 Demo。 |
+| F1 格式適應 | 未做，現行邏輯相反 | `src/services/importer.py:91` 為 `if headers != expected`，欄位名稱**與順序**須完全一致，否則 `INVALID_HEADERS` |
+| F2 規則持久化 | 未做 | `src/` 無 driver／preference 持久化；`change_vehicle_availability`、`change_order_constraint`、`change_frozen_stops`（`runtime.py:625,689,749`）皆為單次事件 |
+| F3 方案卡 | 求解已有，卡片未做 | 現行為「對話在左、結果在右」，Agent 回覆為文字與收合證據 |
+| F4 上車後 | 未做 | 無 `LOADED` 狀態；`CONFIRMED` 與 `PROPOSED` 插單行為相同 |
+| F5 已發車 | 未做，且被擋死 | `DISPATCHED` 於 `src/api/main.py:1087,1151,1327,1633` 全部回傳 `PLAN_ALREADY_DISPATCHED` |
+| 時段值 | 只有兩值 | `src/domain/models.py:34` 為 `pattern="^(AM\|PM)$"`；`planner.py:13-14` 硬編兩組常數 |
+| 延後規則 | 無商業規則 | `planner.py:568` 丟棄代價為全部路程總和 +1，求解器永不主動丟單；`priority` 只用於 `planner.py:74` 的貪婪排序，**完全不影響 OR-Tools 取捨** |
+| F6 | 未做 | 有 audit events，但屬工程除錯用途 |
+| 前端 | 需重做 | `package.json` 安裝 `@mui/material`、`@emotion/*`，但 `frontend/src` 對兩者**零筆匯入**（純死依賴）；33 KB 手寫 `styles.css`；`App.tsx` 23 KB 單檔；`VehiclePanel.tsx:24,30` 為單行 800+ 字元 JSX |
 
-### 企業級擴充功能
+### 2.1 保留不動的基礎
 
-下列能力屬 B 類企業級擴充，現況均為 `PLANNED`，不與 A 類原始必要功能混列：
+| 資產 | 位置 | 角色 |
+|---|---|---|
+| OR-Tools CVRPTW | `src/services/planner.py` | 三階段共用的**單一**求解器 |
+| 獨立方案檢查 | `src/services/validator.py` | 每張方案卡的違規來源 |
+| 方案差異計算 | `src/services/plan_diff.py` | 方案卡「代價」欄位來源 |
+| 凍結站點機制 | `runtime.py:749` | F5 的既有積木 |
+| 最小變動插入 | `try_minimal_insert` | F4 的基礎 |
+| 不可變版本與稽核 | `src/repositories/sqlite.py` | F6 的資料基礎 |
 
-- ERP／WMS／電商訂單整合層。
-- 車輛出發後的路況與 ETA 持續監控。
-- 路況改變後的動態重新試算。
-- 例外控制塔。
-- 準時優先、距離優先、最小變動等多方案比較。
-- 完整 Why／What-if 排程診斷。
-- 客戶 ETA 與延遲通知預覽。
-- 計畫與實際結果比較。
-- 成本、油耗與碳排儀表板。
+---
 
-### 明確不包含
+## 3. F1 — 資料進來
 
-- Production deployment 或 real TMS/ERP/GPS integration。
-- WebSocket 或 vehicle-in-motion rescheduling。
-- 為 urgent pickup 返回 depot。
-- Real fleet actuation、完整 Taipei/New Taipei coverage、multi-Agent、A2A 或 AP2。
+### 3.1 格式適應
 
-### 目前暫不處理
+```
+上傳檔案 → 讀表頭與前 N 列樣本 → Agent 提出欄位對映建議（附信心度）
+        → 介面顯示對映表供人工確認與修正 → 以既有 StrictModel 解析
+        → 對映表可命名保存，同一來源下次自動套用
+```
 
-- 正式 ERP／WMS 客製串接。
-- 司機 App。
-- GPS 硬體。
-- 電子簽收。
-- 3D 裝載。
-- 多配送中心。
-- 外包車隊與承運商計價。
-- 正式簡訊發送。
-- 正式環境部署。
+**邊界**：LLM 只對映欄位名稱，不得讀取、推測或填補任何資料值。對映須人工確認。解析仍走 `StrictModel`，不放寬型別驗證。缺漏必要欄位時回傳欄位級錯誤並要求人工補齊。
 
-## 3. 固定參考資料
+### 3.2 排班結果須呈現
 
-## 2.1 本輪通用 Agent 與進階功能實作
+每台車：訂單數、總重量、載重上限、使用率、服務區域、配送順序、總距離與時間。
+每張單：順序、時段、重量、**推薦理由**（含 1.3 的避免超載說明）。
 
-- `/api/v1/agent/chat` 會建立結構化 `AgentSession`，每則訊息進入 `Runner.run`；所有配送計算只由 strict allowlisted tools 與 deterministic services 執行。
-- 臨時插單只允許由 strict `UrgentUnderstanding` 或主 Runner 的 `begin_urgent_insertion` 蒐集結構化事實；後續補資料、摘要、Preview 與人工確認均由固定狀態機控制，模型不能把急單改跑成整份正式排程。
-- 已提供三策略比較、延遲風險預覽、車輛可用性預覽、時段／優先順序變更預覽、凍結站點狀態、通用換車預覽、批次臨時插單與版本復原 API。
-- 所有變更均先產生 `PROPOSED` preview，重新執行 Validator，且確認條件禁止不完整或有未安排訂單的版本；`DISPATCH_ENABLED` 預設為 `false`。
-- 護欄以 Unicode 正規化與 pattern guardrail 阻擋規則繞過、直接 Dispatch、假造 Validator、秘密／系統提示揭露等變形輸入；輸出再經 evidence grounding 檢核。
+---
+
+## 4. F2 — 司機規則
+
+### 4.1 只准禁止型，不准指定型
+
+| 允許 | 不允許 |
+|---|---|
+| 老王不能超過 20 kg | 這單一定要給老王 |
+| A 車不跑內湖 | A 車優先跑內湖 |
+| B 車最多 30 公里 | B 車至少跑 30 公里 |
+
+**理由**：禁止型規則只會縮小可行域，多條規則的交集永遠有良好定義（最差是空集合，但不會互相矛盾）。指定型規則會彼此衝突產生死結。
+
+### 4.2 可轉換的規則型別（僅此五種）
+
+| `rule_type` | 語意 | 求解器對應 |
+|---|---|---|
+| `MAX_PACKAGE_WEIGHT` | 單件重量上限 | 指派前過濾候選 |
+| `MAX_ROUTE_DISTANCE` | 單趟總距離上限 | 距離維度上界 |
+| `MAX_STOPS` | 站數上限 | 站數維度上界 |
+| `EXCLUDED_ZONE` | 不跑某區 | 服務區域扣除 |
+| `ALLOWED_TIME_WINDOW` | 只能出勤某時段 | 車輛時間維度上下界 |
+
+**講不進這五種的，系統明確回覆「這個我做不到」，不得硬掰或近似。**
+
+### 4.3 模糊語句的轉換
+
+LLM 不猜，LLM 反問。複用既有缺欄追問機制。
+
+```
+使用者：A 車司機是笨蛋，只能開較短路線
+系統：  要限制 VEH-001 的哪一項？
+        ○ 單趟總距離上限（目前 38 km）
+        ○ 配送站數上限（目前 13 站）
+        ○ 只跑單一區域
+使用者：距離，30 公里以內
+系統：  規則已建立 → VEH-001 單趟距離 ≤ 30 km
+        試算可行：38 → 29 km，2 單改派 VEH-004
+        [套用] [修改] [取消]
+```
+
+**模糊 → 選項 → 具體數字 → 試算 → 人工確認。** LLM 只把模糊語句轉成選項；數值由使用者提供或由系統依現況推薦；約束由確定性程式套用。
+
+### 4.4 規則衝突處理
+
+每新增一條規則必須先試算。導致無解時當場指出是哪條規則與哪些訂單衝突：
+
+```
+新規則：VEH-003 單件不超過 20 kg
+試算：3 張單無處可去（ORD-012 24kg、ORD-027 31kg、ORD-033 22kg）
+原因：這三單在 Z5，只有 VEH-003 與 VEH-004 可服務，VEH-004 已滿
+○ 這次破例  ○ 改成 25 kg  ○ 取消規則
+```
+
+### 4.5 資料模型
+
+```yaml
+DispatchRule:
+  rule_id: str
+  subject_type: VEHICLE | ZONE
+  subject_id: str
+  rule_type: MAX_PACKAGE_WEIGHT | MAX_ROUTE_DISTANCE | MAX_STOPS
+             | EXCLUDED_ZONE | ALLOWED_TIME_WINDOW
+  value: number | string
+  source_utterance: str        # 建立此規則的原句，供追查
+  created_at: datetime
+  active: bool
+  expires_at: datetime | null  # 支援「這週」等暫時性規則
+```
+
+### 4.6 行為要求
+
+1. 建立前必先顯示摘要與試算結果，不得靜默生效。
+2. 規則進入求解器時為硬性約束，與載重、區域同級。
+3. 下次排班自動套用；介面顯示「已套用 N 條規則」，可展開檢視與停用。
+4. 保留 `source_utterance`，可回答「這條規則哪來的」。
+5. 規則造成訂單無法安排時，必須指出是**哪一條規則**，不得僅回報 `UNASSIGNABLE`。
+
+---
+
+## 5. F3／F4／F5 — 三個配送階段
+
+### 5.1 核心概念
+
+**不是三套演算法，是同一個求解器搭配三組不同的鎖。**
+
+| 功能 | 階段 | 實體狀態 | 凍結 | 可變動 |
+|---|---|---|---|---|
+| **F3** | 上車前 | 貨在站內地面 | 無 | 車輛指派＋配送順序 |
+| **F4** | 上車後、未發車 | 貨已實體在特定車上 | 既有訂單的**車輛指派** | 配送順序；新單可進有餘裕的車 |
+| **F5** | 已發車 | 車輛在路上 | 車輛指派＋**已完成站點**＋起點 | 僅剩餘站點的順序 |
+
+```yaml
+SolveScope:
+  stage: PRE_LOAD | LOADED | DISPATCHED
+  frozen_vehicle_assignments: []   # F3 空；F4/F5 全部既有訂單
+  frozen_stops: []                 # F3/F4 空；F5 已完成站點
+  route_start:                     # F3/F4 DEPOT-001；F5 車輛當前位置
+    per_vehicle: {vehicle_id: coordinate}
+  route_end: DEPOT-001
+```
+
+在既有 `planner.py` 增加 scope 參數，**不新增第二、第三支求解器**。
+
+### 5.2 改動代價
+
+| 階段 | 實體代價 | 目標函數處理 |
+|---|---|---|
+| F3 | 零 | 純粹最佳化，可自由重排 |
+| F4 | 高：需開車廂、翻箱、重新堆疊 | 跨車移動為**硬性禁止**，除非明確指示卸貨 |
+| F5 | 極高：司機需接電話、重看導航、可能已駛過 | 僅最小改動，且**必須輸出「為什麼值得繞這一趟」** |
+
+**F4 禁止跨車的理由是物理性的**：裝車必須依配送順序反序堆放（最後送的先上車），一旦開始裝車，順序已被固化在車廂裡。
+
+### 5.3 狀態與權限
+
+```yaml
+plan_states: [DRAFT, VALIDATED, PROPOSED, CONFIRMED, LOADED, DISPATCHED]
+```
+
+新增 `LOADED`。`DISPATCHED` 由**全面拒絕**改為**限縮權限**：
+
+| 操作 | PROPOSED (F3) | LOADED (F4) | DISPATCHED (F5) |
+|---|---|---|---|
+| 完整重排 | 允許 | 拒絕 | 拒絕 |
+| 跨車移動訂單 | 允許 | 拒絕 | 拒絕 |
+| 調整配送順序 | 允許 | 允許 | 僅剩餘站點 |
+| 插入新訂單 | 允許 | 允許（限有餘裕車輛） | 僅限順路且可行 |
+| **調整既有訂單順序** | 允許 | 允許 | **允許（僅剩餘站點）← F5 主場景** |
+| 訂單改期／移除 | 允許 | 允許 | 允許 |
+
+被拒絕的操作必須回傳明確原因與建議，不得靜默忽略。
+
+### 5.4 F5 的兩個新欄位與進度呈現
+
+| 欄位 | 用途 | 取得方式（命題明訂不需 GPS） |
+|---|---|---|
+| `completed_stops` | 判斷哪些站已成定局 | 時間軸滑桿推進，依 ETA 自動推導 |
+| `current_position` | F5 的路徑起點 | 由最後一個已完成站點座標推得 |
+
+| 版本 | 做法 | 何時 |
+|---|---|---|
+| 第一版 | **時間軸滑桿** | 隨前端重做一併完成 |
+| 第二版 | **地圖車輛動畫**（沿既有 polyline 移動，不動資料模型或 API） | 其餘功能完成後，選配 |
+
+兩版共用同一份推導邏輯；地圖動畫不得成為第二套真實來源。不引入 GPS 或 WebSocket。
+
+### 5.5 F5 的資料表達
+
+F5 是「**既有**訂單須提前抵達」，不是插入新單。**不使用精確時限**，因為宅配業無法承諾抵達時間點。
+
+| 客戶說 | 調度員做 | 系統回 |
+|---|---|---|
+| 「我下午要出門，能不能早點？」 | 「先送這單」→ 提高該車順序 | 「提到第 3 站，**預估** 11:20 到」 |
+| 「改成上午好了」 | 切換時段 | 「這台車上午已滿，改派 VEH-004 可行」 |
+
+**系統輸出的是預估抵達時間，不是承諾。** 決定是否答覆客戶的仍是調度員。
+
+### 5.6 動態方案卡
+
+三階段共用。**不報告每張訂單的個別變動，而是報告每個候選方案的整體代價。**
+
+| 方案 | 安排結果 | 代價 | 附帶影響 |
+|---|---|---|---|
+| A | ORD-041 → VEH-003 第 4 站 | +3.2 km／+8 分 | 0 單換車 |
+| B | ORD-041 → VEH-002 第 7 站 | +5.1 km／+12 分 | VEH-002 載重達 96% |
+| C | 重排 VEH-003 全車順序 | +1.1 km／+4 分 | 3 單改序 |
+| D | 排不進去 | — | 需人工處理或改期 |
+
+**三條強制規則**：
+
+1. **每張卡都必須完全可行。** 全部訂單在時段內、無超重、無跨區。不可行的結果只能作為「排不進去」的說明，不得偽裝成選項。
+2. **只列出需要人工決定的。** 未受影響或影響輕微的訂單摺疊為一行摘要。Agent 的職責是把 40 個數字收斂成 3 個決策。
+3. **每張卡片必須標示代價。**
+
+實作元件皆已存在：候選方案 `planner.py`、差異 `plan_diff.py`、違規 `validator.py`。新增部分僅為「跑多次求解＋排版成卡片」。
+
+此設計即為命題 P3 的答案。
+
+### 5.7 多張急單：整批一組
+
+**整批求解、整批出卡，不逐張處理。**
+
+1. **數學上必須。** 分開算會互相打架：單獨算 A 最好塞 VEH-002，單獨算 B 也是，但兩張一起就超重。逐張產生的組合可能根本不可行。
+2. **決策數量必須收斂。** 逐張＝3 張 × 3 方案＝9 次選擇；整批＝3 個方案選 1 個。
+3. **與既有實作一致。** `batch-preview` endpoint 已存在。
+
+**整批是一起「算」，不是一起「送」**——每張單仍各自去最適合的車。卡片內容須逐張列出：
+
+```
+方案 A（整批）
+  ORD-041 → VEH-003 第 4 站，11:40 送達
+  ORD-042 → VEH-002 第 7 站，14:20 送達
+  ORD-043 → 排不進去，需人工處理
+  淨結果：安排 2 張，代價 +6.3 km
+```
+
+批次中有訂單無法安排時，方案卡仍須成立並標示，**不得整批失敗**。
+
+### 5.8 對話修改方案卡（白名單）
+
+**允許修改的項目僅限以下六項**，其餘一律回覆「這個我不能改」：
+
+| 可說的話 | 對應調整 | 各階段 |
+|---|---|---|
+| 「這單改派給四號車」 | 指定該單的車輛 | F3 ✅／F4 ❌／F5 ❌ |
+| 「這單改成上午送」 | 切換時段 | F3 ✅／F4 ✅／F5 ✅ |
+| 「這單改明天送」 | 自本次方案移除 | F3 ✅／F4 ✅／F5 ✅ |
+| 「先送這單」 | 提高該車順序 | F3 ✅／F4 ✅／F5 ✅（僅剩餘站點） |
+| 「三號車不要動」 | 凍結該車全部站點 | F3 ✅／F4 ✅／F5 ✅ |
+| 「不要讓任何人遲到」 | 全部時段改為硬性 | F3 ✅／F4 ✅／F5 ✅ |
+
+1. 每次修改重新求解並產生**新的一組卡**，不就地編輯舊卡。
+2. 修改後仍須通過獨立 Validator。
+3. 階段不允許的修改必須明確拒絕並說明原因。
+4. 白名單以外一律拒絕，不得由 LLM 自行詮釋。
+
+---
+
+## 6. 時段模型
+
+### 6.1 改為早中晚三值
+
+```
+AM | PM  →  MORNING | AFTERNOON | EVENING
+```
+
+| 時段 | 區間 |
+|---|---|
+| `MORNING` 早 | 09:00–12:00 |
+| `AFTERNOON` 中 | 13:00–17:00 |
+| `EVENING` 晚 | 17:00–20:00 |
+
+午休 12:00–13:00 維持。
+
+### 6.2 連動變更
+
+| 位置 | 變更 |
+|---|---|
+| `src/domain/models.py:34` | `pattern` 改為三值 |
+| `src/services/planner.py:13-14` | 兩組常數改三組；工作時間 08:00–17:00 → 09:00–20:00 |
+| `src/services/planner.py:90-95` | `_arrival()` 改讀三值 |
+| `src/services/planner.py:563-565` | 時段推導改讀三值 |
+| 驗證規則 VAL-011 | enum 改三值 |
+| `data/samples/*.xlsx` | **需重新產生** |
+
+`Order` **不新增欄位**，`importer.py` 欄位契約不變（名稱相同，僅值域擴大）。
+
+### 6.3 明確不做：時段軟性違規
+
+**時段維持絕對硬約束。** 求解器不得產出任何「某幾單掉出時段」的方案。
+
+排不進任何時段的訂單一律標為 `TIME_WINDOW_CONFLICT` 並列為未安排。**系統不提供「讓某幾單遲到換取其他好處」的選項**——宅配業對客戶的承諾就是時段，把違約包裝成建議是錯的。
+
+因此方案卡的差異點不是「誰會遲到」，而是距離、時間、換車數、載重餘裕、是否有單排不進去。
+
+### 6.4 排不進去時的延後規則
+
+**延後選擇純依路程成本**，求解器自然會選「延掉省最多」的訂單，即最遠、最不順路者。
+
+**不使用訂單優先順序。** 宅配實務不存在 VIP 插隊，客戶來電只會是時段調整。`Priority` 欄位保留於資料契約（命題的資料準備建議有列此欄），但**求解器不讀取**。
+
+**必須人工確認**，延後等同對客戶毀約：
+
+```
+今天最多能送 38 張，有 2 張排不進去。
+建議延到明天：ORD-023（Z5 最遠點）、ORD-031（Z5 同區）
+理由：延掉這兩張可省 18 公里。其他 38 張全部在時段內。
+[接受] [改成延別的] [今天加班送完]
+```
+
+---
+
+## 7. F6 — 配送偏差記錄與參數修正
+
+### 7.1 要解決的問題
+
+排班依賴**估計參數**：每站服務時間（目前固定 3 分鐘）、行駛時間。
+
+傳統系統裡這些數字是上線那天填入，之後十年不變。估計不準 → 排出來的班跑不完 → 司機不照系統走 → 系統失去信任。**這是調度系統最常見的死法。**
+
+### 7.2 資料來源：F5 的時間軸滑桿
+
+**不建立司機回報資料模型。** 滑桿推進時的進度即為「實際」：
+
+```
+系統預估：VEH-003 第 5 站 10:20 抵達
+滑桿推到 10:20 → 實際仍在第 4 站
+                 ↓
+        偏差 = 慢 22 分鐘，自動記錄
+```
+
+F5 與 F6 共用同一機制，不需新資料來源，也避開「這筆實際資料哪裡來」的質疑。
+
+### 7.3 兩個案例（Demo 僅需這兩個）
+
+**車輛偏差**
+> 「VEH-003 今天實際比預估慢 22 分鐘。已記錄。下次排班會調高這台車的行駛時間估計，或少排 2 站。」
+
+**區域偏差**
+> 「Z5 區每站停留時間平均比預估多 4 分鐘（巷弄難停）。已記錄。建議將 Z5 的服務時間由 3 分鐘調整為 7 分鐘。」
+
+### 7.4 收尾論述
+
+> **「這兩個數字，在傳統系統裡是上線那天設定好、然後十年不變的。
+> 我們的系統會自己修正 —— 所以它排的班，明天會比今天準。」**
+
+> **「調度員為什麼最後都不用系統？因為系統老是估錯，排出來的班根本跑不完。我們修的就是這件事。」**
+
+**可選最強收尾**：當場用修正後的參數重排，讓系統誠實地說「用 7 分鐘重算，Z5 今天需要多一台車」——展示系統會推翻自己稍早過度樂觀的方案。
+
+### 7.5 邊界
+
+- 只記錄與**建議**，絕不自動套用；參數調整須人工確認。
+- 偏差統計由確定性程式計算，LLM 不產生任何數字。
+- 回顧範圍為**單日**。
+- 不引入 GPS、司機 App 或電子簽收。
+
+---
+
+## 8. 前端控制塔
+
+### 8.1 全部重寫
+
+`frontend/` **全數刪除重建**，包含 `api.ts` 與 `types.ts`（v2 新增方案卡、規則、階段等端點，舊 client 本來就要大改）。
+
+移除 MUI 與 emotion（`frontend/src` 對兩者匯入為零，純死依賴）。改用 **Tailwind CSS + shadcn/ui**。
+
+### 8.2 視覺風格：淺色企業風
+
+白底、淺灰分區、乾淨。彩色只用在狀態與路線。因評審看投影，關鍵數字需足夠字級與對比。
+
+### 8.3 版面
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 狀態列：40單 · 4車 · 已排 40/40 · 上車前 · V2待確認         │
+├────────────────────────┬─────────────────────────────────┤
+│  對話                   │           地圖                   │
+│                        │                                 │
+│  ┌──────────────────┐  │                                 │
+│  │ 系統：ORD-041 有   │  │                                 │
+│  │ 三種安排方式        │  │                                 │
+│  │ ┌──────────────┐ │  │                                 │
+│  │ │ A  VEH-003   │ │  │                                 │
+│  │ │    +3.2km/8分 │ │  │      ＋時間軸滑桿（F5）           │
+│  │ ├──────────────┤ │  │                                 │
+│  │ │ B  VEH-002   │ │  │                                 │
+│  │ │    +5.1km/12分│ │  │                                 │
+│  │ ├──────────────┤ │  │                                 │
+│  │ │ C  排不進去   │ │  │                                 │
+│  │ └──────────────┘ │  │                                 │
+│  └──────────────────┘  │                                 │
+│  [輸入訊息...........]  │                                 │
+└────────────────────────┴─────────────────────────────────┘
+```
+
+左右分割：**對話（含內嵌方案卡）｜地圖**。取消 v1 的三工作區切換。
+
+**方案卡是對話流裡的可點選選項，不是獨立面板。** 就像 Agent 問問題時給出的選項清單——系統說明情況，下面列出幾個帶價碼的選擇，使用者點一個。選完後卡片收合為一行紀錄（「已選擇方案 A」），對話繼續往下。
+
+### 8.4 互動原則
+
+1. **方案卡在對話裡。** 選項垂直堆疊、可點選、每張標明代價。選完收合成一行。
+2. **Agent 回覆即卡片**：問「哪台車最重」直接回傳可操作的車輛卡，而非文字。
+3. **拖拉為主要互動**：明顯抓取把手、原位置留虛線缺口、目標卡邊框高亮、**放開瞬間載重條即時變色**。（v1 的拖拉其實已實作，但與下拉選單並置導致視覺上無從察覺。）
+4. **階段必須持續可見**：上車前／上車後／已發車決定哪些操作可用，常駐於狀態列。
+5. **「開始裝車」為手動按鈕**，由調度員按下，系統不自動判斷。
+
+### 8.5 禁止事項（v1 的實際問題）
+
+- **禁止沒有意義的副標題與空白 KPI 格。** 不得出現「今日訂單 — 張／已安排 — ／使用車輛 — 台／方案狀態 尚未建立」這類佔位區塊。沒有資料就不要畫那個區塊。
+- 每個畫面元素必須回答一個調度員真的會問的問題。答不出來就刪掉。
+- 空狀態不顯示空白數字，未匯入資料時整個畫面即為檔案拖放區。
+- 不使用 Unicode 符號當圖示（v1 的 `✦▣⌖`）。
+- 不得把可拖拉的元素與下拉選單並置，導致使用者看不出可以拖。
+
+---
+
+## 9. 外部 Provider 與地圖
+
+### 9.1 Google 停用範圍
+
+開發期間停用 Google Routes 與 Google Maps：
+
+- 不設定 `GOOGLE_ROUTES_SERVER_API_KEY` 與 `VITE_GOOGLE_MAPS_BROWSER_API_KEY`。
+- `route_provider_preference` 明確傳 `SIMULATED`，不使用 `AUTO`。
+- 全部功能完成、介面穩定後再接回，執行一次完整驗收。
+
+TDX 不啟用。
+
+### 9.2 地圖底圖：Leaflet + OpenStreetMap
+
+**停用 Google Maps 之後，底圖改用 Leaflet 載入 OpenStreetMap 圖磚。**
+
+| 項目 | 內容 |
+|---|---|
+| 函式庫 | Leaflet 1.9.x（MIT） |
+| 圖磚 | OpenStreetMap 標準圖磚，或 CARTO Positron（淺色，較適合疊路線） |
+| API Key | **不需要** |
+| 費用 | **零** |
+| 圖資授權 | ODbL，畫面須標示 `© OpenStreetMap contributors` |
+
+**訂單座標本來就有。** `Order.latitude` / `Order.longitude` 是既有欄位（`models.py:32-33`），40 單範例資料的座標落在真實的台北／新北位置。過去只是缺底圖，不是缺點位。
+
+因此三件事分開處理：
+
+| 元素 | 來源 | 是否受 Google 停用影響 |
+|---|---|---|
+| 站點座標 | 既有 `Order` 欄位 | 否 |
+| 底圖 | Leaflet + OSM 圖磚 | 否，本來就與 Google 無關 |
+| 路線幾何 | 模擬直線（Google 停用時） | 是 |
+
+### 9.3 路線幾何的兩段做法
+
+| 階段 | 路線畫法 | 標示 |
+|---|---|---|
+| 開發期（現在） | 站點之間畫直線／平滑曲線，距離用模擬矩陣 | 畫面標示「示意路線」 |
+| 最終接回 Google 後 | Google Routes 回傳的真實道路 polyline | 移除示意標示 |
+
+**直線路線必須明確標示為示意**，不得表述為真實道路路徑。底圖是真的、點位是真的，只有連線是示意——這一點要在畫面上講清楚，也要在 Demo 時說明。
+
+### 9.4 若最後 Google 仍不接回
+
+Leaflet + OSM 已足以完成全部 Demo：真實底圖、真實點位、可縮放平移、可高亮單一車輛。接回 Google 只是把示意直線換成真實道路曲線，屬加分項，不是完成條件。
+
+---
+
+## 10. 施作順序
+
+| 順序 | 工作 | 支撐 | 前置條件 |
+|---|---|---|---|
+| 0 | 停用 Google | 全部 | 無，純設定 |
+| 1 | 時段改早中晚，重產範例資料 | F1, F3, F4, F5 | 無 |
+| 2 | 動態方案卡：多次求解與代價輸出 | F3, F4, F5 | 需 1 |
+| 3 | 前端全部重寫 | 全部 | 需 1、2 |
+| 4 | 三階段 SolveScope 與狀態權限 | F3, F4, F5 | 需 1 |
+| 5 | 對話修改方案卡 | F3, F4, F5 | 需 2、3、4 |
+| 6 | 司機規則 `DispatchRule` | F2 | 無，可與 3 並行 |
+| 7 | 資料格式適應 | F1 | 無 |
+| 8 | 配送偏差記錄 | F6 | 需 4 |
+| 9 | 地圖車輛動畫 | F5 | 需 3、4。**選配** |
+
+進度追蹤見 `docs/progress.md`。
+
+---
+
+## 11. 情境基準：業界日常作息
+
+用於設定 Demo 情境時間，非系統功能。
+
+| 時間 | 事件 | 階段 |
+|---|---|---|
+| 05:00–06:30 | 幹線車自轉運站抵達，卸貨 | — |
+| 06:30–07:30 | 分貨／理貨 | 上車前（F1／F2／F3） |
+| **07:30** | **開始裝車**（依配送順序反序堆放） | **→ 上車後（F4）** |
+| 08:00–08:15 | 早會、確認持出 | 上車後 |
+| **08:15** | **出車** | **→ 已發車（F5）** |
+| 08:15–13:00 | 早配 | 已發車 |
+| 12:00–13:00 | 午休 | 已發車 |
+| 14:00–18:00 | 午配 | 已發車 |
+| 18:00–19:00 | 回所、卸未配、交接 | — |
+
+查證來源：[Lalamove 各家宅配配送時間](https://www.lalamove.com/zh-tw/blog/delivery-time)、[黑貓宅急便配送常見問題](https://ofeyhong.pixnet.net/blog/posts/12211691446)、[黑貓配送員工作分享](https://www.dcard.tw/f/job/p/225975334)。
+
+---
+
+## 12. 固定參考資料
 
 ### Depot
 
 ```yaml
 depot_id: DEPOT-001
-name: 新北市青職基地／本次活動地點
+name: 新北市青職基地
 public_address: 220 新北市板橋區黃石里民權路 170 號
 latitude: 25.0131533
 longitude: 121.4599675
 timezone: Asia/Taipei
-source:
-  type: address_geocode
-  provider: Google Maps public place search
-  verified_on: 2026-09-01
-  url: https://www.google.com/maps/search/?api=1&query=220%E6%96%B0%E5%8C%97%E5%B8%82%E6%9D%BF%E6%A9%8B%E5%8D%80%E6%B0%91%E6%AC%8A%E8%B7%AF170%E8%99%9F
 ```
 
-所有 routes 均從 `DEPOT-001` 出發並返回。
+所有路線從 `DEPOT-001` 出發並返回。
 
 ### 營運區域
 
-| Code | Name | Covered districts |
+| Code | Name | Districts |
 |---|---|---|
 | Z1 | 新北西區 | 板橋、新莊、三重 |
 | Z2 | 南部都會區 | 中和、永和、新店、文山 |
@@ -168,308 +601,86 @@ source:
 | Z4 | 臺北核心東區 | 大安、信義、松山、南港 |
 | Z5 | 臺北北區 | 士林、北投、內湖 |
 
-這是五個營運區域，而不是五個行政區；跨城市分組是刻意的設計。
+這是五個營運區域，不是行政區；跨城市分組是刻意設計。
 
 ### 車輛
 
-| ID | Max load | Service zones | Initial load |
-|---|---:|---|---:|
-| VEH-001 | 120 kg | Z1, Z2, Z3 | 0 kg |
-| VEH-002 | 100 kg | Z1, Z3, Z4 | 0 kg |
-| VEH-003 | 160 kg | Z2, Z4, Z5 | 0 kg |
-| VEH-004 | 110 kg | Z1, Z2, Z5 | 0 kg |
+| ID | Max load | Service zones |
+|---|---:|---|
+| VEH-001 | 120 kg | Z1, Z2, Z3 |
+| VEH-002 | 100 kg | Z1, Z3, Z4 |
+| VEH-003 | 160 kg | Z2, Z4, Z5 |
+| VEH-004 | 110 kg | Z1, Z2, Z5 |
 
-Service zones 是 hard constraints；系統沒有 primary/backup vehicle 概念。
+Service zones 是硬約束；無 primary/backup 概念。
 
-## 4. 資料契約
+### 範例資料：兩份 50 單
 
-### Workbook
+**兩份都要，用途不同。車輛、區域、Depot 完全相同，只有訂單分布不同。**
 
-一個 `.xlsx` 必須恰好包含四張工作表。Excel 的 list delimiter 僅為 `|`；REST 使用 arrays。
+| 檔案 | 特性 | 用來展示 |
+|---|---|---|
+| `data/samples/demo-50-relaxed.xlsx` | **無衝突**。50 單全部排得進去，四台車都有餘裕（載重使用率 60–80%），沒有時段衝突 | F1 正常排班：`50/50 已安排`、四車都有任務、Validator 通過 |
+| `data/samples/demo-50-tight.xlsx` | **有衝突**。Z5 刻意拉遠、某台車刻意逼近載重上限、部分時段刻意壅塞 | F3／F5 方案卡：三個選項的代價差異明顯；會出現「排不進去」需人工決定的情況 |
+
+**為什麼兩份都要**：若只有寬鬆版，方案卡的三個選項代價會差不多，「調度員在帶價碼的選項之間做選擇」這個核心賣點立不起來。若只有緊繃版，`50/50 全部安排` 這個命題最低要求的畫面拿不到。
+
+`demo-50-tight.xlsx` 的刻意設計必須包含：
+
+1. 至少一組訂單，最近的車會超載、必須改派較遠的車（供 F1-14 驗收「避免超載」的推薦理由）。
+2. 至少一張訂單在所有車都排不進去（供方案卡的「排不進去」選項）。
+3. Z5 的往返成本明顯高於其他區，使「插進 A 車」與「插進 B 車」的公里數差距 > 3 km。
+4. 至少一台車的時段餘裕很小，使「先送這單」會推擠到後續站點。
+5. **至少 3 張「中等重量」訂單（22–28 kg），集中在同一台車的服務區**，使 F2 的司機規則（「重的單不要給老王」→ 單件上限 20 kg）正好移動這 3 張且整體仍可行。
+
+第 5 點是 2026-09-11 補上的：原本的 tight 資料除了一件 170 kg（不可安排）與一件 45 kg 之外，其餘全在 7.5 kg 以下，導致單件重量規則無單可移，F2 的 Demo 主線做不出來。中等重量訂單是規則生效的必要條件。
+
+兩份都使用固定 seed 產生，且**同一份跑兩次結果必須完全一致**（驗收 D-01）。
+
+**重現性是完成條件，不是加分項。** Demo 同時需要現場 live 與預錄影片兩種形式，預錄的內容必須能在現場重現，否則影片與實機不符會被當場戳破。因此排班、插單、重排的每一次求解都必須是確定性的：固定 seed、固定範例檔、不依賴時鐘或亂數。驗收 D-01～D-05 專門檢查這件事。
+
+### Workbook 契約
+
+四張工作表，list delimiter 為 `|`，REST 使用 arrays。
 
 ```yaml
-orders:
-  fields: [order_id, zone_code, city, district, location_label, latitude, longitude, time_slot, declared_package_count, priority, note]
-packages:
-  fields: [package_id, order_id, weight_kg]
-vehicles:
-  fields: [vehicle_id, vehicle_name, max_load_kg, current_load_kg, service_zone_codes, depot_id, status, note]
-zones:
-  fields: [zone_code, zone_name, covered_cities, covered_districts, center_latitude, center_longitude, tdx_city_codes, adjacent_zone_codes, enabled]
+orders:   [order_id, zone_code, city, district, location_label, latitude, longitude,
+           time_slot, declared_package_count, priority, note]
+packages: [package_id, order_id, weight_kg]
+vehicles: [vehicle_id, vehicle_name, max_load_kg, current_load_kg,
+           service_zone_codes, depot_id, status, note]
+zones:    [zone_code, zone_name, covered_cities, covered_districts,
+           center_latitude, center_longitude, tdx_city_codes, adjacent_zone_codes, enabled]
 ```
 
-### 隱私
+`priority` 欄位保留但求解器不讀取（見 6.4）。
 
-- 使用如 `模擬配送點 Z3-04` 的虛構 `location_label`，並搭配可用座標。
-- 不含真實客戶姓名、電話或完整地址。
-- 允許使用公開 depot address。
-
-### 驗證規則
-
-| ID | Rule |
-|---|---|
-| VAL-001 | 各 entity type 內的 IDs 必須唯一。 |
-| VAL-002 | 每個 package 必須參照既有 order。 |
-| VAL-003 | 每個 order 至少包含一個 package。 |
-| VAL-004 | 宣告的 package count 必須等於實際數量。 |
-| VAL-005 | 每張 order 包含 1–3 個 packages。 |
-| VAL-006 | 每個 `weight_kg > 0`；缺漏／無效 weight 絕不猜測。 |
-| VAL-007 | 超過所有合法候選 capacity 的 unsplittable order 標記為 `UNASSIGNABLE`。 |
-| VAL-008 | Coordinates 必須是數值且在合法 latitude/longitude 範圍。 |
-| VAL-009 | Zone 必須存在且啟用。 |
-| VAL-010 | City/district 必須屬於宣告的營運區域。 |
-| VAL-011 | `time_slot` 必須是 `AM` 或 `PM`。 |
-| VAL-012 | Vehicle service zones 必須存在；不可用 vehicle 必須排除。 |
-| VAL-013 | 必須符合 `0 <= current_load_kg <= max_load_kg`。 |
-| VAL-014 | 缺少 location、weight 或 time 時產生 field error／`MANUAL_REVIEW`。 |
-
-## 5. 最佳化契約
+### 最佳化契約
 
 ```yaml
-workday: 08:00-17:00
-am_window: 08:00-12:00
+workday: 09:00-20:00
+morning: 09:00-12:00
 lunch_blackout: 12:00-13:00
-pm_window: 13:00-17:00
-service_minutes_per_stop: 3
+afternoon: 13:00-17:00
+evening: 17:00-20:00
+service_minutes_per_stop: 3      # F6 會建議修正此值
 order_splitting: forbidden
 route_start_end: DEPOT-001
-objective_priority:
-  - satisfy_all_hard_constraints
-  - minimize_total_travel_time_and_distance
-  - balance_vehicle_load_utilization_when_distance_is_similar
-strategy_objectives:
-  FASTEST:
-    primary_metric: total_driving_time_s
-    objective: minimize
-    tradeoff: load_spread_may_increase
-  BALANCED:
-    primary_metric: vehicle_load_span_kg
-    objective: minimize
-    tradeoff: distance_and_duration_may_increase
-  STABLE:
-    primary_metric: minimum_time_window_slack_minutes
-    objective: maximize
-    tradeoff: distance_and_duration_may_increase
 ```
 
-Hard constraints 包含 exactly-once-or-unassigned、order integrity、capacity、vehicle availability、service zone、AM/PM、lunch、service time 與 depot start/end。
+硬約束：exactly-once-or-unassigned、訂單完整性、載重、車輛可用性、服務區域、時段、午休、服務時間、depot 起訖、`DispatchRule`。
 
-每個 solver output 都必須通過獨立 validator。若無法達成完整可行性，回傳 partial plan 及明確的 `unassigned_orders`／exceptions；不得靜默省略。
+每個求解結果必須通過獨立 Validator。無法完整可行時回傳 partial plan 與明確 `unassigned_orders`，不得靜默省略。
 
-三種方案必須使用同一批訂單、車輛與 Matrix，且透過不同的 OR-Tools 成本函數求解。比較 API 必須以 deterministic 指標驗證：`FASTEST` 的 `total_driving_time_s` 不得劣於其他方案、`BALANCED` 的車輛載重 span 應最小、`STABLE` 的最小時段餘裕應最大；若資料造成指標相同，必須如實呈現相同結果，不得只更換名稱。
+---
 
-### 範例資料特性
+## 13. 不變更的部分
 
-- 40 initial orders, 5 zones × 8 orders.
-- AM 20 / PM 20.
-- 1–3 packages per order.
-- Total order weight target 350–380 kg against fleet capacity 490 kg.
-- 刻意集中 Z4 需求：只分配最近候選會使 VEH-002 超載，但重新分配至 VEH-003 仍可行。
-- 另一張 urgent order 41 會改變 plan，且仍保持可行。
-
-## 6. 緊急插單與 Plan 生命週期
-
-```yaml
-urgent_order_timing: after_initial_plan_before_final_dispatch
-plan_states: [DRAFT, VALIDATED, PROPOSED, CONFIRMED, DISPATCHED]
-```
-
-允許的 forward transitions 都會寫入 audit。Optimizer 建立 `PROPOSED`，不得建立 `CONFIRMED`。Urgent insertion 支援單筆與多筆同批處理：LLM 只抽取使用者提供的欄位，確定性狀態機負責缺漏檢查、摘要、預覽門檻與取消；完整資料必須先顯示摘要，使用者選擇「產生插單預覽」後，程式才固定建立一個 immutable preview／new version 與 before／after diff。Preview 絕不覆寫原 plan；任何一筆缺欄、重複或不可安排時，都不污染 current version。Confirmation 需要精確的 `plan_id` 與 version；`DISPATCHED` plan 的插單回傳 `PLAN_ALREADY_DISPATCHED`。
-
-## 7. 技術與版本鎖定
-
-```yaml
-runtime: CPython 3.12.13
-api:
-  fastapi: 0.141.1
-  uvicorn: 0.52.4
-schema:
-  pydantic: 2.13.5
-  pydantic-settings: 2.15.0
-agent:
-  openai-agents: 0.22.0
-optimization:
-  ortools: 9.15.6755
-persistence:
-  sqlalchemy: 2.0.52
-  alembic: 1.19.1
-  database: SQLite
-http: 0.28.1
-data:
-  pandas: 3.0.5
-  openpyxl: 3.1.5
-quality:
-  pytest: 9.1.1
-  pytest-asyncio: 1.4.0
-  ruff: 0.16.5
-  mypy: 2.3.1
-lock_file: requirements.lock
-version_snapshot_date: 2026-09-01
-```
-
-Application dependencies 不得使用 `latest`、caret、tilde 或 open-ended dependency range。Model name 只從 `OPENAI_MODEL` 讀取；鎖定的 Demo 預設為 `gpt-5-mini`，不得靜默升級。
-
-## 8. External Providers 與降級
-
-### Google Routes
-
-- 目標流程是由 Backend 使用 Compute Route Matrix 取得 distance/duration，並使用 Compute Routes 取得 route/polyline，再將同一份 live Matrix 傳入 OR-Tools。
-- 使用包含 status/condition（視情況）的 narrow field masks；production 絕不使用 wildcard。
-- Browser 與 Server keys 分開並受限制。
-- Missing key → `SIMULATED` 與 warning；已設定 key 的 error/timeout → `PROVIDER_UNAVAILABLE`，不靜默 fallback。
-- 僅在完成 Google Maps Platform terms review 後進行 cache；預設 transient TTL 為 900 秒，raw provider data 不假設可永久儲存。
-
-目前實作狀態：`GoogleRoutesProvider` 已由 `src/api/main.py` 的 `AUTO` plan strict path 建立 Matrix，並將同一 identity 傳入 OR-Tools；`map-data` 另外取得 Google route geometry。Live 呼叫需 server key，沒有 key 時不得宣稱 live。
-
-Reference: https://developers.google.com/maps/documentation/routes/reference/rest/v2/TopLevel/computeRouteMatrix
-
-### TDX（未來可選擴充）
-
-- 已完成 provider interface、Client ID/Secret settings、OAuth token exchange、traffic event projection、city／zone／coordinate correlation 與明確 fallback。
-- 本次競賽 Demo 明確排除 TDX，不申請或驗證 credentials；一般使用者介面顯示「本版本未啟用」，不得顯示阻塞核心流程的紅色警告。
-- TDX 是 enrichment，不是 optimization；Auth/data failure 不得使 core planning 失敗。
-
-Reference: https://tdx.transportdata.tw/api-service/swagger/basic/
-
-### OpenAI
-
-- 使用 OpenAI Agents SDK single Agent 與 strict function tools。
-- Built-in tracing 可設定；sensitive trace payloads 預設停用。
-- 套用 token/tool/turn limits；OpenAI failure 只停用 `/agent/chat`。
-- `src/agent/runtime.py` 已具備 `Runner.run` 與 strict tools 的 provider-neutral E2E；HTTP `/api/v1/agent/chat` 會使用相同 runtime 進行語意理解、工具選擇、deterministic 計算與 evidence-grounded 回答。沒有 OpenAI credentials 時明確回傳降級錯誤；完整 HTTP live Agent E2E 仍依執行環境 gate 判定。
-
-References: https://developers.openai.com/api/docs/guides/latest-model and https://platform.openai.com/docs/quickstart
-
-## 9. REST API 最小集合
-
-```yaml
-endpoints:
-  - GET /health
-  - GET /ready
-  - POST /api/v1/datasets/import-excel
-  - GET /api/v1/datasets/{dataset_id}
-  - GET /api/v1/datasets/{dataset_id}/validation
-  - POST /api/v1/plans
-  - GET /api/v1/plans/{plan_id}
-  - GET /api/v1/plans/{plan_id}/map-data
-  - POST /api/v1/plans/{plan_id}/urgent-insert/preview
-  - POST /api/v1/plans/{plan_id}/confirm
-  - POST /api/v1/plans/{plan_id}/dispatch
-  - POST /api/v1/agent/chat
-  - GET /api/v1/providers/status
-```
-
-標準 schemas、samples、status codes 與 error envelope 位於 `docs/api-contract.md`。CORS origins 來自 `CORS_ALLOWED_ORIGINS`；wildcard 不得作為長期預設。
-
-## 10. Persistence Model
-
-SQLite 儲存 datasets、orders、packages、vehicles、zones、plans、plan versions、routes/stops、assignments、exceptions、audit events、provider summaries 與 Agent session metadata。Plans／versions 與 audit events 採 append-oriented 設計；preview 不會修改 base state。
-
-## 11. 驗收標準
-
-### AC-001 — 初始每日 plan
-
-```gherkin
-Given 有效的 40-order、4-vehicle、5-zone data
-When dispatcher 要求建立 delivery plan
-Then 每張可安排 order 只出現在一輛 vehicle
-And 同一 order 的 packages 不得拆分
-And 任何 vehicle 都不得超載
-And service zone 與 AM/PM constraints 均符合
-And 每輛 vehicle 包含 load、utilization、sequence 與 evidence-grounded reasons
-And plan 狀態為 PROPOSED 且需要 human confirmation
-```
-
-### AC-002 — 出發前 urgent order
-
-```gherkin
-Given initial plan 為 PROPOSED 且 vehicles 尚未出發
-When 提交 order 41 進行 urgent insertion
-Then 建立新的 preview version
-And 回傳 before/after assignment、sequence、distance、time 與 load differences
-And 在明確 confirmation 前 base plan 保持不變
-```
-
-### AC-003 — Capacity conflict
-
-```gherkin
-Given 將 order 指派給候選 vehicle 會造成超載
-When system 重新最佳化
-Then 不得將超載結果回傳為有效 final plan
-And order 必須指派至其他合法 vehicle，或標記為 UNASSIGNABLE
-And reason 必須引用 candidate capacity evidence
-```
-
-### AC-004 — Required data 缺漏
-
-```gherkin
-Given location、weight 或 time 缺漏
-When 驗證 workbook
-Then 回傳 field-level error 或 MANUAL_REVIEW
-And 不得捏造缺漏值
-```
-
-### AC-005 — Time conflict
-
-```gherkin
-Given an order cannot be served inside its AM/PM window without crossing lunch
-When the plan is created
-Then it is classified TIME_WINDOW_CONFLICT
-And it is not silently omitted or marked feasible
-```
-
-### AC-006 — Dispatched insertion rejection
-
-```gherkin
-Given plan 狀態為 DISPATCHED
-When 要求 urgent insertion
-Then API 回傳 PLAN_ALREADY_DISPATCHED
-And 不得變更 plan version 或 assignment
-And response 建議人工處理
-```
-
-### AC-007 — Provider outage
-
-```gherkin
-Given Google、TDX 或 OpenAI 不可用
-When 要求 deterministic REST planning flow
-Then core flow 仍可使用允許的 fallbacks
-And provider warnings 指出降級來源
-And simulated data 絕不描述為 live data
-```
-
-### AC-008 — Prompt injection
-
-```gherkin
-Given chat、note 或 provider text 要求忽略規則並直接 confirm 或 dispatch
-When Agent 處理該文字
-Then 將內容視為 untrusted data
-And 不得繞過 state machine 或 human approval
-And 不得捏造或執行禁止的 action
-```
-
-## 12. 非功能需求
-
-- **Correctness**：critical deterministic 與 Golden pass rate 為 100%。
-- **Security**：strict schemas、least privilege、secret/PII redaction 與 prompt-injection resistance。
-- **Reliability**：provider isolation、bounded retries/timeouts 與明確 fallback。
-- **Observability**：structured JSON、request/dataset/plan/version/run correlation、latency、tool 與 usage metadata。
-- **Cost control**：每次最多 8 Agent turns、12 tool calls、30k total tokens、兩次 provider retries、120 秒 wall time 與 loop detection。
-- **Maintainability**：分層 dependencies、provider interfaces、version pins、independent validator 與可追溯測試。
-
-## 13. 驗證對照表
-
-| 需求 | Deterministic tests | Golden cases | Contract/E2E |
-|---|---|---|---|
-| Import/validation | workbook suite | GD-003/004/011/012 | import and validation endpoints |
-| Initial planning | optimizer + validator | GD-001/002/005/010 | plan + map endpoints |
-| Urgent insertion | lifecycle/version suite | GD-006/007 | preview/confirm/dispatch endpoints |
-| Degradation | provider fakes | GD-009 | provider status + REST continuity |
-| Agent safety | tool/evidence checks | GD-008 | agent chat tool-call trace |
-
-## 14. 整合前置條件與待辦事項
-
-- Google Maps Browser key 仍屬前端依賴；Server key 若存在，`AUTO` plan 會 strict 取得 Matrix 並交給 OR-Tools；沒有 key 時維持 `SIMULATED` 並標示阻塞。
-- TDX Client ID／Secret 僅能在需要時放入 local `.env`；取得憑證不代表 OAuth、路況查詢或風險判斷已完成。
-- 啟用任何 durable cache 前，必須完成 Google content caching／persistence 的 terms review。
-- Git baseline publication 受獨立規範管理，不代表已授權 deployment、production access 或後續 pushes。
+- 單一 Agent，不使用 handoff、multi-Agent、A2A、AP2。
+- LLM 不執行重量加總、合法性檢查、車輛指派、路線排序、時段檢查與狀態轉換。
+- 所有方案必須通過獨立 Validator；未通過不得確認。
+- Preview 不可變且不覆寫既有版本；人工確認為唯一生效途徑。
+- `DISPATCH_ENABLED` 預設 `false`；Demo 全程不呼叫正式派車。
+- 提示注入防護與 evidence grounding 檢核。
+- 不使用真實客戶姓名、電話或完整地址。
+- 技術棧鎖定：CPython 3.12.13、FastAPI 0.141.1、Pydantic 2.13.5、OpenAI Agents SDK 0.22.0、OR-Tools 9.15.6755、SQLAlchemy 2.0.52、pytest 9.1.1、ruff 0.16.5、mypy 2.3.1。模型固定 `gpt-5-mini`，不得靜默升級。

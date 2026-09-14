@@ -155,15 +155,15 @@ Objectives 使用 integer costs 與文件化的 dominating coefficient：丟棄�
 
 ### Urgent Order 41 重新規劃
 
-預設政策是 **minimum-change replanning**，不是不受限制的 full reshuffle：
+預設政策是 **minimum-change insertion**，不是不受限制的 full reshuffle：
 
 1. 從精確 base plan/version 開始，並以既有 routes warm-start。
 2. 優先插入 order 41，同時保留既有 vehicle assignments 與相對 stop order。
-3. 若不可行，只解鎖 eligible affected routes，並在 travel／load tie-breaks 前先最小化 moved-order count 與 sequence displacement。
-4. 只有上述方法失敗才建立獨立標示的 `FULL_REPLAN` fallback preview，且必須暴露 scope、moved orders、before／after metrics 與升級原因。
-5. Preview 不得修改 base plan；精確 plan/version confirmation 仍為必要條件。
+3. 同一批急單會列出最佳車輛最佳位置、次佳車輛最佳位置，以及只重排受影響車線的候選；候選只在合法插入位置中比較。
+4. 沒有合法候選時只產生 `UNASSIGNABLE` 說明卡；全域重排不是插單選項，也不會建立 `FULL_REPLAN` fallback。
+5. 每次插入的距離／時間只與 immutable base plan 比較，增量不得為負；既有訂單換車數上限為 3。Preview 不得修改 base plan；精確 plan/version confirmation 仍為必要條件。
 
-實作會先評估每條 eligible existing route 的所有合法 insertion positions，保持其他 vehicle assignments 與相對順序不變。選出 deterministic distance／time 最低的 insertion，並回傳 `mode: MINIMAL_CHANGE`。只有沒有 candidate 通過 independent Validator 時，service 才以相同 algorithm 進行 full replan，回傳 `mode: FULL_REPLAN`、`full_replan_reason`、`affected_vehicle_count` 與 `moved_order_count`。
+實作會先評估每條 eligible existing route 的所有合法 insertion positions，保持其他 vehicle assignments 與相對順序不變，再以同一份 base plan 計算本次插入增量。可行卡回傳 `mode: INSERTION`；受影響車線的局部順序重排回傳 `mode: ROUTE_REORDER`；沒有合法安排時回傳不可選的 `mode: UNASSIGNABLE` 說明卡。
 
 ### 核心功能驗收控制
 

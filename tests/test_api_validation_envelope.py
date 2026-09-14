@@ -54,7 +54,7 @@ def test_solver_edge_case_returns_unassignable_without_mutating_plan(monkeypatch
     def raise_solver_error(*_args, **_kwargs):
         raise RuntimeError("synthetic solver edge case")
 
-    monkeypatch.setattr("src.api.main.try_minimal_insert", raise_solver_error)
+    monkeypatch.setattr("src.api.main.build_urgent_options", raise_solver_error)
     response = client.post(
         f"/api/v1/plans/{plan_id}/urgent-insert/preview",
         json={

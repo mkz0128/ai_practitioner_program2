@@ -124,7 +124,9 @@ def test_demo_40_order_flow_stops_before_dispatch() -> None:
     ]
     assert body["after"]["algorithm"] == "ORTOOLS"
     assert body["comparison"]["base_algorithm"] == body["comparison"]["preview_algorithm"]
-    assert body["mode"] == "MINIMAL_CHANGE"
+    assert body["mode"] == "INSERTION"
+    assert body["diff"]["total_distance_delta_m"] >= 0
+    assert body["diff"]["total_duration_delta_s"] >= 0
     assert body["affected_vehicle_count"] == 1
     assert body["moved_order_count"] == 0
     assert body["diff"]["sequence_changes"], body

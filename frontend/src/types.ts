@@ -1,276 +1,47 @@
 export type ProviderMode = 'GOOGLE' | 'TDX' | 'SIMULATED' | 'MIXED' | 'UNAVAILABLE' | 'OPENAI'
+export type TimeSlot = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'AM' | 'PM'
+export type SolveStage = 'PRE_LOAD' | 'LOADED' | 'DISPATCHED'
 
-export interface ValidationError {
-  path: string
-  code: string
-  message: string
-  value_summary?: string | null
-  requires_manual_review?: boolean
-}
+export interface ValidationError { path: string; code: string; message: string; value_summary?: string | null; requires_manual_review?: boolean }
+export interface ValidationPayload { is_valid: boolean; error_count: number; warning_count: number; requires_manual_review: boolean; errors: ValidationError[]; warnings: ValidationError[] }
+export interface DatasetImportResponse { dataset_id: string; status: string; counts: { orders: number; packages: number; vehicles: number; zones: number }; total_weight_kg: number; validation: ValidationPayload; mapping?: ColumnMappingResponse | null }
+export interface ColumnMappingEntry { sheet: string; source: string; target: string | null; confidence: number; sample_values: string[]; required: boolean }
+export interface ColumnMappingResponse { status: 'CANONICAL' | 'NEEDS_CONFIRMATION' | 'AUTO_APPLIED' | 'INVALID'; source_name: string; requires_confirmation: boolean; entries: ColumnMappingEntry[]; missing_fields: string[]; mapping: Record<string, Record<string, string>>; mapping_id?: string | null; error?: { code: string; message: string; field_errors?: ValidationError[] } }
 
-export interface ValidationPayload {
-  is_valid: boolean
-  error_count: number
-  warning_count: number
-  requires_manual_review: boolean
-  errors: ValidationError[]
-  warnings: ValidationError[]
-}
+export interface AssignmentReason { summary: string; evidence: Record<string, unknown> }
+export type StopProgressStatus = 'COMPLETED' | 'CURRENT' | 'UPCOMING'
+export interface Stop { sequence: number; order_id: string; location_label: string; latitude: number; longitude: number; time_slot: TimeSlot; eta: string; service_duration_s: number; leg_distance_m: number; leg_duration_s: number; order_weight_kg: number; progress_status?: StopProgressStatus; reason?: AssignmentReason | null }
+export interface VehicleRoute { vehicle_id: string; vehicle_name: string; service_zone_codes: string[]; order_count: number; package_count: number; planned_load_kg: number; max_load_kg: number; load_utilization: number; total_distance_m: number; total_duration_s: number; route_provider_mode: ProviderMode; unused_reason?: string | null; stops: Stop[] }
+export interface SolveScope { stage: SolveStage; frozen_vehicle_assignments: Array<{ order_id: string; vehicle_id: string }>; frozen_stops: string[]; route_start: { per_vehicle: Record<string, string> }; route_end: string; timeline_minutes: number | null; timeline_start_minutes: number; timeline_end_minutes: number }
+export interface Plan { plan_id: string; version: number; dataset_id: string; state: 'DRAFT' | 'VALIDATED' | 'PROPOSED' | 'CONFIRMED' | 'LOADED' | 'DISPATCHED'; stage: SolveStage; solve_scope: SolveScope; timezone: string; provider_mode: ProviderMode; matrix_hash?: string; matrix_reused?: boolean; matrix_elements_added?: number; matrix_version?: string; algorithm: 'BASELINE' | 'ORTOOLS'; objective?: 'FASTEST' | 'BALANCED' | 'STABLE'; dataset_hash?: string; is_fully_feasible: boolean; completeness: { is_complete: boolean; assigned_order_count: number; total_order_count: number; unassigned_order_count: number }; rule_check: { passed: boolean; violations: Record<string, number> }; confirmability: { can_confirm: boolean; blockers: string[] }; requires_human_confirmation: boolean; summary: { assigned_order_count: number; unassigned_order_count: number; total_package_count: number; total_weight_kg: number; assigned_weight_kg: number; total_distance_m: number; total_duration_s: number; unassigned_orders: string[]; vehicles: Array<Pick<VehicleRoute, 'vehicle_id' | 'planned_load_kg' | 'max_load_kg' | 'load_utilization'>> }; vehicles: VehicleRoute[]; unassigned_orders: string[]; unassigned_reasons: Record<string, string>; validation: { valid: boolean; violations: Record<string, number>; errors: string[] }; warnings: Array<{ code: string; message: string }>; parameter_state?: DispatchParameterState; parameter_replan?: { applied: boolean; message: string | null } }
+export interface MapRoute { vehicle_id: string; color: string; encoded_polyline: string; is_simplified: boolean; stops: Array<Pick<Stop, 'sequence' | 'order_id' | 'latitude' | 'longitude' | 'eta'> & { status: StopProgressStatus }>; completed_stops: string[]; current_stop_id?: string | null; current_position: string; legs: Array<{ from_sequence: number; to_sequence: number; distance_m: number; duration_s: number }> }
+export interface VehicleDeviation { vehicle_id: string; delay_minutes: number; expected_completed_count: number; actual_completed_count: number; message: string; recorded: boolean }
+export interface ZoneDeviation { zone_code: string; extra_service_minutes_per_stop: number; baseline_service_minutes: number; suggested_service_minutes: number; reason: string; message: string; recorded: boolean }
+export interface DispatchDeviationSuggestion { suggestion_id: string; kind: 'SERVICE_TIME_BY_ZONE'; zone_code: string; from_service_minutes: number; to_service_minutes: number; message: string; requires_human_confirmation: boolean }
+export interface DispatchDeviations { source: 'TIMELINE_SIMULATION' | string; timeline_minutes: number | null; recorded_at: string | null; has_deviations: boolean; vehicle_deviations: VehicleDeviation[]; zone_deviations: ZoneDeviation[]; suggestions: DispatchDeviationSuggestion[]; dataset_order_count?: number }
+export interface DispatchParameterState { default_service_minutes: number; service_minutes_by_zone: Record<string, number> }
+export interface MapData { plan_id: string; version: number; stage: SolveStage; timeline_minutes: number | null; provider_mode: ProviderMode; matrix_hash?: string; matrix_version?: string; depot: { depot_id: string; latitude: number; longitude: number }; routes: MapRoute[]; deviations?: DispatchDeviations | null; traffic?: { mode: string; data_status: string; events: Array<Record<string, unknown>>; route_risks: Array<Record<string, unknown>> }; warnings: Array<{ code: string; message: string }> }
+export interface ProviderStatus { name: string; enabled: boolean; status: string; mode: ProviderMode; data_status?: string }
+export interface ChatResponse { session_id: string; agent_run_id: string; message: string; evidence: Array<{ tool: string; data: Record<string, unknown> }>; requires_human_confirmation: boolean; plan_id?: string | null; plan_version?: number | null; provider_mode?: ProviderMode }
+export interface ApiErrorBody { error?: { code?: string; message?: string; field_errors?: ValidationError[]; details?: Record<string, unknown> }; request_id?: string }
 
-export interface DatasetImportResponse {
-  dataset_id: string
-  status: string
-  counts: { orders: number; packages: number; vehicles: number; zones: number }
-  total_weight_kg: number
-  validation: ValidationPayload
-}
-
-export interface AssignmentReason {
-  summary: string
-  evidence: Record<string, unknown>
-}
-
-export interface Stop {
-  sequence: number
-  order_id: string
-  location_label: string
-  latitude: number
-  longitude: number
-  time_slot: 'AM' | 'PM'
-  eta: string
-  service_duration_s: number
-  leg_distance_m: number
-  leg_duration_s: number
-  order_weight_kg: number
-  reason?: AssignmentReason | null
-}
-
-export interface VehicleRoute {
-  vehicle_id: string
-  vehicle_name: string
-  service_zone_codes: string[]
-  order_count: number
-  package_count: number
-  planned_load_kg: number
-  max_load_kg: number
-  load_utilization: number
-  total_distance_m: number
-  total_duration_s: number
-  route_provider_mode: ProviderMode
-  unused_reason?: string | null
-  stops: Stop[]
-}
-
-export interface Plan {
-  plan_id: string
-  version: number
-  dataset_id: string
-  state: 'DRAFT' | 'VALIDATED' | 'PROPOSED' | 'CONFIRMED' | 'DISPATCHED'
-  timezone: string
-  provider_mode: ProviderMode
-  matrix_hash?: string
-  matrix_reused?: boolean
-  matrix_elements_added?: number
-  matrix_version?: string
-  algorithm: 'BASELINE' | 'ORTOOLS'
-  objective?: 'FASTEST' | 'BALANCED' | 'STABLE'
-  dataset_hash?: string
-  is_fully_feasible: boolean
-  completeness: {
-    is_complete: boolean
-    assigned_order_count: number
-    total_order_count: number
-    unassigned_order_count: number
-  }
-  rule_check: { passed: boolean; violations: Record<string, number> }
-  confirmability: { can_confirm: boolean; blockers: string[] }
-  requires_human_confirmation: boolean
-  summary: {
-    assigned_order_count: number
-    unassigned_order_count: number
-    total_package_count: number
-    total_weight_kg: number
-    assigned_weight_kg: number
-    total_distance_m: number
-    total_duration_s: number
-    unassigned_orders: string[]
-    vehicles: Array<Pick<VehicleRoute, 'vehicle_id' | 'planned_load_kg' | 'max_load_kg' | 'load_utilization'>>
-  }
-  vehicles: VehicleRoute[]
-  unassigned_orders: string[]
-  unassigned_reasons: Record<string, string>
-  validation: { valid: boolean; violations: Record<string, number>; errors: string[] }
-  warnings: Array<{ code: string; message: string }>
-}
-
-export interface MapRoute {
-  vehicle_id: string
-  color: string
-  encoded_polyline: string
-  is_simplified: boolean
-  stops: Array<Pick<Stop, 'sequence' | 'order_id' | 'latitude' | 'longitude' | 'eta'>>
-  legs: Array<{ from_sequence: number; to_sequence: number; distance_m: number; duration_s: number }>
-}
-
-export interface MapData {
-  plan_id: string
-  version: number
-  provider_mode: ProviderMode
-  matrix_hash?: string
-  matrix_version?: string
-  depot: { depot_id: string; latitude: number; longitude: number }
-  routes: MapRoute[]
-  traffic?: {
-    mode: string
-    data_status: string
-    events: Array<Record<string, unknown>>
-    route_risks: Array<Record<string, unknown>>
-  }
-  warnings: Array<{ code: string; message: string }>
-}
-
-export interface ProviderStatus {
-  name: string
-  enabled: boolean
-  status: string
-  mode: ProviderMode
-  data_status?: string
-}
-
-export interface ProviderResponse {
-  providers: ProviderStatus[]
-}
-
-export interface ChatResponse {
-  session_id: string
-  agent_run_id: string
-  message: string
-  evidence: Array<{ tool: string; data: Record<string, unknown> }>
-  requires_human_confirmation: boolean
-  plan_id?: string | null
-  plan_version?: number | null
-  provider_mode?: ProviderMode
-}
-
-export interface UrgentOrderPayload {
-  order_id: string
-  zone_code: string
-  city: string
-  district: string
-  location_label: string
-  latitude: number
-  longitude: number
-  time_slot: 'AM' | 'PM'
-  declared_package_count: number
-  priority: 'NORMAL' | 'HIGH'
-  note?: string | null
-}
-
-export interface UrgentPackagePayload {
-  package_id: string
-  order_id: string
-  weight_kg: number
-}
-
-export interface UrgentPreview {
-  plan_id: string
-  base_version: number
-  preview_version: number
-  feasible: boolean
-  requires_human_confirmation: boolean
-  mode: 'MINIMAL_CHANGE' | 'FULL_REPLAN'
-  full_replan_reason?: string | null
-  rejection_reason?: string | null
-  affected_vehicle_count: number
-  moved_order_count: number
-  before: Plan['summary']
-  after: Plan['summary']
-  comparison: {
-    base_algorithm: string
-    preview_algorithm: string
-    base_dataset_hash: string
-    preview_dataset_hash: string
-  }
-  inserted_orders?: Array<{
-    order_id: string
-    vehicle_id: string | null
-    sequence: number | null
-    status: 'ASSIGNED' | 'UNASSIGNED'
-  }>
-  validator?: { valid: boolean; violations: Record<string, number>; errors: string[] }
-  provider_mode?: ProviderMode
-  matrix_hash?: string
-  diff: {
-    inserted_order_id?: string | null
-    inserted_order_ids?: string[]
-    reassigned_orders: Array<Record<string, unknown>>
-    sequence_changes: Array<Record<string, unknown>>
-    vehicle_load_changes: Array<Record<string, unknown>>
-    total_distance_delta_m: number
-    total_duration_delta_s: number
-  }
-}
-
-export interface StrategySummary {
-  objective: 'FASTEST' | 'BALANCED' | 'STABLE'
-  primary_goal: string
-  tradeoff: string
-  algorithm: 'ORTOOLS' | 'BASELINE'
-  total_distance_m: number
-  total_duration_s: number
-  max_vehicle_load_kg: number
-  load_spread_kg: number
-  min_slack_minutes?: number
-  unassigned_orders: string[]
-  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
-}
-
-export interface StrategyComparison {
-  dataset_id: string
-  dataset_hash: string
-  matrix_hash: string
-  matrix_version: string
-  provider_mode: ProviderMode
-  strategies: StrategySummary[]
-}
-
-export interface DelayPreview {
-  plan_id: string
-  version: number
-  risks: Array<Record<string, unknown>>
-  simulation: Record<string, unknown>
-  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
-}
-
-export interface ReassignmentPreview {
-  plan_id: string
-  base_version: number
-  preview_version: number
-  before: Plan['summary']
-  after: Plan['summary']
-  diff: UrgentPreview['diff']
-  validator: { valid: boolean; violations: Record<string, number>; errors: string[] }
-  provider_mode: ProviderMode
-  matrix_hash: string
-}
-
-export interface PlanVersionSummary {
-  version: number
-  state: Plan['state']
-  created_at: string
-  algorithm: string
-  objective?: string
-  validator_valid: boolean
-  complete: boolean
-  unassigned_orders: string[]
-}
-
-export interface ApiErrorBody {
-  error?: {
-    code?: string
-    message?: string
-    field_errors?: ValidationError[]
-    details?: Record<string, unknown>
-  }
-  request_id?: string
-}
+export interface UrgentOrderPayload { order_id: string; zone_code: string; city: string; district: string; location_label: string; latitude: number; longitude: number; time_slot: TimeSlot; declared_package_count: number; priority: 'NORMAL' | 'HIGH'; note?: string | null }
+export interface UrgentPackagePayload { package_id: string; order_id: string; weight_kg: number }
+export interface UrgentOrderBundlePayload { order: UrgentOrderPayload; packages: UrgentPackagePayload[] }
+export interface UrgentOptionCost { distance_delta_m: number | null; distance_delta_km: number | null; duration_delta_s: number | null; duration_delta_min: number | null; vehicle_change_count: number; minimum_capacity_slack_kg: number | null }
+export interface UrgentPlanOption { option_id: string; label: string; title: string; rationale: string; mode: 'INSERTION' | 'ROUTE_REORDER' | 'UNASSIGNABLE' | 'MODIFICATION'; change?: { kind: string; order_id?: string | null }; plan_id: string; base_version: number; preview_version: number; feasible: boolean; selectable: boolean; requires_human_confirmation: boolean; inserted_orders: Array<{ order_id: string; vehicle_id: string | null; sequence: number | null; eta?: string | null; status: 'ASSIGNED' | 'UNASSIGNED' }>; estimated_eta?: string | null; unassigned_orders?: string[]; unassigned_reasons?: Record<string, string>; cost: UrgentOptionCost; affected_vehicle_count: number; moved_order_count: number; reordered_order_count?: number; insertion?: { vehicle_id: string; sequence: number }; after: Plan['summary']; validator: { valid: boolean; violations: Record<string, number>; errors: string[] }; diff: UrgentPreview['diff'] }
+export interface UrgentPreview { plan_id: string; base_version: number; preview_version: number; feasible: boolean; requires_human_confirmation: boolean; mode: 'INSERTION' | 'UNASSIGNABLE'; rejection_reason?: string | null; affected_vehicle_count: number; moved_order_count: number; before: Plan['summary']; after: Plan['summary']; comparison: { base_algorithm: string; preview_algorithm: string; base_dataset_hash: string; preview_dataset_hash: string }; inserted_orders?: UrgentPlanOption['inserted_orders']; options?: UrgentPlanOption[]; validator?: { valid: boolean; violations: Record<string, number>; errors: string[] }; provider_mode?: ProviderMode; matrix_hash?: string; diff: { inserted_order_id?: string | null; inserted_order_ids?: string[]; reassigned_orders: Array<Record<string, unknown>>; sequence_changes: Array<Record<string, unknown>>; vehicle_load_changes: Array<Record<string, unknown>>; total_distance_delta_m: number; total_duration_delta_s: number } }
+export interface StrategySummary { objective: 'FASTEST' | 'BALANCED' | 'STABLE'; primary_goal: string; tradeoff: string; algorithm: 'ORTOOLS' | 'BASELINE'; total_distance_m: number; total_duration_s: number; max_vehicle_load_kg: number; load_spread_kg: number; min_slack_minutes?: number; unassigned_orders: string[]; validator: { valid: boolean; violations: Record<string, number>; errors: string[] } }
+export interface StrategyComparison { dataset_id: string; dataset_hash: string; matrix_hash: string; matrix_version: string; provider_mode: ProviderMode; strategies: StrategySummary[] }
+export interface DelayPreview { plan_id: string; version: number; risks: Array<Record<string, unknown>>; simulation: Record<string, unknown>; validator: { valid: boolean; violations: Record<string, number>; errors: string[] } }
+export interface ReassignmentPreview { plan_id: string; base_version: number; preview_version: number; before: Plan['summary']; after: Plan['summary']; diff: UrgentPreview['diff']; validator: { valid: boolean; violations: Record<string, number>; errors: string[] }; provider_mode: ProviderMode; matrix_hash: string }
+export interface RouteOrderSnapshot { vehicle_id: string; order_ids: string[]; total_distance_m: number; total_duration_s: number; planned_load_kg: number; load_utilization: number; stops: Array<{ order_id: string; eta: string }> }
+export interface RouteOrderPreview { plan_id: string; base_version: number; preview_version: number; vehicle_id: string; order_ids: string[]; feasible: boolean; reason?: string | null; requires_human_confirmation: boolean; before: RouteOrderSnapshot; after: RouteOrderSnapshot; diff: { distance_delta_m: number; duration_delta_s: number; load_delta_kg: number; load_utilization_delta: number; eta_changes: Array<{ order_id: string; before_eta: string; after_eta: string; delta_minutes: number }> }; validator: { valid: boolean; violations: Record<string, number>; errors: string[] }; provider_mode: ProviderMode; matrix_hash: string }
+export interface PlanVersionSummary { version: number; state: Plan['state']; created_at: string; algorithm: string; objective?: string; validator_valid: boolean; complete: boolean; unassigned_orders: string[] }
+export type DispatchRuleType = 'MAX_PACKAGE_WEIGHT' | 'MAX_ROUTE_DISTANCE' | 'MAX_STOPS' | 'EXCLUDED_ZONE' | 'ALLOWED_TIME_WINDOW'
+export type DispatchRuleDuration = 'PERMANENT' | 'THIS_WEEK' | 'TODAY'
+export interface DispatchRuleRecord { rule_id: string; subject_type: 'VEHICLE' | 'ZONE'; subject_id: string; rule_type: DispatchRuleType; value: number | string; source_utterance: string; created_at: string; active: boolean; active_now: boolean; expires_at?: string | null; summary: string }
+export interface DispatchRuleOption { option_id: string; label: string; title: string; rationale: string; mode: 'RULE'; plan_id: string | null; base_version: number | null; feasible: boolean; selectable: boolean; requires_human_confirmation: boolean; rule: { subject_type: 'VEHICLE' | 'ZONE'; subject_id: string; rule_type: DispatchRuleType; value: number | string; duration: DispatchRuleDuration; source_utterance: string; summary: string }; trial: { affected_order_ids: string[]; distance_delta_m: number; duration_delta_s: number } }
+export interface DispatchRuleConflict { rule_id: string; rule_type: DispatchRuleType; subject_id: string; order_ids: string[]; reason: string }
+export interface DispatchRuleEvidence { status: 'NEEDS_CLARIFICATION' | 'FEASIBLE' | 'CONFLICT' | 'VEHICLE_NOT_FOUND' | string; message: string; vehicle_id?: string; vehicle_name?: string; current_metrics?: { route_distance_km: number; stop_count: number; service_zone_codes: string[] }; options?: Array<Record<string, unknown>>; option?: DispatchRuleOption; rule?: DispatchRuleOption['rule']; trial?: { affected_order_ids: string[]; affected_order_count: number; before_total_distance_m: number; after_total_distance_m: number; distance_delta_m: number; duration_delta_s: number; assigned_order_count: number; unassigned_orders: string[] }; conflicts?: DispatchRuleConflict[]; resolution_options?: Array<{ action: string; label: string }> }
+export interface DispatchRulesResponse { rules: DispatchRuleRecord[]; active_count: number }

@@ -1,26 +1,46 @@
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
-from src.agent.urgent_workflow import UrgentOrderDraft, UrgentUnderstanding
-from src.api.main import app, store
-from src.services.matrix import MatrixResult, _distance_m
+from src.agent.urgent_workflow import (
+    URGENT_PREVIEW_REQUIRED_FIELDS,
+    UrgentOrderDraft,
+    UrgentUnderstanding,
+    missing_fields,
+)
+from src.api.main import (
+    UrgentOrderBundleRequest,
+    UrgentOrderRequest,
+    _urgent_insert_preview_response,
+    agent_sessions,
+    app,
+    store,
+)
+from src.domain.models import Order, Package, Priority
+from src.services.importer import parse_workbook
+from src.services.matrix import MatrixResult, SimulatedRouteProvider, _distance_m
+from src.services.planner import build_ortools
+from src.services.urgent_options import build_urgent_options, count_reordered_orders
 
 SAMPLE_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-delivery-40-orders.xlsx"
+RELAXED_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-50-relaxed.xlsx"
+TIGHT_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-50-tight.xlsx"
 client = TestClient(app)
 
 
-def _base_plan() -> tuple[str, int]:
+def _base_plan(workbook_path: Path = SAMPLE_WORKBOOK) -> tuple[str, int]:
     store.datasets.clear()
     store.plans.clear()
     store.current_versions.clear()
-    with SAMPLE_WORKBOOK.open("rb") as workbook:
+    with workbook_path.open("rb") as workbook:
         imported = client.post(
             "/api/v1/datasets/import-excel",
             files={
                 "file": (
-                    SAMPLE_WORKBOOK.name,
+                    workbook_path.name,
                     workbook,
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
@@ -38,13 +58,21 @@ def _base_plan() -> tuple[str, int]:
     return created.json()["plan_id"], created.json()["version"]
 
 
-def _bundle(order_id: str, *, weight: float = 1.0, slot: str = "AM") -> dict:
+def _bundle(
+    order_id: str,
+    *,
+    weight: float = 1.0,
+    slot: str = "AM",
+    zone_code: str = "Z1",
+    city: str = "新北市",
+    district: str = "板橋",
+) -> dict:
     return {
         "order": {
             "order_id": order_id,
-            "zone_code": "Z1",
-            "city": "新北市",
-            "district": "板橋",
+            "zone_code": zone_code,
+            "city": city,
+            "district": district,
             "location_label": f"合成測試點 {order_id}",
             "latitude": 25.0114,
             "longitude": 121.4618,
@@ -75,6 +103,262 @@ def test_batch_preview_inserts_multiple_orders_in_one_immutable_version() -> Non
     assert {item["order_id"] for item in body["inserted_orders"]} == {"TMP-201", "TMP-202"}
     assert all(item["status"] == "ASSIGNED" for item in body["inserted_orders"])
     assert body["validator"]["valid"] is True
+    assert client.get(f"/api/v1/plans/{plan_id}").json()["version"] == version
+
+
+def test_batch_preview_returns_pareto_feasible_costed_options() -> None:
+    plan_id, version = _base_plan()
+    response = client.post(
+        f"/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
+        json={"base_plan_version": version, "orders": [_bundle("TMP-OPTIONS")]},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    options = body["options"]
+    assert 1 <= len(options) <= 4
+    assert all(option["feasible"] is True for option in options)
+    assert all(option["selectable"] is True for option in options)
+    assert all(option["validator"]["valid"] is True for option in options)
+    assert all(option["mode"] in {"INSERTION", "ROUTE_REORDER"} for option in options)
+    assert all("FULL_REPLAN" not in option["mode"] for option in options)
+    assert all(option["cost"]["distance_delta_m"] >= 0 for option in options)
+    assert all(option["cost"]["duration_delta_s"] >= 0 for option in options)
+    assert all(option["cost"]["vehicle_change_count"] <= 3 for option in options)
+    assert all(option["inserted_orders"][0]["status"] == "ASSIGNED" for option in options)
+    assert all(
+        set(option["cost"]) == {
+            "distance_delta_m",
+            "distance_delta_km",
+            "duration_delta_s",
+            "duration_delta_min",
+            "vehicle_change_count",
+            "minimum_capacity_slack_kg",
+        }
+        for option in options
+    )
+    assert len({option["preview_version"] for option in options}) == len(options)
+    assert client.get(f"/api/v1/plans/{plan_id}").json()["version"] == version
+
+
+def test_single_preview_returns_only_non_dominated_local_options() -> None:
+    plan_id, version = _base_plan(RELAXED_WORKBOOK)
+    response = client.post(
+        f"/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
+        json={
+            "base_plan_version": version,
+            "orders": [
+                _bundle(
+                    "URG-DEMO-041",
+                    zone_code="Z4",
+                    city="新北市",
+                    district="板橋",
+                )
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    options = response.json()["options"]
+    assert 1 <= len(options) <= 3
+    assert all(option["mode"] in {"INSERTION", "ROUTE_REORDER"} for option in options)
+    assert all(option["cost"]["distance_delta_m"] >= 0 for option in options)
+    assert all(option["cost"]["duration_delta_s"] >= 0 for option in options)
+    assert all(option["cost"]["vehicle_change_count"] <= 3 for option in options)
+
+
+def test_missing_fields_match_urgent_preview_required_fields() -> None:
+    preview_required = {
+        field_name
+        for field_name, field_info in UrgentOrderRequest.model_fields.items()
+        if field_info.is_required()
+    } | {"package_weight_kg"}
+
+    assert set(URGENT_PREVIEW_REQUIRED_FIELDS) == preview_required
+    assert set(missing_fields(UrgentOrderDraft())) == preview_required
+
+
+def test_tight_insert_options_offer_a_different_vehicle_placement() -> None:
+    dataset, report = parse_workbook(TIGHT_WORKBOOK)
+    assert dataset is not None and report.is_valid
+    matrix = SimulatedRouteProvider().build(dataset)
+    base_plan = build_ortools(dataset, matrix, time_limit_seconds=10, objective="BALANCED")
+    pending = Order(
+        order_id="URG-TIGHT-001",
+        zone_code="Z5",
+        city="臺北市",
+        district="內湖",
+        location_label="內湖緊急站",
+        latitude=25.083,
+        longitude=121.590,
+        time_slot="MORNING",
+        declared_package_count=1,
+        priority=Priority.HIGH,
+        packages=(
+            Package(
+                package_id="PKG-URG-TIGHT-001-01",
+                order_id="URG-TIGHT-001",
+                weight_kg=2.0,
+            ),
+        ),
+    )
+    preview_dataset = dataset.model_copy(
+        update={
+            "orders": (*dataset.orders, pending),
+            "packages": (*dataset.packages, *pending.packages),
+        }
+    )
+    preview_matrix = SimulatedRouteProvider().build(preview_dataset)
+    options = build_urgent_options(
+        base_plan,
+        preview_dataset,
+        preview_matrix,
+        time_limit_seconds=10,
+        incoming_order_ids=[pending.order_id],
+    )
+    assert len(options) >= 2
+    assert len({option.vehicle_id for option in options}) >= 2
+    insertion_options = [option for option in options if option.mode == "INSERTION"]
+    placements = {
+        (option.vehicle_id, option.insertion_sequence) for option in insertion_options
+    }
+    assert len(placements) == len(insertion_options)
+
+
+def test_tight_ord101_options_have_a_meaningful_distance_tradeoff() -> None:
+    dataset, report = parse_workbook(TIGHT_WORKBOOK)
+    assert dataset is not None and report.is_valid
+    matrix = SimulatedRouteProvider().build(dataset)
+    base_plan = build_ortools(dataset, matrix, time_limit_seconds=10, objective="BALANCED")
+    pending = Order(
+        order_id="ORD-101",
+        zone_code="Z4",
+        city="臺北市",
+        district="信義",
+        location_label="信義示範配送點 Z4-51",
+        latitude=25.033,
+        longitude=121.565,
+        time_slot="MORNING",
+        declared_package_count=1,
+        priority=Priority.HIGH,
+        packages=(
+            Package(
+                package_id="PKG-ORD-101-01",
+                order_id="ORD-101",
+                weight_kg=15.0,
+            ),
+        ),
+    )
+    preview_dataset = dataset.model_copy(
+        update={
+            "orders": (*dataset.orders, pending),
+            "packages": (*dataset.packages, *pending.packages),
+        }
+    )
+    preview_matrix = SimulatedRouteProvider().build(preview_dataset)
+    options = build_urgent_options(
+        base_plan,
+        preview_dataset,
+        preview_matrix,
+        time_limit_seconds=10,
+        incoming_order_ids=[pending.order_id],
+    )
+    costs = [option.diff["total_distance_delta_m"] for option in options]
+    assert len(options) >= 2
+    assert max(costs) - min(costs) > 3_000
+    assert all(cost >= 0 for cost in costs)
+
+
+def test_urgent_options_do_not_include_a_fully_dominated_candidate() -> None:
+    dataset, report = parse_workbook(RELAXED_WORKBOOK)
+    assert dataset is not None and report.is_valid
+    matrix = SimulatedRouteProvider().build(dataset)
+    base_plan = build_ortools(dataset, matrix, time_limit_seconds=10, objective="BALANCED")
+    pending = Order(
+        order_id="ORD-101",
+        zone_code="Z4",
+        city="臺北市",
+        district="信義",
+        location_label="信義示範配送點 Z4-51",
+        latitude=25.033,
+        longitude=121.565,
+        time_slot="MORNING",
+        declared_package_count=1,
+        priority=Priority.HIGH,
+        packages=(
+            Package(
+                package_id="PKG-ORD-101-01",
+                order_id="ORD-101",
+                weight_kg=15.0,
+            ),
+        ),
+    )
+    preview_dataset = dataset.model_copy(
+        update={
+            "orders": (*dataset.orders, pending),
+            "packages": (*dataset.packages, *pending.packages),
+        }
+    )
+    preview_matrix = SimulatedRouteProvider().build(preview_dataset)
+    options = build_urgent_options(
+        base_plan,
+        preview_dataset,
+        preview_matrix,
+        time_limit_seconds=10,
+        incoming_order_ids=[pending.order_id],
+    )
+
+    def cost_vector(option):
+        stop = next(
+            stop
+            for route in option.plan.routes
+            for stop in route.stops
+            if stop.order_id == pending.order_id
+        )
+        return (
+            option.diff["total_distance_delta_m"],
+            option.diff["total_duration_delta_s"],
+            len(option.diff["reassigned_orders"]),
+            count_reordered_orders(base_plan, option.plan, {pending.order_id}),
+            datetime.fromisoformat(stop.eta).timestamp(),
+        )
+
+    vectors = [cost_vector(option) for option in options]
+    for left_index, left in enumerate(vectors):
+        for right_index, right in enumerate(vectors):
+            if left_index == right_index:
+                continue
+            assert not (
+                all(
+                    left_value >= right_value
+                    for left_value, right_value in zip(left, right, strict=True)
+                )
+                and any(
+                    left_value > right_value
+                    for left_value, right_value in zip(left, right, strict=True)
+                )
+            )
+
+
+def test_unassignable_batch_can_be_rendered_as_non_selectable_option() -> None:
+    plan_id, version = _base_plan()
+    record = store.get_plan(plan_id, version)
+    assert record is not None
+    heavy = _bundle("TMP-HEAVY", weight=500.0)
+    response = _urgent_insert_preview_response(
+        plan_id,
+        version,
+        [
+            UrgentOrderBundleRequest(
+                order=UrgentOrderRequest.model_validate(heavy["order"]),
+                packages=[Package.model_validate(item) for item in heavy["packages"]],
+            )
+        ],
+        Request(scope={"type": "http", "method": "POST", "path": "/test"}),
+        include_unassignable_option=True,
+    )
+    assert isinstance(response, dict)
+    assert response["feasible"] is False
+    assert response["options"][0]["selectable"] is False
+    assert response["options"][0]["unassigned_orders"] == ["TMP-HEAVY"]
     assert client.get(f"/api/v1/plans/{plan_id}").json()["version"] == version
 
 
@@ -269,6 +553,67 @@ def test_agent_urgent_state_machine_reports_missing_fields_per_order(monkeypatch
     assert max(store.plans[plan_id]) == version
 
 
+def test_preview_validation_keeps_urgent_context_for_followup(monkeypatch) -> None:
+    plan_id, version = _base_plan(RELAXED_WORKBOOK)
+    session_id = "URGENT-VALIDATION-CONTEXT"
+    outputs = [
+        UrgentUnderstanding(
+            is_urgent_insertion=True,
+            action="ADD_OR_UPDATE",
+            orders=[
+                UrgentOrderDraft(
+                    order_id="TMP-VALIDATION-501",
+                    zone_code="Z4",
+                    city="臺北市",
+                    district="內湖",
+                    location_label="測試配送點 TMP-VALIDATION-501",
+                    latitude=25.033,
+                    longitude=121.565,
+                    time_slot="MORNING",
+                    declared_package_count=1,
+                    package_weight_kg=1.0,
+                )
+            ],
+        ),
+        UrgentUnderstanding(is_urgent_insertion=True, action="PREVIEW"),
+        UrgentUnderstanding(
+            is_urgent_insertion=True,
+            action="ADD_OR_UPDATE",
+            orders=[UrgentOrderDraft(district="信義")],
+        ),
+    ]
+
+    async def fake_understanding(message, state):
+        return outputs.pop(0), object()
+
+    monkeypatch.setattr("src.api.main.understand_urgent_message", fake_understanding)
+    monkeypatch.setattr("src.api.main.settings.openai_api_key", "configured-for-test")
+    context = {"plan_id": plan_id, "plan_version": version}
+
+    summary = client.post(
+        "/api/v1/agent/chat",
+        json={"session_id": session_id, "message": "新增一張臨時配送單", "context": context},
+    )
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["evidence"][0]["data"]["stage"] == "REVIEW_READY"
+
+    failed_preview = client.post(
+        "/api/v1/agent/chat",
+        json={"session_id": session_id, "message": "產生插單預覽", "context": context},
+    )
+    assert failed_preview.status_code == 422, failed_preview.text
+    assert failed_preview.json()["error"]["code"] == "URGENT_ORDER_INVALID"
+    assert agent_sessions[session_id].urgent_workflow["stage"] == "REVIEW_READY"
+
+    corrected = client.post(
+        "/api/v1/agent/chat",
+        json={"session_id": session_id, "message": "行政區是信義", "context": context},
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["evidence"][0]["data"]["stage"] == "REVIEW_READY"
+    assert "我理解的臨時訂單如下" in corrected.json()["message"]
+
+
 def test_google_batch_preview_reuses_base_matrix_and_only_extends_new_nodes(monkeypatch) -> None:
     plan_id, version = _base_plan()
     record = store.get_plan(plan_id, version)
@@ -310,7 +655,10 @@ def test_google_batch_preview_reuses_base_matrix_and_only_extends_new_nodes(monk
         f"/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
         json={
             "base_plan_version": version,
-            "orders": [_bundle("TMP-501"), _bundle("TMP-502")],
+            "orders": [
+                _bundle("TMP-501"),
+                _bundle("TMP-502"),
+            ],
         },
     )
     assert response.status_code == 200, response.text

@@ -5,17 +5,25 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from src.domain.models import Dataset
+from src.domain.models import Dataset, TimeSlot
 from src.services.planner import SERVICE_SECONDS, PlanResult
 
 RISK_THRESHOLDS_MINUTES = {"GREEN": 30, "YELLOW": 10}
+TIME_SLOT_DEADLINE_HOURS = {
+    TimeSlot.MORNING: 12,
+    TimeSlot.AFTERNOON: 17,
+    TimeSlot.EVENING: 20,
+}
 
 
 def _minutes_until_deadline(eta: str, time_slot: str, service_seconds: int) -> float:
     parsed = datetime.fromisoformat(eta)
-    deadline = parsed.replace(hour=12, minute=0, second=0, microsecond=0)
-    if time_slot == "PM":
-        deadline = parsed.replace(hour=17, minute=0, second=0, microsecond=0)
+    deadline = parsed.replace(
+        hour=TIME_SLOT_DEADLINE_HOURS[TimeSlot(time_slot)],
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
     # A stop is only complete after its deterministic service duration.  The
     # remaining margin therefore includes both travel arrival and service time
     # instead of overstating slack by three minutes.
@@ -59,9 +67,8 @@ def calculate_plan_risks(dataset: Dataset, plan: PlanResult) -> list[dict[str, A
                     "sequence": stop.sequence,
                     "eta": stop.eta,
                     "deadline": (
-                        f"{stop.eta[:10]}T12:00:00+08:00"
-                        if order.time_slot == "AM"
-                        else f"{stop.eta[:10]}T17:00:00+08:00"
+                        f"{stop.eta[:10]}T"
+                        f"{TIME_SLOT_DEADLINE_HOURS[TimeSlot(order.time_slot)]:02d}:00:00+08:00"
                     ),
                     "time_slot": order.time_slot,
                     "service_duration_s": SERVICE_SECONDS,

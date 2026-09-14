@@ -39,14 +39,21 @@ def test_random_workbook_chained_insert_cases_preserve_confirmed_versions() -> N
         "TMP-260904-03",
         "TMP-260904-04",
     ]
-    assert results[0]["mode"] == "MINIMAL_CHANGE"
-    assert results[1]["mode"] == "MINIMAL_CHANGE"
-    assert results[2]["mode"] == "FULL_REPLAN"
+    assert results[0]["mode"] in {"INSERTION", "ROUTE_REORDER"}
+    assert results[1]["mode"] in {"INSERTION", "ROUTE_REORDER"}
+    assert results[2]["mode"] in {"INSERTION", "ROUTE_REORDER", "UNASSIGNABLE"}
+    assert all(
+        item["distance_delta_m"] >= 0 and item["duration_delta_s"] >= 0
+        for item in results[:3]
+    )
     assert results[3]["status"] == "UNASSIGNED"
-    assert results[3]["before_version"] == results[3]["after_version"] == 4
+    assert results[3]["before_version"] == results[3]["after_version"] == 3
     assert results[4]["status"] == "REJECTED"
-    assert results[4]["before_version"] == results[4]["after_version"] == 4
+    assert results[4]["before_version"] == results[4]["after_version"] == 3
     assert results[5]["status"] == "REJECTED"
-    assert results[5]["before_version"] == results[5]["after_version"] == 4
-    assert all(item.get("validator_valid", True) for item in results)
+    assert results[5]["before_version"] == results[5]["after_version"] == 3
+    assert all(item["validator_valid"] for item in results[:2])
+    assert results[2]["validator_valid"] is False
+    assert results[3]["validator_valid"] is False
+    assert all(item.get("validator_valid", True) for item in results[4:])
     assert all(item.get("vehicle_loads") for item in results[:4])

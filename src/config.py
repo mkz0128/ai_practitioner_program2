@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     google_routes_server_api_key: str | None = Field(
         default=None, validation_alias="GOOGLE_ROUTES_SERVER_API_KEY"
     )
+    google_routes_enabled: bool = Field(default=False, validation_alias="GOOGLE_ROUTES_ENABLED")
     google_maps_browser_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices(

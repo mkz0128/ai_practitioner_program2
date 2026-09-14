@@ -18,7 +18,11 @@ from src.services.fingerprint import dataset_hash, matrix_hash  # noqa: E402
 from src.services.importer import parse_workbook, validate_dataset  # noqa: E402
 from src.services.matrix import MatrixResult, SimulatedRouteProvider  # noqa: E402
 from src.services.plan_diff import compute_plan_diff  # noqa: E402
-from src.services.planner import PlanResult, build_ortools, try_minimal_insert  # noqa: E402
+from src.services.planner import PlanResult, build_ortools  # noqa: E402
+from src.services.urgent_options import (  # noqa: E402
+    build_partial_urgent_plan,
+    build_urgent_options,
+)
 from src.services.validator import validate_plan  # noqa: E402
 
 RANDOM_WORKBOOK = ROOT / "data" / "samples" / "random-dispatch-seed-260904.xlsx"
@@ -123,17 +127,33 @@ def _insert_preview(
             "validation": validation.model_dump(mode="json"),
         }
     preview_matrix = SimulatedRouteProvider().build(new_dataset)
-    preview = try_minimal_insert(base_plan, new_dataset, preview_matrix, pending)
-    mode = "MINIMAL_CHANGE"
-    if preview is None:
-        mode = "FULL_REPLAN"
-        preview = build_ortools(new_dataset, preview_matrix, time_limit_seconds=2)
+    options = build_urgent_options(
+        base_plan,
+        new_dataset,
+        preview_matrix,
+        time_limit_seconds=2,
+        incoming_order_ids=[pending.order_id],
+        stage="PRE_LOAD",
+    )
+    preview = options[0].plan if options else build_partial_urgent_plan(
+        base_plan,
+        new_dataset,
+        preview_matrix,
+        [pending.order_id],
+    )
+    mode = options[0].mode if options else "UNASSIGNABLE"
     result = validate_plan(new_dataset, preview, preview_matrix)
     diff = compute_plan_diff(base_plan, preview)
+    assigned_order_ids = {
+        order_id for route in preview.routes for order_id in route.order_ids
+    }
+    unassigned_orders = (
+        [pending.order_id] if pending.order_id not in assigned_order_ids else []
+    )
     base_vehicle_lookup = {vehicle.vehicle_id: vehicle for vehicle in dataset.vehicles}
     vehicle_lookup = {vehicle.vehicle_id: vehicle for vehicle in new_dataset.vehicles}
     return {
-        "status": "UNASSIGNED" if preview.unassigned_orders else "PREVIEWED",
+        "status": "UNASSIGNED" if unassigned_orders else "PREVIEWED",
         "order_id": pending.order_id,
         "mode": mode,
         "affected_vehicle_count": len(
@@ -164,8 +184,11 @@ def _insert_preview(
             }
             for route in preview.routes
         },
-        "unassigned_orders": preview.unassigned_orders,
-        "unassigned_reasons": preview.unassigned_reasons,
+        "unassigned_orders": unassigned_orders,
+        "unassigned_reasons": {
+            **preview.unassigned_reasons,
+            **({pending.order_id: "CAPACITY_OR_ROUTE_CONFLICT"} if unassigned_orders else {}),
+        },
         "validator_valid": result.valid,
         "provider_mode": matrix.provider_mode,
         "matrix_hash": matrix_hash(preview_matrix),

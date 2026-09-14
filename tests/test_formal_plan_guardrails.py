@@ -39,7 +39,18 @@ async def test_agent_formal_plan_tool_cannot_choose_baseline() -> None:
     matrix = SimulatedRouteProvider().build(dataset)
     model = ScriptedModel(
         [
-            [function_call("plan_dispatch", {"objective": "FASTEST"}, call_id="formal")],
+            [
+                function_call(
+                    "plan_dispatch",
+                    {
+                        "request": {
+                            "objective": "FASTEST",
+                            "plan_request_scope": "NEW_FORMAL_PLAN",
+                        }
+                    },
+                    call_id="formal",
+                )
+            ],
             [assistant_message("已依工具結果建立正式方案。")],
         ]
     )

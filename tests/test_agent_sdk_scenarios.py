@@ -14,8 +14,8 @@ from src.services.planner import build_baseline, build_ortools
 SAMPLE_WORKBOOK = Path(__file__).parents[1] / "data" / "samples" / "demo-delivery-40-orders.xlsx"
 
 
-def test_demo_urgent_order_is_colocated_with_a_serviceable_existing_stop() -> None:
-    """Keep the fixed showcase insert stable while live travel times change."""
+def test_demo_urgent_order_uses_a_distinct_serviceable_demo_stop() -> None:
+    """The fixed showcase insert must have a visible deterministic cost."""
     dataset, _ = _fixture()
     anchor = next(order for order in dataset.orders if order.order_id == "ORD-001")
     pending = get_demo_urgent_order("ORD-041")
@@ -23,7 +23,7 @@ def test_demo_urgent_order_is_colocated_with_a_serviceable_existing_stop() -> No
     assert pending is not None
     assert pending.zone_code == anchor.zone_code
     assert pending.time_slot == anchor.time_slot
-    assert (pending.latitude, pending.longitude) == (anchor.latitude, anchor.longitude)
+    assert (pending.latitude, pending.longitude) != (anchor.latitude, anchor.longitude)
 
 
 def _fixture():
@@ -54,13 +54,24 @@ async def test_sdk_daily_dispatch_calls_planner_and_validator() -> None:
     _, context, _ = await _run_tool(
         "Create today's daily dispatch plan.",
         "plan_dispatch",
-        {"objective": "FASTEST"},
+        {"request": {"objective": "FASTEST", "plan_request_scope": "NEW_FORMAL_PLAN"}},
     )
     evidence = context.evidence[-1]
     assert evidence["tool"] == "plan_dispatch"
     assert evidence["validator"]["valid"] is True
     assert evidence["algorithm"] == "ORTOOLS"
     assert evidence["complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_full_redistribution_safety_field_refuses_without_plan_evidence() -> None:
+    _, context, _ = await _run_tool(
+        "unsupported whole-order redistribution request",
+        "plan_dispatch",
+        {"request": {"objective": "FASTEST", "plan_request_scope": "FULL_REDISTRIBUTION"}},
+    )
+    assert context.evidence[-1]["tool"] == "reject_unsupported_change"
+    assert all(item["tool"] != "plan_dispatch" for item in context.evidence)
 
 
 @pytest.mark.asyncio
@@ -92,7 +103,7 @@ async def test_plan_evidence_vehicle_count_counts_non_empty_routes() -> None:
     _, context, _ = await _run_tool(
         "Create today's daily dispatch plan.",
         "plan_dispatch",
-        {"objective": "FASTEST"},
+        {"request": {"objective": "FASTEST", "plan_request_scope": "NEW_FORMAL_PLAN"}},
     )
     evidence = context.evidence[-1]
     assert evidence["vehicle_count"] == sum(bool(route.order_ids) for route in context.plan.routes)
@@ -109,6 +120,22 @@ async def test_sdk_highest_load_uses_validated_plan_evidence() -> None:
     assert evidence["tool"] == "highest_load_vehicle"
     assert evidence["vehicle_id"]
     assert isinstance(evidence["planned_load_kg"], float)
+
+
+@pytest.mark.asyncio
+async def test_sdk_lowest_load_uses_remaining_capacity_evidence() -> None:
+    _, context, _ = await _run_tool(
+        "Which vehicle currently has the most room?",
+        "lowest_load_vehicle",
+        {},
+    )
+    evidence = context.evidence[-1]
+    assert evidence["tool"] == "lowest_load_vehicle"
+    assert evidence["vehicle_id"]
+    assert isinstance(evidence["remaining_capacity_kg"], float)
+    assert evidence["remaining_capacity_kg"] == pytest.approx(
+        evidence["max_load_kg"] - evidence["planned_load_kg"]
+    )
 
 
 @pytest.mark.asyncio
@@ -210,7 +237,7 @@ async def test_sdk_demo_urgent_insert_resolves_known_fixture_without_pending_con
     assert evidence["status"] == "PREVIEWED"
     assert evidence["order_id"] == "ORD-041"
     assert evidence["structured_order"]["order_id"] == "ORD-041"
-    assert evidence["mode"] == "MINIMAL_CHANGE"
+    assert evidence["mode"] == "INSERTION"
     assert evidence["affected_vehicle_count"] == 1
     assert evidence["moved_order_count"] == 0
     assert evidence["validator"]["valid"] is True
@@ -491,7 +518,18 @@ async def test_sdk_final_answer_cannot_replace_deterministic_evidence() -> None:
     expected = build_ortools(dataset, matrix, time_limit_seconds=10, objective="FASTEST")
     model = ScriptedModel(
         [
-            [function_call("plan_dispatch", {"objective": "FASTEST"}, call_id="call-evidence")],
+            [
+                function_call(
+                    "plan_dispatch",
+                    {
+                        "request": {
+                            "objective": "FASTEST",
+                            "plan_request_scope": "NEW_FORMAL_PLAN",
+                        }
+                    },
+                    call_id="call-evidence",
+                )
+            ],
             [assistant_message("The model must cite the tool output, not calculate a route.")],
         ]
     )

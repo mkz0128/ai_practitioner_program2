@@ -1,6 +1,7 @@
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, computed_field
 
 
 class StrictModel(BaseModel):
@@ -10,6 +11,30 @@ class StrictModel(BaseModel):
 class Priority(StrEnum):
     NORMAL = "NORMAL"
     HIGH = "HIGH"
+
+
+class TimeSlot(StrEnum):
+    MORNING = "MORNING"
+    AFTERNOON = "AFTERNOON"
+    EVENING = "EVENING"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "TimeSlot | None":
+        # Keep old demo payloads readable at the model boundary while all
+        # validated data uses the v2 three-value representation.
+        legacy_values = {"AM": cls.MORNING, "PM": cls.AFTERNOON}
+        return legacy_values.get(value) if isinstance(value, str) else None
+
+
+def normalize_time_slot(value: object) -> TimeSlot:
+    if isinstance(value, TimeSlot):
+        return value
+    if not isinstance(value, str):
+        raise TypeError("time_slot must be a string")
+    return TimeSlot(value)
+
+
+TimeSlotValue = Annotated[TimeSlot, BeforeValidator(normalize_time_slot)]
 
 
 class VehicleStatus(StrEnum):
@@ -31,7 +56,7 @@ class Order(StrictModel):
     location_label: str = Field(min_length=1)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-    time_slot: str = Field(pattern="^(AM|PM)$")
+    time_slot: TimeSlotValue
     declared_package_count: int = Field(ge=1, le=3)
     priority: Priority = Priority.NORMAL
     note: str | None = None

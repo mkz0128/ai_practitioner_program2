@@ -15,13 +15,12 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 
 ## 整合現況與未來邊界
 
-原有 13 組 REST method/path 維持相容；目前另加入 6 組進階 preview／比較／版本路由，因此 OpenAPI 現在共 19 組正式介面。以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
+原有 REST method/path 維持相容；目前另加入進階 preview／比較／版本、資料 inspect、SolveScope、DispatchRule 與配送偏差參數路由，因此 OpenAPI 現在共 27 組正式介面。以下說明目前實際行為，避免將 adapter 或單次 smoke test 誤認為完整整合：
 
-- `POST /api/v1/datasets/import-excel` 僅正規化資料；`POST /api/v1/plans` 在 `route_provider_preference=AUTO` 且 `traffic_mode=AUTO` 時，若有 server key 會由 `GoogleRoutesProvider` strict 取得 Matrix，並把同一 hash/version 的 `MatrixResult` 注入 OR-Tools。缺 key 時回傳 `provider_mode=SIMULATED` 與 warning；已設定 key 但呼叫失敗回傳 `502 PROVIDER_UNAVAILABLE`，不靜默 fallback。
+- 開發與競賽 Demo 預設 `GOOGLE_ROUTES_ENABLED=false`，即使環境有 server key 也不呼叫 Google Routes；前端明確傳 `route_provider_preference=SIMULATED` 與 `traffic_mode=SIMULATED`。只有部署者明確啟用 Google 且提供 server key 時，`AUTO` 才會使用 Google Matrix。
 - `GET /api/v1/plans/{plan_id}/map-data` 對 Google plan 以 Compute Routes 取得 encoded geometry；模擬 plan 則提供 deterministic polyline。`provider_mode=SIMULATED` 必須清楚標示模擬資料，不能當作 live traffic／ETA。
 - `/api/v1/agent/chat` 會將每則訊息交給 `src/agent/runtime.py` 的 `Runner.run`；Agent 以 strict allowlist 選擇 deterministic tool，API 只回傳工具 evidence 與 evidence-grounded 摘要。OpenAI 憑證缺少或 provider 失敗時，回傳明確錯誤，不產生假回答。
-- 本次競賽 Demo 的 Live 鏈為 Google Routes／Maps、OR-Tools、OpenAI Agent 與前端；TDX 介面保持向後相容，但屬未來可選擴充，不參與本輪完成判定或阻塞核心 API。
-- 歷史上曾收到 HTTP 403／`BILLING_DISABLED`；目前新 Key 已通過 4-element 最低成本 Live 方案且未 fallback。API 的失敗契約仍維持 `502 PROVIDER_UNAVAILABLE`、`fallback_used=false`，不能把失敗或模擬資料記成 Live PASS。
+- 本次競賽 Demo 的可重現鏈為 OSM tiles、模擬 Matrix、OR-Tools、OpenAI Agent 與前端；TDX 介面保持向後相容，但屬未來可選擴充，不參與本輪完成判定或阻塞核心 API。
 - 未來 ERP／WMS／電商來源應先由 Adapter 或 MuleSoft、Boomi、ESB、ETL 等企業中介平台轉換為 Canonical Order Schema，再呼叫既有 REST；MCP 尚未實作，也不能取代正式 REST API。
 
 ## 錯誤封套
@@ -200,7 +199,7 @@ Base path 為 `/api/v1`，但 `/health` 與 `/ready` 除外。除 import endpoin
 
 ### `POST /api/v1/datasets/import-excel`
 
-Multipart field 為 `file`；只允許 `.xlsx`，size limit 依設定決定。Import 不會建立 plan。
+Multipart field 為 `file`；只允許 `.xlsx`，size limit 依設定決定。可選傳 `mapping`（JSON object，格式為 `{sheet: {source_header: canonical_field}}`）與 `mapping_name`。Import 不會建立 plan。
 
 `201`:
 
@@ -217,6 +216,12 @@ Multipart field 為 `file`；只允許 `.xlsx`，size limit 依設定決定。Im
 
 若無效，回傳 `422 DATASET_VALIDATION_FAILED` 與所有安全的 field errors；dataset metadata 可以為 audit 保留查詢能力。
 
+### `POST /api/v1/datasets/inspect-excel`
+
+Multipart field 為 `file`。端點只讀取四張工作表的表頭與最多三列樣本，不把儲存格值送給 Agent。固定格式回傳 `status=CANONICAL`；已保存的來源對映回傳 `status=AUTO_APPLIED`；其他格式由 Agents SDK strict structured output 提出欄位名稱對映與信心度，回傳 `status=NEEDS_CONFIRMATION`，必須由人工確認後再送 `import-excel`。OpenAI mapping provider 不可用時，只提供 0% 信心度的欄位位置草稿，仍必須人工確認，並回傳 provider fallback evidence。
+
+瀏覽器會帶 `X-Dispatch-UI: true`，此時預檢錯誤以 `200` 回傳 `status=INVALID` 與結構化 `error.field_errors`，讓 UI 能顯示白話錯誤且不把預期驗證失敗記成 Console error。未帶此 header 的整合呼叫仍依一般 REST 契約回傳 `400`／`422`。
+
 ### `GET /api/v1/datasets/{dataset_id}`
 
 回傳 metadata、normalized summary、counts、hash、import time 與 validation status。預設不回傳完整原始 workbook。
@@ -224,6 +229,34 @@ Multipart field 為 `file`；只允許 `.xlsx`，size limit 依設定決定。Im
 ### `GET /api/v1/datasets/{dataset_id}/validation`
 
 回傳 validation summary 與 field errors／warnings。
+
+### `GET /api/v1/dispatch-rules`
+
+回傳所有已建立的 `DispatchRule`、其原始 `source_utterance`、有效期限與目前啟用數量。規則內容只使用五種禁止型 `rule_type`；已過期或停用的規則會保留供追查，但不會進入下一次排班。
+
+### `POST /api/v1/dispatch-rules/confirm`
+
+Request 必須包含 `plan_id`、`base_plan_version`、`subject_type`、`subject_id`、五種規則之一、具體 `value`、`source_utterance` 與 `duration`。後端會再次以同一份 Matrix 試算；只有 `FEASIBLE` 才建立規則並寫入 audit，否則回傳 `409 DISPATCH_RULE_CONFLICT` 與衝突訂單，原方案不變。
+
+### `POST /api/v1/dispatch-rules/{rule_id}/deactivate`
+
+停用指定規則並保留原句與歷史資料；後續重新排班不再套用該規則，回傳更新後規則與 `active_count`。
+
+### `GET /api/v1/dispatch-parameters`
+
+回傳目前確定性排班參數。沒有人工確認的區域覆寫時，
+`service_minutes_by_zone` 為空，預設每站服務時間為 3 分鐘。
+
+### `POST /api/v1/runtime/reset`
+
+清除本機 Demo 的所有配送規則與區域服務時間覆寫，供「重新開始」與
+測試隔離使用；不會改動訂單或已保存的方案。
+
+### `POST /api/v1/dispatch-parameters/confirm`
+
+只接受已發車時間軸產生的 `TIMELINE_DEVIATION` 建議。request 必須帶
+`plan_id`、`base_plan_version`、`zone_code`、`from_service_minutes` 與
+`to_service_minutes`；確認後只保存參數並回傳 `requires_replan=true`，不自動改動現有方案。
 
 ### `POST /api/v1/plans`
 
@@ -246,12 +279,14 @@ Query `version` 為選用；省略時代表 current version。回傳 Plan，或 
 
 ### `GET /api/v1/plans/{plan_id}/map-data`
 
-Query `version` 為選用。Response：
+Query `version` 與 `timeline_minutes` 為選用。Response：
 
 ```json
 {
   "plan_id": "PLAN-001",
   "version": 1,
+  "stage": "PRE_LOAD",
+  "timeline_minutes": null,
   "provider_mode": "SIMULATED",
   "matrix_hash": "sha256...",
   "matrix_version": "sim-v1",
@@ -262,7 +297,10 @@ Query `version` 為選用。Response：
       "color": "#2563EB",
       "encoded_polyline": "simulated:...",
       "is_simplified": true,
-      "stops": [{"sequence":1,"order_id":"ORD-001","latitude":25.011,"longitude":121.465,"eta":"..."}],
+      "stops": [{"sequence":1,"order_id":"ORD-001","latitude":25.011,"longitude":121.465,"eta":"...","status":"UPCOMING"}],
+      "completed_stops": [],
+      "current_stop_id": null,
+      "current_position": "DEPOT-001",
       "legs": [{"from_sequence":0,"to_sequence":1,"distance_m":3500,"duration_s":720}]
     }
   ],
@@ -272,6 +310,16 @@ Query `version` 為選用。Response：
 ```
 
 Google route 的 `provider_mode` 為 `GOOGLE` 且 `matrix_hash`／`matrix_version` 必須與建立 plan 的 response 一致；沒有 Browser key 時前端仍可顯示 simulated preview，但不得標示為 Google live map。
+
+當方案進入 `LOADED` 或 `DISPATCHED`，回應的 `stage` 會同步反映 SolveScope。`LOADED` 會凍結所有訂單的車輛指派；`DISPATCHED` 另外依 `timeline_minutes` 以確定性 ETA 推導 `COMPLETED`、`CURRENT`、`UPCOMING`，不使用 GPS、WebSocket 或模型產生的數字。`DISPATCHED` 的已完成站點與其路線前綴不可再排序。
+
+### `POST /api/v1/plans/{plan_id}/load`
+
+Request：`{"version":1,"confirmation":"START_LOADING","dispatcher_reference":"demo-dispatcher"}`。這是調度員明確觸發的人工裝車邊界；只接受完整、通過驗證的 `PROPOSED` 或 `CONFIRMED` 版本，狀態轉為 `LOADED`，並寫入 `PLAN_LOADING_STARTED` audit event。此端點不呼叫正式 `/dispatch`，也不控制車輛。
+
+### `POST /api/v1/plans/{plan_id}/simulate-departure`
+
+Request：`{"version":1,"confirmation":"START_SIMULATED_DEPARTURE"}`。只接受 `LOADED` 版本，將本地 Demo 狀態轉為 `DISPATCHED` 並寫入 `PLAN_SIMULATED_DEPARTURE` audit event；回應會明確標示 `formal_dispatch_called=false`。這是時間軸與 F5 的本地示範，不代表正式車隊出發；正式 `/dispatch` 仍固定停用。
 
 ### `POST /api/v1/plans/compare`
 
@@ -329,8 +377,7 @@ Response `200`：
   "preview_version": 2,
   "feasible": true,
   "requires_human_confirmation": true,
-  "mode": "MINIMAL_CHANGE",
-  "full_replan_reason": null,
+  "mode": "INSERTION",
   "affected_vehicle_count": 1,
   "moved_order_count": 0,
   "before": {
@@ -396,7 +443,7 @@ Request：
 }
 ```
 
-成功回應包含整批共用的 `base_version`、`preview_version`、`before`、`after`、`diff`、`validator`、`provider_mode`、`matrix_version`，以及逐張 `inserted_orders`。`matrix_reused=true` 表示沿用既有 Matrix；Google 模式的 `matrix_elements_added` 只計新節點增量。任何一張缺欄、重複、超載或時段不可行時，回傳欄位級或不可安排錯誤，且 current plan/version 不變。
+成功回應包含整批共用的 `base_version`、`preview_version`、`before`、`after`、`diff`、`validator`、`provider_mode`、`matrix_version`，以及逐張 `inserted_orders`。另回傳 `options` 方案卡陣列：每張卡都是同一份資料與 Matrix 下的完整合法候選，且只針對這批急單做路線插入或單車順序重排，不執行全域重排。候選包含 `option_id`、`label`、`title`、`rationale`、逐張 `inserted_orders`、`preview_version`、`after`、Validator 結果與 `cost`（本次插入造成的增量距離公里／時間分鐘／換車張數／最小載重餘裕）。可行卡的 `mode` 為 `INSERTION` 或 `ROUTE_REORDER`，並回傳 `insertion.vehicle_id`／`insertion.sequence`；順序重排卡另回傳 `reordered_order_count`。所有距離／時間增量不得為負，且 `cost.vehicle_change_count` 不得超過 3。`preview_version` 可供後續人工選擇與確認；所有候選都以 `make_current=false` 保存，current plan/version 不變。`matrix_reused=true` 表示沿用既有 Matrix；Google 模式的 `matrix_elements_added` 只計新節點增量。任何一張缺欄、重複、超載或時段不可行時，回傳欄位級或不可安排錯誤，且 current plan/version 不變。透過 Agent 的插單流程遇到整批無法安排時，`options` 會含一張 `mode=UNASSIGNABLE`、`feasible=false`、`selectable=false` 的「排不進去」說明卡，不能被選取或確認；全域重排不是插單候選。
 
 ### `POST /api/v1/plans/{plan_id}/confirm`
 
@@ -445,6 +492,8 @@ Response:
 此 endpoint 不得捏造 facts 或繞過 confirmation。OpenAI 不可用時回傳 `503 AGENT_UNAVAILABLE`；其他 REST endpoints 仍可使用。
 
 臨時插單對話的回應固定使用 `urgent_insertion_workflow` evidence。第一次只蒐集使用者提供的欄位；缺欄時回傳 `COLLECTING`，完整時回傳 `REVIEW_READY`。只有使用者在看過摘要後選擇「產生插單預覽」，才會回傳 `PREVIEW_READY` 與批次差異。主 Agent 的 `begin_urgent_insertion` 只負責把 strict 結構化事實交給狀態機，不會建立方案、取得 Matrix、套用變更或確認方案。
+
+方案卡修改只允許六種 strict tool 意圖：調整車輛、調整配送時段、改明天送、優先配送單筆訂單、凍結車線／站點，以及套用硬性配送時段。每次修改先由確定性排程器產生一張新的 `MODIFICATION` 方案卡；卡片必須通過 Validator，且完整候選的 `current plan/version` 不變。對話中的卡片只有在調度員選取「確認套用」後，才呼叫既有的方案確認端點建立新版本；取消或拒絕不會變更原方案。未列入白名單的修改會由 strict refusal tool 明確回覆不支援，不以 regex 或關鍵字判斷意圖。
 
 ### `GET /api/v1/providers/status`
 

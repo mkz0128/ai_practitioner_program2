@@ -7,8 +7,11 @@ from agents.testing import ScriptedModel, assistant_message
 
 from src.agent.urgent_workflow import (
     UrgentAction,
+    UrgentFieldAudit,
+    UrgentFieldAuditResult,
     UrgentOrderDraft,
     UrgentUnderstanding,
+    _apply_field_audit,
     advance_urgent_workflow,
     new_urgent_workflow,
     understand_urgent_message,
@@ -52,13 +55,148 @@ def test_vague_urgent_request_lists_all_required_fields_without_preview() -> Non
     assert result.should_preview is False
     assert result.missing_by_order[0].missing_fields == [
         "order_id",
-        "location",
+        "location_label",
+        "city",
+        "district",
+        "latitude",
+        "longitude",
         "zone_code",
         "package_weight_kg",
         "declared_package_count",
         "time_slot",
-        "priority",
     ]
+
+
+def test_location_clarification_is_field_level_and_priority_is_optional() -> None:
+    collecting = _step(
+        new_urgent_workflow(),
+        action="ADD_OR_UPDATE",
+        orders=[
+            UrgentOrderDraft(
+                order_id="ORD-101",
+                zone_code="Z4",
+                latitude=25.033,
+                longitude=121.565,
+                time_slot="MORNING",
+                declared_package_count=1,
+                package_weight_kg=15,
+            )
+        ],
+    )
+    assert collecting.missing_by_order[0].missing_fields == [
+        "city",
+        "district",
+    ]
+
+    completed = _step(
+        collecting.state,
+        action="ADD_OR_UPDATE",
+        orders=[
+            UrgentOrderDraft(
+                city="臺北市",
+                district="信義",
+                location_label="信義示範配送點 Z4-51",
+            )
+        ],
+    )
+    assert completed.state.stage == "REVIEW_READY"
+    assert completed.complete_orders[0].priority == "NORMAL"
+
+
+def test_coordinates_make_location_label_optional_and_generate_display_label() -> None:
+    result = _step(
+        new_urgent_workflow(),
+        action="ADD_OR_UPDATE",
+        orders=[
+            UrgentOrderDraft(
+                order_id="ORD-101",
+                zone_code="Z4",
+                city="臺北市",
+                district="信義",
+                latitude=25.033,
+                longitude=121.565,
+                time_slot="MORNING",
+                declared_package_count=1,
+                package_weight_kg=15,
+            )
+        ],
+    )
+
+    assert result.state.stage == "REVIEW_READY"
+    assert result.missing_by_order == []
+    assert result.complete_orders[0].location_label == "信義配送點"
+    assert "location_label" in result.complete_orders[0].derived_fields
+
+
+def test_missing_coordinates_keep_location_label_required_even_with_district() -> None:
+    result = _step(
+        new_urgent_workflow(),
+        action="ADD_OR_UPDATE",
+        orders=[
+            UrgentOrderDraft(
+                order_id="ORD-101",
+                zone_code="Z4",
+                city="臺北市",
+                district="信義",
+                time_slot="MORNING",
+                declared_package_count=1,
+                package_weight_kg=15,
+            )
+        ],
+    )
+
+    assert result.state.stage == "COLLECTING"
+    assert result.missing_by_order[0].missing_fields == [
+        "location_label",
+        "latitude",
+        "longitude",
+    ]
+
+
+def test_order_id_from_first_strict_pass_survives_audit_gap() -> None:
+    draft = UrgentOrderDraft(order_id="ORD-101")
+    audited = UrgentFieldAuditResult(orders=[UrgentFieldAudit(order=UrgentOrderDraft())])
+
+    result = _apply_field_audit(
+        UrgentUnderstanding(is_urgent_insertion=True, action="ADD_OR_UPDATE", orders=[draft]),
+        audited,
+    )
+
+    assert result.orders[0].order_id == "ORD-101"
+
+
+def test_location_name_cannot_supply_an_unstated_district() -> None:
+    result = _step(
+        new_urgent_workflow(),
+        action="ADD_OR_UPDATE",
+        orders=[
+            UrgentOrderDraft(
+                order_id="ORD-101",
+                zone_code="Z4",
+                city="臺北市",
+                district="信義",
+                location_label="信義示範配送點 Z4-51",
+                latitude=25.033,
+                longitude=121.565,
+                time_slot="MORNING",
+                declared_package_count=1,
+                package_weight_kg=15,
+                supplied_fields=[
+                    "order_id",
+                    "zone_code",
+                    "city",
+                    "location_label",
+                    "latitude",
+                    "longitude",
+                    "time_slot",
+                    "declared_package_count",
+                    "package_weight_kg",
+                ],
+            )
+        ],
+    )
+    assert result.state.stage == "COLLECTING"
+    assert result.missing_by_order[0].missing_fields == ["district"]
 
 
 def test_complete_order_stops_at_review_summary() -> None:

@@ -81,23 +81,46 @@ def _coerce_bool(value: Any) -> Any:
     return value
 
 
-def _rows(sheet: Any, sheet_name: str, errors: list[FieldError]) -> list[dict[str, Any]]:
+ColumnMapping = dict[str, dict[str, str]]
+
+
+def _rows(
+    sheet: Any,
+    sheet_name: str,
+    errors: list[FieldError],
+    column_mapping: ColumnMapping | None = None,
+) -> list[dict[str, Any]]:
     values = list(sheet.values)
     if not values:
         errors.append(FieldError(path=sheet_name, code="SHEET_EMPTY", message="工作表不得為空。"))
         return []
     expected = list(SHEET_FIELDS[sheet_name])
     headers = [str(value).strip() if value is not None else "" for value in values[0]]
-    if headers != expected:
+    mapped_headers = [
+        column_mapping.get(sheet_name, {}).get(header, header)
+        if column_mapping is not None
+        else header
+        for header in headers
+    ]
+    headers_are_valid = mapped_headers == expected
+    if column_mapping is not None:
+        headers_are_valid = (
+            len(mapped_headers) == len(expected)
+            and len(set(mapped_headers)) == len(expected)
+            and set(mapped_headers) == set(expected)
+        )
+    if not headers_are_valid:
         required_fields = {
             "orders": {"location_label", "time_slot"},
             "packages": {"weight_kg"},
         }.get(sheet_name, set())
-        missing_required_columns = sorted(required_fields - set(headers))
+        missing_required_columns = sorted(required_fields - set(mapped_headers))
         if missing_required_columns:
             identifier_field = "order_id" if sheet_name == "orders" else "package_id"
             identifier_index = (
-                headers.index(identifier_field) if identifier_field in headers else None
+                mapped_headers.index(identifier_field)
+                if identifier_field in mapped_headers
+                else None
             )
             for row_number, row in enumerate(values[1:], start=2):
                 if all(value is None for value in row):
@@ -124,7 +147,7 @@ def _rows(sheet: Any, sheet_name: str, errors: list[FieldError]) -> list[dict[st
             FieldError(
                 path=f"{sheet_name}[1]",
                 code="INVALID_HEADERS",
-                message="欄位順序或名稱不符合固定契約。",
+                        message="欄位對映後仍不符合資料契約。",
             )
         )
         return []
@@ -133,7 +156,7 @@ def _rows(sheet: Any, sheet_name: str, errors: list[FieldError]) -> list[dict[st
         if all(value is None for value in row):
             continue
         record: dict[str, Any] = {}
-        for index, field in enumerate(expected):
+        for index, field in enumerate(mapped_headers):
             value = row[index] if index < len(row) else None
             record[field] = _split_list(value) if field in LIST_FIELDS else value
         result.append(record)
@@ -141,7 +164,9 @@ def _rows(sheet: Any, sheet_name: str, errors: list[FieldError]) -> list[dict[st
 
 
 def parse_workbook(
-    source: str | Path | BinaryIO, source_filename: str = "workbook.xlsx"
+    source: str | Path | BinaryIO,
+    source_filename: str = "workbook.xlsx",
+    column_mapping: ColumnMapping | None = None,
 ) -> tuple[Dataset | None, ValidationReport]:
     errors: list[FieldError] = []
     try:
@@ -162,9 +187,24 @@ def parse_workbook(
         )
     if errors:
         return None, ValidationReport(is_valid=False, errors=errors)
-    records = {name: _rows(workbook[name], name, errors) for name in expected_sheets}
+    records = {
+        name: _rows(workbook[name], name, errors, column_mapping)
+        for name in expected_sheets
+    }
     if errors:
         return None, ValidationReport(is_valid=False, errors=errors)
+    if not records["orders"]:
+        return None, ValidationReport(
+            is_valid=False,
+            errors=[
+                FieldError(
+                    path="orders",
+                    code="EMPTY_DATASET",
+                    message="Excel 沒有訂單資料，請至少提供一筆訂單。",
+                    requires_manual_review=True,
+                )
+            ],
+        )
 
     orders: list[Order] = []
     packages: list[Package] = []

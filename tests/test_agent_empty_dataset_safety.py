@@ -10,18 +10,23 @@ from src.services.matrix import SimulatedRouteProvider
 @pytest.mark.parametrize(
     ("tool_name", "arguments"),
     [
-        ("plan_dispatch", {"objective": "FASTEST"}),
+        (
+            "plan_dispatch",
+            {"request": {"objective": "FASTEST", "plan_request_scope": "NEW_FORMAL_PLAN"}},
+        ),
         ("compare_strategies", {"request": {"select_strategy": None}}),
         ("simulate_delay", {"request": {"delay_minutes": 10}}),
         ("highest_load_vehicle", {}),
+        ("lowest_load_vehicle", {}),
+        ("vehicle_load", {"vehicle_id": "VEH-001"}),
         (
             "change_vehicle_availability",
             {"request": {"vehicle_id": "VEH-003", "status": "UNAVAILABLE"}},
         ),
-        (
-            "change_order_constraint",
-            {"request": {"order_id": "ORD-001", "time_slot": "PM", "priority": None}},
-        ),
+            (
+                "change_order_constraint",
+                {"request": {"order_id": "ORD-001", "time_slot": "PM"}},
+            ),
         (
             "change_frozen_stops",
             {"request": {"action": "FREEZE", "order_ids": [], "stop_count": 5}},

@@ -2,7 +2,13 @@ from pydantic import BaseModel, ConfigDict
 
 from src.domain.models import Dataset, VehicleStatus
 from src.services.matrix import MatrixResult
-from src.services.planner import AM_END, PM_END, SERVICE_SECONDS, PlanResult
+from src.services.planner import (
+    SERVICE_SECONDS,
+    PlanResult,
+    planner_time_window_bounds,
+    route_horizon_seconds,
+    uses_legacy_timing,
+)
 
 
 class PlanValidation(BaseModel):
@@ -16,6 +22,7 @@ class PlanValidation(BaseModel):
 def validate_plan(dataset: Dataset, plan: PlanResult, matrix: MatrixResult) -> PlanValidation:
     orders = {order.order_id: order for order in dataset.orders}
     vehicles = {vehicle.vehicle_id: vehicle for vehicle in dataset.vehicles}
+    legacy = uses_legacy_timing(dataset)
     matrix_index = {node_id: index for index, node_id in enumerate(matrix.node_ids)}
     seen: list[str] = []
     errors: list[str] = []
@@ -49,7 +56,8 @@ def validate_plan(dataset: Dataset, plan: PlanResult, matrix: MatrixResult) -> P
             if orders[stop.order_id].zone_code not in vehicle.service_zone_codes:
                 violations["cross_zone"] += 1
             order = orders[stop.order_id]
-            if stop.time_slot not in {"AM", "PM"}:
+            window = planner_time_window_bounds(stop.time_slot, legacy)
+            if window is None:
                 violations["time_window"] += 1
             if previous not in matrix_index or stop.order_id not in matrix_index:
                 errors.append(f"missing_matrix_node:{stop.order_id}")
@@ -58,9 +66,11 @@ def validate_plan(dataset: Dataset, plan: PlanResult, matrix: MatrixResult) -> P
             to_index = matrix_index[stop.order_id]
             leg_duration = matrix.duration_s[from_index][to_index]
             arrival = current_s + leg_duration
-            window_start, window_end = (
-                (0, AM_END) if order.time_slot == "AM" else (5 * 3600, PM_END)
-            )
+            window = planner_time_window_bounds(order.time_slot, legacy)
+            if window is None:
+                violations["time_window"] += 1
+                continue
+            window_start, window_end = window
             service_start = max(arrival, window_start)
             service_finish = service_start + SERVICE_SECONDS
             if service_finish > window_end:
@@ -75,7 +85,7 @@ def validate_plan(dataset: Dataset, plan: PlanResult, matrix: MatrixResult) -> P
             depot_index = matrix_index["DEPOT-001"]
             last_index = matrix_index[previous]
             return_duration = matrix.duration_s[last_index][depot_index]
-            if current_s + return_duration > PM_END:
+            if current_s + return_duration > route_horizon_seconds(legacy):
                 violations["time_window"] += 1
             route_distance += matrix.distance_m[last_index][depot_index]
             route_duration += return_duration
@@ -85,6 +95,8 @@ def validate_plan(dataset: Dataset, plan: PlanResult, matrix: MatrixResult) -> P
             errors.append(f"duration_total_mismatch:{route.vehicle_id}")
     assigned = set(seen)
     unassigned = set(plan.unassigned_orders)
+    if orders and not assigned:
+        errors.append("no_orders_assigned")
     if assigned & unassigned:
         errors.append("assigned_and_unassigned_overlap")
     if assigned | unassigned != set(orders):

@@ -1,416 +1,404 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { ApiError, chat, compareStrategies, confirmPlan, getMapData, getPlan, getPlanVersions, getProviderStatus, getValidation, importWorkbook, previewDelay, previewReassignment, previewUrgent, restorePlan } from './api'
-import { AgentPanel } from './components/AgentPanel'
-import { DetailsPanel } from './components/DetailsPanel'
-import { MapPanel } from './components/MapPanel'
-import { PlanInsights } from './components/PlanInsights'
-import { Sidebar } from './components/Sidebar'
-import { StatusBar } from './components/StatusBar'
-import { VehiclePanel } from './components/VehiclePanel'
-import type { ChatResponse, DelayPreview, MapData, Plan, PlanVersionSummary, ProviderStatus, StrategyComparison, UrgentOrderPayload, UrgentPackagePayload, UrgentPreview, ValidationPayload } from './types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ApiError, chat, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewRouteOrder, resetRuntimeState, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
+import { ChatPanel, MappingReview, type PendingMapping } from './components/ChatPanel'
+import { MapView } from './components/MapView'
+import { OrderTable } from './components/OrderTable'
+import { Badge, Button, Card, CardContent } from './components/ui'
+import { VehicleBoard } from './components/VehicleBoard'
+import { TimelineBoard } from './components/TimelineBoard'
+import { FleetRail } from './components/FleetRail'
+import { DeviationBoard } from './components/DeviationBoard'
+import { formatNumber } from './lib/utils'
+import { formatValidationError } from './lib/fieldLabels'
+import type { ChatResponse, ColumnMappingResponse, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
 
-type ChatProgress = (step: string) => void
-type ChatSubmitResult = { response: ChatResponse | null; error?: string }
-const ACTIVE_PLAN_STORAGE_KEY = 'dispatch.active-plan'
+function createSessionId(): string {
+  return `CONVERSATION-${crypto.randomUUID()}`
+}
 
-function errorText(error: unknown): string {
+function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
-    const fields = error.fieldErrors.map((field) => `${field.path}: ${field.message}`).join('；')
-    if (fields) return `${error.message} ${fields}`
-    const friendlyErrors: Record<string, string> = {
-      AGENT_RUN_FAILED: 'AI 助理暫時無法完成這次要求，請重試；目前方案沒有變更。',
-      AGENT_UNAVAILABLE: 'AI 助理目前未連線，資料匯入與既有方案仍可查看。',
-      PROVIDER_UNAVAILABLE: '路線服務暫時無法使用，請稍後重試；系統不會把示範資料當成即時結果。',
-      PLAN_NOT_CONFIRMABLE: '這份方案仍有未安排訂單或規則問題，目前不能確認。',
-      REASSIGNMENT_NOT_FEASIBLE: '這次換車不符合載重、服務區域或時段限制，原方案沒有變更。',
-    }
-    return friendlyErrors[error.code] || error.message
+    const labels: Record<string, string> = { AGENT_UNAVAILABLE: 'AI 助理目前未連線；資料匯入與確定性排班仍可使用。', AGENT_RUN_FAILED: 'AI 助理暫時無法完成這次要求，請重試。', INVALID_XLSX: '這個檔案不是可讀取的 Excel，請提供有效的 .xlsx 檔案。', INVALID_HEADERS: '工作表欄位需要先完成對映確認。', DUPLICATE_ID: '發現重複的訂單編號，請修正後再上傳。' }
+    if (error.fieldErrors.length > 0) return `${error.message} ${error.fieldErrors.map(formatValidationError).join('；')}`
+    return (labels[error.code] || error.message).trim() || '這次要求未完成，請再試一次。'
   }
-  if (error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message)) return '暫時無法完成這次操作，請重試。'
-  return error instanceof Error ? error.message : '發生未預期錯誤。'
+  if (error instanceof NetworkRequestError || error instanceof TypeError) return NETWORK_FAILURE_MESSAGE
+  return error instanceof Error ? error.message : '操作失敗，請稍後再試。'
 }
 
-function previewPayload(data: Record<string, unknown>): { order: UrgentOrderPayload; packages: UrgentPackagePayload[] } | null {
-  const order = data.structured_order
-  const packages = data.structured_packages
-  if (!order || !Array.isArray(packages)) return null
-  if (typeof order !== 'object' || order === null) return null
-  return { order: order as UrgentOrderPayload, packages: packages as UrgentPackagePayload[] }
+function mappingError(response: ColumnMappingResponse): string {
+  const details = response.error?.field_errors || []
+  const labels: Record<string, string> = {
+    INVALID_FILE_TYPE: '只接受 .xlsx 檔案。',
+    INVALID_XLSX: '這個檔案不是可讀取的 Excel，請提供有效的 .xlsx 檔案。',
+    EMPTY_WORKBOOK: '這個檔案沒有內容，請重新選擇 Excel。',
+    INVALID_SHEETS: '工作表需要包含 orders、packages、vehicles、zones。',
+    DATASET_VALIDATION_FAILED: '工作簿驗證失敗。',
+  }
+  const code = response.error?.code || ''
+  return [labels[code] || response.error?.message || '工作簿驗證失敗。', ...details.map(formatValidationError)].join('；')
 }
 
-function rejectedPreviewFromEvidence(data: Record<string, unknown>, activePlan: Plan): UrgentPreview | null {
-  if (data.feasible !== false) return null
-  if (!data.before || !data.after || !data.comparison || !data.diff) return null
-  if (typeof data.before !== 'object' || typeof data.after !== 'object'
-    || typeof data.comparison !== 'object' || typeof data.diff !== 'object') return null
-  return {
-    plan_id: activePlan.plan_id,
-    base_version: activePlan.version,
-    preview_version: activePlan.version,
-    feasible: false,
-    requires_human_confirmation: true,
-    mode: data.mode === 'MINIMAL_CHANGE' ? 'MINIMAL_CHANGE' : 'FULL_REPLAN',
-    full_replan_reason: typeof data.full_replan_reason === 'string' ? data.full_replan_reason : null,
-    affected_vehicle_count: typeof data.affected_vehicle_count === 'number' ? data.affected_vehicle_count : 0,
-    moved_order_count: typeof data.moved_order_count === 'number' ? data.moved_order_count : 0,
-    before: data.before as Plan['summary'],
-    after: data.after as Plan['summary'],
-    comparison: data.comparison as UrgentPreview['comparison'],
-    diff: data.diff as UrgentPreview['diff'],
-  }
+function stageLabel(stage: Plan['stage']): string {
+  if (stage === 'LOADED') return '上車後'
+  if (stage === 'DISPATCHED') return '已發車'
+  return '上車前'
 }
 
-function rejectedReassignmentPreview(error: ApiError, activePlan: Plan, orderId: string, targetVehicleId: string): UrgentPreview | null {
-  if (error.code !== 'REASSIGNMENT_NOT_FEASIBLE') return null
-  const sourceVehicleId = activePlan.vehicles.find((vehicle) => vehicle.stops.some((stop) => stop.order_id === orderId))?.vehicle_id
-  return {
-    plan_id: activePlan.plan_id,
-    base_version: activePlan.version,
-    preview_version: activePlan.version,
-    feasible: false,
-    requires_human_confirmation: true,
-    mode: 'MINIMAL_CHANGE',
-    full_replan_reason: null,
-    rejection_reason: '目標車輛的載重、服務區域或配送時段不符合要求；原方案完全沒有變更。',
-    affected_vehicle_count: new Set([sourceVehicleId, targetVehicleId].filter(Boolean)).size,
-    moved_order_count: 0,
-    before: activePlan.summary,
-    after: activePlan.summary,
-    comparison: {
-      base_algorithm: activePlan.algorithm,
-      preview_algorithm: activePlan.algorithm,
-      base_dataset_hash: activePlan.dataset_hash || '',
-      preview_dataset_hash: activePlan.dataset_hash || '',
-    },
-    diff: {
-      inserted_order_id: orderId,
-      reassigned_orders: [],
-      sequence_changes: [],
-      vehicle_load_changes: [],
-      total_distance_delta_m: 0,
-      total_duration_delta_s: 0,
-    },
-  }
+function previewInsertedOrderId(response: ChatResponse): string | null {
+  const workflow = response.evidence.find((item) => item.tool === 'urgent_insertion_workflow')
+  const preview = workflow?.data.preview
+  if (!preview || typeof preview !== 'object' || !Array.isArray((preview as Record<string, unknown>).inserted_orders)) return null
+  const inserted = (preview as Record<string, unknown>).inserted_orders as unknown[]
+  const first = inserted.find((item) => item !== null && typeof item === 'object' && typeof (item as Record<string, unknown>).order_id === 'string')
+  return first && typeof (first as Record<string, unknown>).order_id === 'string' ? (first as Record<string, unknown>).order_id as string : null
+}
+
+function DispatchRuleBoard({ rules, activeCount, expanded, busy, onToggle, onDeactivate }: { rules: DispatchRuleRecord[]; activeCount: number; expanded: boolean; busy: boolean; onToggle: () => void; onDeactivate: (ruleId: string) => void; rulesExpanded?: boolean }) {
+  if (rules.length === 0) return null
+  return <Card aria-label="司機規則清單"><CardContent><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="mt-1 text-base font-bold text-slate-900">已套用 {formatNumber(activeCount)} 條規則</h2></div><Button type="button" variant="outline" aria-expanded={expanded} onClick={onToggle}>{expanded ? '收合規則清單' : '展開規則清單'}</Button></div>{expanded && <div className="mt-4 space-y-3">{rules.map((rule) => <div key={rule.rule_id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><strong className="text-sm text-slate-900">{rule.summary}</strong><Badge tone={rule.active_now ? 'success' : 'neutral'}>{rule.active_now ? '啟用中' : '已停用'}</Badge></div>{rule.active_now && <Button type="button" variant="ghost" disabled={busy} onClick={() => onDeactivate(rule.rule_id)}>停用</Button>}</div><p className="mt-2 text-xs leading-5 text-slate-600">原句：{rule.source_utterance}</p>{rule.expires_at && <p className="mt-1 text-xs text-slate-500">到期：{rule.expires_at}</p>}</div>)}</div>}</CardContent></Card>
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'assistant' | 'tasks' | 'tracking'>('assistant')
-  const [sessionId] = useState(() => `CONVERSATION-${Math.random().toString(36).slice(2, 10).toUpperCase()}`)
-  const [validation, setValidation] = useState<ValidationPayload | null>(null)
-  const [activeDatasetId, setActiveDatasetId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState(createSessionId)
   const [plan, setPlan] = useState<Plan | null>(null)
-  const [mapData, setMapData] = useState<MapData | null>(null)
+  const [map, setMap] = useState<MapData | null>(null)
   const [providers, setProviders] = useState<ProviderStatus[]>([])
-  const [mapsStatus, setMapsStatus] = useState<'missing' | 'configured' | 'connected' | 'failed'>(() =>
-    import.meta.env.VITE_GOOGLE_MAPS_BROWSER_API_KEY || window.__DISPATCH_RUNTIME_CONFIG__?.googleMapsBrowserApiKey ? 'configured' : 'missing',
-  )
-  const [preview, setPreview] = useState<UrgentPreview | null>(null)
-  const [strategyComparison, setStrategyComparison] = useState<StrategyComparison | null>(null)
-  const [delayPreview, setDelayPreview] = useState<DelayPreview | null>(null)
-  const [planVersions, setPlanVersions] = useState<{ current_version: number; versions: PlanVersionSummary[] } | null>(null)
+  const [dispatchRules, setDispatchRules] = useState<DispatchRuleRecord[]>([])
+  const [activeRuleCount, setActiveRuleCount] = useState(0)
+  const [rulesExpanded, setRulesExpanded] = useState(false)
   const [activeVehicle, setActiveVehicle] = useState<string | null>(null)
-  const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
+  const [activeOrder, setActiveOrder] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [demoGate, setDemoGate] = useState({ required: false, authenticated: true })
-  const [demoPassword, setDemoPassword] = useState('')
-  const [demoLoginError, setDemoLoginError] = useState<string | null>(null)
-  const [demoLoginBusy, setDemoLoginBusy] = useState(false)
+  const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(null)
+  const [mappingDraft, setMappingDraft] = useState<Record<string, Record<string, string>>>({})
+  const [mappingName, setMappingName] = useState('')
+  const [timelineMinutes, setTimelineMinutes] = useState(120)
+  const [confirmedParameterSuggestions, setConfirmedParameterSuggestions] = useState<string[]>([])
+  const [conversationOrderId, setConversationOrderId] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    // The local app has no gate by default. A Render deployment can enable it
-    // with DEMO_ACCESS_PASSWORD without baking the password into the bundle.
-    void fetch('/auth/status')
-      .then((response) => (response.ok ? response.json() as Promise<{ required?: boolean; authenticated?: boolean }> : null))
-      .then((status) => {
-        if (status?.required) setDemoGate({ required: true, authenticated: Boolean(status.authenticated) })
-      })
-      .catch(() => undefined)
+  useEffect(() => { getProviderStatus().then((result) => setProviders(result.providers)).catch(() => setProviders([])); getDispatchRules().then((result) => { setDispatchRules(result.rules); setActiveRuleCount(result.active_count) }).catch(() => { setDispatchRules([]); setActiveRuleCount(0) }) }, [])
+
+  const refreshDispatchRules = useCallback(async () => {
+    const result = await getDispatchRules()
+    setDispatchRules(result.rules)
+    setActiveRuleCount(result.active_count)
   }, [])
 
-  const loginToDemo = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!demoPassword || demoLoginBusy) return
-    setDemoLoginBusy(true); setDemoLoginError(null)
+  const loadFile = useCallback(async (file: File, columnMapping?: Record<string, Record<string, string>>, mappingName?: string) => {
+    setBusy(true); setError(null); setNotice('讀取今日訂單…')
+    abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
     try {
-      const response = await fetch('/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ password: demoPassword }),
-      })
-      if (!response.ok) throw new Error('展示環境密碼不正確。')
-      setDemoGate({ required: true, authenticated: true })
-      setDemoPassword('')
-      await refreshProviders()
-    } catch (loginError) {
-      setDemoLoginError(loginError instanceof Error ? loginError.message : '登入失敗，請重試。')
-    } finally { setDemoLoginBusy(false) }
-  }
+      const imported = await importWorkbook(file, columnMapping, mappingName, controller.signal)
+      if (!imported.validation.is_valid) { setError(imported.validation.errors.map(formatValidationError).join('；') || '資料需要人工複核，請先修正。'); return }
+      setNotice('建立距離矩陣…')
+      // 這裡只是讓「建立距離矩陣…」有機會畫出來再往下跑。
+      // 不要用 requestAnimationFrame——分頁沒有在繪製時（視窗被蓋住、
+      // 投影切換、瀏覽器面板隱藏）rAF 永遠不會觸發，整個開場就卡死在這一行。
+      // 2026-09-14 實測：Playwright 有在繪製所以看不出來，真的開瀏覽器就中。
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+      setNotice('OR-Tools 求解中…')
+      const created = await createPlan(imported.dataset_id, 'BALANCED', controller.signal)
+      setPlan(created); setConversationOrderId(created.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null); setMap(await getMapData(created.plan_id, created.version, controller.signal)); await refreshDispatchRules(); setNotice(`已完成 ${formatNumber(created.completeness.assigned_order_count)}／${formatNumber(created.completeness.total_order_count)} 張訂單的排班，方案待人工確認。`)
+    } catch (requestError) { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [refreshDispatchRules])
 
-  const refreshProviders = useCallback(async () => {
-    try { setProviders((await getProviderStatus()).providers) } catch { setProviders([]) }
-  }, [])
-
-  useEffect(() => { void refreshProviders() }, [refreshProviders])
-
-  useEffect(() => {
-    // The Browser key is public client configuration. Read only its presence
-    // for status display; the value is never rendered or logged here.
-    void fetch('/api/v1/runtime-config')
-      .then((response) => (response.ok ? response.json() as Promise<{ google_maps_browser_api_key?: string }> : null))
-      .then((config) => {
-        if (config) {
-          setMapsStatus((current) => current === 'connected'
-            ? current
-            : config.google_maps_browser_api_key ? 'configured' : 'missing')
-        }
-      })
-      .catch(() => undefined)
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const stored = window.localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY)
-    if (!stored) return () => { cancelled = true }
-    try {
-      const reference = JSON.parse(stored) as { plan_id?: unknown; version?: unknown }
-      if (typeof reference.plan_id !== 'string') throw new Error('INVALID_PLAN_REFERENCE')
-      void getPlan(reference.plan_id, typeof reference.version === 'number' ? reference.version : undefined)
-        .then(async (restored) => {
-          if (cancelled) return
-          if (restored.algorithm !== 'ORTOOLS') {
-            window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
-            setNotice('先前儲存的是快速初步方案，已停止載入；請建立新的最佳化配送方案。')
-            return
-          }
-          setPlan(restored)
-          setMapData(await getMapData(restored.plan_id, restored.version))
-          setActiveOrderId(restored.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
-        })
-        .catch(() => window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY))
-    } catch {
-      window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
-    }
-    return () => { cancelled = true }
-  }, [])
-
-  const prepareAttachment = async (file: File, reportProgress: ChatProgress, signal: AbortSignal): Promise<string> => {
-    if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('只接受 .xlsx Excel 檔案，請選擇正確格式。')
-    if (file.size === 0) throw new Error('這個 Excel 檔案是空的，請重新選擇檔案。')
-    reportProgress('正在讀取訂單')
-    const imported = await importWorkbook(file, signal)
-    setActiveDatasetId(imported.dataset_id)
-    const report = await getValidation(imported.dataset_id, signal)
-    setValidation(report.validation)
-    reportProgress('資料驗證完成')
-    if (!report.validation.is_valid) {
-      const fields = report.validation.errors.map((item) => item.path).join('、')
-      throw new Error(`資料需要人工複核${fields ? `：${fields}` : '。'}`)
-    }
-    await refreshProviders()
-    setNotice(`已匯入 ${imported.counts.orders} 張訂單、${imported.counts.vehicles} 台車；接著由 Agent 依你的要求建立方案。`)
-    return imported.dataset_id
-  }
-
-  const handleUseExample = async (): Promise<File> => {
-    const response = await fetch('/demo-delivery-40-orders.xlsx')
-    if (!response.ok) throw new Error('範例資料載入失敗。')
-    return new File([await response.blob()], 'demo-delivery-40-orders.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  }
-
-  const handleChat = async (message: string, attachment?: File, reportProgress?: ChatProgress): Promise<ChatSubmitResult> => {
+  const inspectFile = useCallback(async (file: File): Promise<ColumnMappingResponse | null> => {
     setBusy(true); setError(null); setNotice(null)
+    abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
+    try {
+      const result = await inspectWorkbook(file, controller.signal)
+      return result.status === 'CANONICAL' ? null : result
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const handleInitialFile = useCallback(async (file: File) => {
+    if (!file) return
+    try {
+      const mapping = await inspectFile(file)
+      if (mapping?.status === 'INVALID') { setError(mappingError(mapping)); return }
+      if (mapping?.requires_confirmation) {
+        setPendingMapping({ file, response: mapping })
+        setMappingDraft(mapping.mapping)
+        setMappingName('')
+        return
+      }
+      await loadFile(file, mapping?.mapping)
+    } catch (requestError) {
+      setError(friendlyError(requestError))
+    }
+  }, [inspectFile, loadFile])
+
+  // 一定要載 tight，不要換成 relaxed。實測（2026-09-14）：
+  //   relaxed 的 VEH-003 最大單件只有 7.5 kg，超過 20 kg 的有 0 張，
+  //   「老王腰傷、20 公斤以上不要給他」套下去是「影響 0 張、距離 0 km」——整幕是空的；
+  //   而且 relaxed 是 50/50，沒有排不進去的單，「它不會硬塞」那題也沒東西演。
+  //   tight 的 VEH-003 有 4 張超過 20 kg（22／22／22／45），且 ORD-050 排不進去。
+  const DEFAULT_DEMO_WORKBOOK = 'demo-50-tight.xlsx'
+  const loadDefaultDemo = useCallback(async () => {
+    try {
+      const response = await fetch(`/${DEFAULT_DEMO_WORKBOOK}`)
+      if (!response.ok) throw new Error('預設範例資料載入失敗。')
+      const blob = await response.blob()
+      await handleInitialFile(new File([blob], DEFAULT_DEMO_WORKBOOK, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    } catch (requestError) {
+      setError(friendlyError(requestError))
+    }
+  }, [handleInitialFile])
+
+  // 只能在掛載時跑一次。
+  // 不要寫成 useEffect(..., [loadDefaultDemo])——loadDefaultDemo 的識別會隨著
+  // handleInitialFile / loadFile / refreshDispatchRules 這條相依鏈變動，
+  // 於是每次 render 都重跑一次開場載入。loadFile 第一行是 abortRef.current?.abort()，
+  // 而聊天用的是同一個 abortRef，結果就是「使用者送出訊息後畫面永遠停在計算中」。
+  // 2026-09-14 實測：後端 8 秒就回答完，瀏覽器超過 50 秒還卡著，Console 沒有任何錯誤。
+  const bootstrapped = useRef(false)
+  useEffect(() => {
+    if (bootstrapped.current) return
+    bootstrapped.current = true
+    void loadDefaultDemo()
+  }, [loadDefaultDemo])
+
+  function updateInitialMapping(sheet: string, source: string, target: string) {
+    setMappingDraft((current) => {
+      const nextSheet = { ...(current[sheet] || {}) }
+      if (target) nextSheet[source] = target
+      else delete nextSheet[source]
+      return { ...current, [sheet]: nextSheet }
+    })
+  }
+
+  async function confirmInitialMapping() {
+    if (!pendingMapping) return
+    try {
+      await loadFile(pendingMapping.file, mappingDraft, mappingName.trim() || undefined)
+      setPendingMapping(null); setMappingDraft({}); setMappingName('')
+    } catch {
+      // loadFile already presents a user-facing validation message.
+    }
+  }
+
+  const onChat = useCallback(async (message: string, action?: 'PREVIEW_URGENT'): Promise<{ response: ChatResponse | null; error?: string }> => {
     const controller = new AbortController()
+    abortRef.current?.abort()
     abortRef.current = controller
     try {
-      let datasetId = activeDatasetId
-      if (attachment) datasetId = await prepareAttachment(attachment, reportProgress || (() => undefined), controller.signal)
-      const context: Record<string, unknown> = plan
-        ? { plan_id: plan.plan_id, plan_version: plan.version }
-        : (datasetId ? { dataset_id: datasetId } : {})
-      if (datasetId && !plan) reportProgress?.('正在規劃配送')
-      const response = await chat(sessionId, message, context, controller.signal)
-      let activePlan = plan
-      if (response.plan_id) {
-        activePlan = await getPlan(response.plan_id, response.plan_version ?? undefined)
-        if (activePlan.algorithm !== 'ORTOOLS') {
-          throw new Error('正式方案必須使用最佳化配送方案，快速初步方案只能用於比較。')
-        }
-        setPlan(activePlan)
-        setActiveDatasetId(activePlan.dataset_id)
-        window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: activePlan.plan_id, version: activePlan.version }))
-        setActiveOrderId(activePlan.vehicles.find((vehicle) => vehicle.stops.length)?.stops[0]?.order_id ?? null)
-        setMapData(await getMapData(activePlan.plan_id, activePlan.version, controller.signal))
-        reportProgress?.('方案已建立')
-      }
-      const previewEvidence = response.evidence.find((item) =>
-        item.tool === 'preview_urgent_insert' || item.tool === 'preview_structured_urgent_insert')
-      const urgentWorkflowEvidence = response.evidence.find((item) => item.tool === 'urgent_insertion_workflow')
-      const workflowPreview = urgentWorkflowEvidence?.data.preview
-      if (workflowPreview && typeof workflowPreview === 'object' && activePlan) {
-        const previewResult = workflowPreview as UrgentPreview
-        setPreview(previewResult)
-        setMapData(await getMapData(activePlan.plan_id, previewResult.preview_version, controller.signal))
-      }
-      const structuredPreview = previewEvidence ? previewPayload(previewEvidence.data) : null
-      const rejectedPreview = previewEvidence && activePlan
-        ? rejectedPreviewFromEvidence(previewEvidence.data, activePlan)
-        : null
-      if (rejectedPreview) {
-        // An infeasible deterministic preview is evidence worth showing, but it
-        // must never be persisted as a candidate version or become confirmable.
-        setPreview(rejectedPreview)
-      } else if (!workflowPreview && structuredPreview && activePlan && (!preview || preview.base_version !== activePlan.version)) {
-        // The Agent tool remains evidence-only; this REST preview creates the
-        // proposed immutable version used by the human confirmation button.
-        setPreview(await previewUrgent(activePlan.plan_id, activePlan.version, structuredPreview.order, structuredPreview.packages, controller.signal))
+      const response = await chat(sessionId, message, { plan_id: plan?.plan_id || null, plan_version: plan?.version || null, dataset_id: plan?.dataset_id || null, order_id: conversationOrderId, stage: plan?.stage || 'PRE_LOAD', timeline_minutes: plan?.stage === 'DISPATCHED' ? timelineMinutes : null }, controller.signal, action)
+      const insertedOrderId = previewInsertedOrderId(response)
+      if (insertedOrderId) setConversationOrderId(insertedOrderId)
+      const priorityPreviewVersion = response.evidence.find(
+        (entry) => entry.tool === 'prioritize_order_preview',
+      )?.data.preview_version
+      if (
+        response.plan_id &&
+        typeof priorityPreviewVersion === 'number'
+      ) {
+        setMap(
+          await getMapData(
+            response.plan_id,
+            priorityPreviewVersion,
+            undefined,
+            plan?.stage === 'DISPATCHED' ? timelineMinutes : undefined,
+          ),
+        )
       }
       return { response }
     } catch (requestError) {
-      const messageText = requestError instanceof DOMException && requestError.name === 'AbortError' ? '已停止這次處理。' : errorText(requestError)
-      return { response: null, error: messageText }
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return { response: null, error: '已停止這次計算。' }
+      return { response: null, error: friendlyError(requestError) }
     } finally {
       if (abortRef.current === controller) abortRef.current = null
-      setBusy(false)
     }
-  }
+  }, [conversationOrderId, plan, sessionId, timelineMinutes])
 
-  const handleStop = () => { abortRef.current?.abort() }
-
-  const handleReset = () => {
-    abortRef.current?.abort()
-    window.localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY)
-    setValidation(null); setActiveDatasetId(null); setPlan(null); setMapData(null); setPreview(null)
-    setStrategyComparison(null); setDelayPreview(null); setPlanVersions(null); setActiveVehicle(null); setActiveOrderId(null)
-    setBusy(false); setError(null); setNotice('已清除目前畫面與未確認變更，可以重新匯入訂單。')
-  }
-
-  const handleConfirm = async () => {
-    if (!plan || (!preview && !plan.confirmability.can_confirm)) return
-    setBusy(true); setError(null)
+  const handleConfirmOption = useCallback(async (option: UrgentPlanOption) => {
+    if (busy) return
+    setBusy(true); setError(null); setNotice(null)
     try {
-      const confirmed = await confirmPlan(plan.plan_id, preview?.preview_version ?? plan.version)
+      const confirmed = await confirmPlan(option.plan_id, option.preview_version, sessionId)
       setPlan(confirmed)
-      setPreview(null)
-      window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: confirmed.plan_id, version: confirmed.version }))
-      setMapData(await getMapData(confirmed.plan_id, confirmed.version))
-      setPlanVersions(null)
-      setNotice(`已確認方案版本 ${confirmed.version}；本控制塔未執行正式派車。`)
-    } catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
+      setMap(await getMapData(confirmed.plan_id, confirmed.version))
+      if (option.change?.order_id) setConversationOrderId(option.change.order_id)
+      setNotice(`已確認${option.label}，建立新版本 v${confirmed.version}；原版本仍保留。`)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, sessionId])
 
-  const handleCompareStrategies = async () => {
-    if (!plan || busy) return
-    setBusy(true); setError(null)
-    try { setStrategyComparison(await compareStrategies(plan.dataset_id, plan.plan_id, plan.version)) }
-    catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
-
-  const handleDelayPreview = async (minutes: 10 | 20 | 30) => {
-    if (!plan || busy) return
-    setBusy(true); setError(null)
-    try { setDelayPreview(await previewDelay(plan.plan_id, plan.version, minutes)) }
-    catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
-
-  const handleLoadVersions = async () => {
-    if (!plan || busy) return
-    setBusy(true); setError(null)
-    try { setPlanVersions(await getPlanVersions(plan.plan_id)) }
-    catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
-
-  const handleRestoreVersion = async (version: number) => {
-    if (!plan || busy) return
-    setBusy(true); setError(null)
+  const handleConfirmRule = useCallback(async (option: DispatchRuleOption) => {
+    if (busy || !option.plan_id || option.base_version === null) return
+    setBusy(true); setError(null); setNotice(null)
     try {
-      const restored = await restorePlan(plan.plan_id, version)
-      setPlan(restored)
-      setMapData(await getMapData(restored.plan_id, restored.version))
-      window.localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, JSON.stringify({ plan_id: restored.plan_id, version: restored.version }))
-      setPlanVersions(null)
-      setNotice(`已建立復原草稿 V${restored.version}；請人工確認後再套用。`)
-    } catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
+      const result = await confirmDispatchRule(option)
+      await refreshDispatchRules()
+      setRulesExpanded(true)
+      setNotice(`已套用 ${formatNumber(result.active_count)} 條規則；重新排班後生效。`)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, refreshDispatchRules])
 
-  const handleCancelPreview = async () => {
-    if (!plan || !preview || busy) return
-    setBusy(true); setError(null)
+  const handleConfirmDeviation = useCallback(async (suggestion: DispatchDeviationSuggestion) => {
+    if (!plan || busy || plan.stage !== 'DISPATCHED') return
+    setBusy(true); setError(null); setNotice(null)
     try {
-      setPreview(null)
-      setMapData(await getMapData(plan.plan_id, preview.base_version))
-      setNotice('已取消這次預覽；目前方案維持未變更。')
-    } catch (requestError) { setError(errorText(requestError)) }
-    finally { setBusy(false) }
-  }
+      await confirmDispatchParameter(plan.plan_id, plan.version, suggestion.zone_code, suggestion.from_service_minutes, suggestion.to_service_minutes)
+      setConfirmedParameterSuggestions((current) => current.includes(suggestion.suggestion_id) ? current : [...current, suggestion.suggestion_id])
+      setMap(await getMapData(plan.plan_id, plan.version, undefined, timelineMinutes))
+      setNotice(`已確認 ${suggestion.zone_code} 服務時間 ${suggestion.from_service_minutes} → ${suggestion.to_service_minutes} 分鐘；重新排班後生效。`)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, plan, timelineMinutes])
 
-  const handleReassignPreview = async (orderId: string, targetVehicleId: string) => {
+  const handleDeactivateRule = useCallback(async (ruleId: string) => {
+    if (busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const result = await deactivateDispatchRule(ruleId)
+      await refreshDispatchRules()
+      setNotice(`規則已停用，目前已套用 ${formatNumber(result.active_count)} 條規則。`)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, refreshDispatchRules])
+
+  const handleReplan = useCallback(async () => {
     if (!plan || busy) return
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setNotice(null)
     try {
-      const result = await previewReassignment(plan.plan_id, plan.version, orderId, targetVehicleId)
-      const affected = new Set<string>()
-      result.diff.vehicle_load_changes.forEach((change) => { if (typeof change.vehicle_id === 'string') affected.add(change.vehicle_id) })
-      result.diff.sequence_changes.forEach((change) => {
-        if (typeof change.from_vehicle_id === 'string') affected.add(change.from_vehicle_id)
-        if (typeof change.to_vehicle_id === 'string') affected.add(change.to_vehicle_id)
-      })
-      setPreview({ ...result, feasible: result.validator.valid, requires_human_confirmation: true, mode: 'MINIMAL_CHANGE', full_replan_reason: null, affected_vehicle_count: affected.size, moved_order_count: result.diff.reassigned_orders.length, comparison: { base_algorithm: plan.algorithm, preview_algorithm: plan.algorithm, base_dataset_hash: plan.dataset_hash || '', preview_dataset_hash: plan.dataset_hash || '' } })
-      // A reassignment response is an immutable PROPOSED preview. Keep the
-      // current plan pointer on the confirmed/base version until the operator
-      // explicitly confirms it, while showing the preview geometry in the map.
-      setMapData(await getMapData(plan.plan_id, result.preview_version))
-      setActiveVehicle(targetVehicleId)
-      setActiveOrderId(orderId)
-    } catch (requestError) {
-      if (requestError instanceof ApiError) {
-        const rejected = rejectedReassignmentPreview(requestError, plan, orderId, targetVehicleId)
-        if (rejected) {
-          setPreview(rejected)
-          setActiveVehicle(targetVehicleId)
-          setActiveOrderId(orderId)
-          return
-        }
-      }
-      setError(errorText(requestError))
-    }
-    finally { setBusy(false) }
-  }
+      const replanned = await createPlan(plan.dataset_id, plan.objective || 'BALANCED')
+      setPlan(replanned)
+      setMap(await getMapData(replanned.plan_id, replanned.version))
+      setConversationOrderId(replanned.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null)
+      setNotice(replanned.parameter_replan?.applied ? `已重新排班；已用新參數重新排班，目前 ${formatNumber(replanned.completeness.assigned_order_count)}／${formatNumber(replanned.completeness.total_order_count)} 張已安排，結果如實顯示。` : activeRuleCount > 0 ? `已重新排班，確定性求解器已套用 ${formatNumber(activeRuleCount)} 條規則。` : '已重新排班，方案待人工確認。')
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [activeRuleCount, busy, plan])
 
-  if (demoGate.required && !demoGate.authenticated) {
-    return <div className="demo-gate"><form className="demo-login-card" onSubmit={loginToDemo}><div className="brand-mark">AI</div><h1>展示環境登入</h1><p>請輸入展示密碼以開始使用配送調度 Copilot。</p><input aria-label="展示密碼" type="password" autoComplete="current-password" value={demoPassword} onChange={(event) => setDemoPassword(event.target.value)} placeholder="展示密碼" /><button className="control-button" type="submit" disabled={demoLoginBusy}>{demoLoginBusy ? '登入中…' : '登入展示環境'}</button>{demoLoginError && <div className="error-box" role="alert">{demoLoginError}</div>}</form></div>
-  }
+  const handleStartLoading = useCallback(async () => {
+    if (!plan || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const loaded = await startLoading(plan.plan_id, plan.version)
+      setPlan(loaded)
+      setMap(await getMapData(loaded.plan_id, loaded.version))
+      setNotice('已開始裝車。既有訂單的車輛指派已鎖定，現在可調整配送順序與合法插單。')
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, plan])
 
-  return <div className="app-shell">
-    <Sidebar activeView={activeView} onViewChange={(view) => { setActiveView(view); document.getElementById(view === 'assistant' ? 'planning' : view)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />
-    <div className="app-content">
-      <StatusBar plan={plan} providers={providers} mapsStatus={mapsStatus} onReset={handleReset} />
-      <main className="page-content">
-          <div className="control-tower-grid" id="planning">
-            <AgentPanel onChat={handleChat} onUseExample={handleUseExample} onStop={handleStop} busy={busy} />
-            <MapPanel data={mapData} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrderId} onMapStatus={setMapsStatus} />
-            <VehiclePanel plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onReassignPreview={handleReassignPreview} />
+  const handleSimulateDeparture = useCallback(async () => {
+    if (!plan || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const dispatched = await simulateDeparture(plan.plan_id, plan.version)
+      const startingMinutes = 120
+      setTimelineMinutes(startingMinutes)
+      setPlan(dispatched)
+      setMap(await getMapData(dispatched.plan_id, dispatched.version, undefined, startingMinutes))
+      setNotice('已進入本地示範的已發車階段；正式 Dispatch 仍維持停用。')
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, plan])
+
+  const handleUnloadRequest = useCallback(() => {
+    setError('已開始裝車；回到上車前會牽涉卸貨重裝，請由現場主管人工處理，系統沒有靜默退回。')
+  }, [])
+
+  const handleTimelineChange = useCallback(async (value: number) => {
+    if (!plan || plan.stage !== 'DISPATCHED') return
+    setBusy(true)
+    setError(null)
+    setTimelineMinutes(value)
+    try {
+      const nextMap = await getMapData(plan.plan_id, plan.version, undefined, value)
+      setMap(nextMap)
+      const nextStop = nextMap.routes
+        .flatMap((route) => route.stops)
+        .find((stop) => stop.status === 'CURRENT' || stop.status === 'UPCOMING')
+      if (nextStop) setConversationOrderId(nextStop.order_id)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [plan])
+
+  const handlePreviewRouteOrder = useCallback(async (vehicleId: string, orderIds: string[]): Promise<RouteOrderPreview> => {
+    if (!plan) throw new Error('目前沒有可預覽的方案。')
+    return previewRouteOrder(plan.plan_id, plan.version, vehicleId, orderIds, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
+  }, [plan, timelineMinutes])
+
+  const handleConfirmRouteOrder = useCallback(async (preview: RouteOrderPreview) => {
+    if (!plan || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const confirmed = await confirmRouteOrder(plan.plan_id, plan.version, preview.vehicle_id, preview.order_ids, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
+      setPlan(confirmed)
+      setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      setNotice(`已套用 ${preview.vehicle_id} 新站序，方案版本更新為 v${confirmed.version}。`)
+    } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
+  }, [busy, plan, timelineMinutes])
+
+  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setActiveOrder(null); setConversationOrderId(null); setPendingMapping(null); setMappingDraft({}); setMappingName(''); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setError(null); setNotice(null); try { await resetRuntimeState(); await loadDefaultDemo() } catch (requestError) { setError(friendlyError(requestError)) } }
+  const google = providers.find((item) => item.name === 'google_routes')
+
+  if (!plan) return <div className="startup-shell"><div className="startup-card"><div className="brand-lockup"><span className="brand-mark">DT</span><span>Dispatch Tower</span></div><h1>配送調度控制塔</h1><p className="startup-status" role="status">{notice || (busy ? '讀取今日訂單…' : '準備今日資料…')}</p>{pendingMapping && <MappingReview pending={pendingMapping} value={mappingDraft} onChange={updateInitialMapping} name={mappingName} onNameChange={setMappingName} onConfirm={() => void confirmInitialMapping()} onCancel={() => { setPendingMapping(null); setMappingDraft({}) }} busy={busy} />}{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div></div>
+
+  return (
+    <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand-lockup">
+            <span className="brand-mark">DT</span>
+            <div>
+              <h1>配送調度控制塔</h1>
+            </div>
           </div>
-          <div id="tasks"><DetailsPanel plan={plan} preview={preview} onConfirm={handleConfirm} onCancelPreview={handleCancelPreview} busy={busy} activeOrderId={activeOrderId} onSelectOrder={setActiveOrderId} /></div>
-          <div id="tracking">
-          <PlanInsights plan={plan} comparison={strategyComparison} delayPreview={delayPreview} versions={planVersions} busy={busy} onCompare={handleCompareStrategies} onDelay={handleDelayPreview} onLoadVersions={handleLoadVersions} onRestore={handleRestoreVersion} />
+          <div className="topbar-stats">
+            <span><strong>{plan.completeness.total_order_count}</strong> 張訂單</span>
+            <span><strong>{plan.vehicles.length}</strong> 台車</span>
+            <span className="stat-headline"><strong>{plan.completeness.assigned_order_count}/{plan.completeness.total_order_count}</strong> 已安排</span>
+            {activeRuleCount > 0 && <span className="stat-rule"><strong>{activeRuleCount}</strong> 條規則</span>}
           </div>
-      </main>
-      <div className="app-feedback">
-      {busy && <div className="hint">正在整理訂單與配送方案…</div>}
-      {notice && <div className="success-box">{notice}</div>}
-      {validation && !validation.is_valid && <div className="warning-box">資料驗證需要人工複核：{validation.errors.map((item) => item.path).join('、')}</div>}
-      {error && <div className="error-box" role="alert">{error}</div>}
-      <div className="hint safety-note" style={{ marginTop: 10 }}>所有方案變更都會先預覽，並在人工確認後才會套用。</div>
+          <div className="topbar-actions">
+            <label className="toolbar-upload">換一份資料<input className="file-input" type="file" accept=".xlsx" aria-label="上傳 Excel" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleInitialFile(file); event.currentTarget.value = '' }} /></label>
+            {plan.stage === 'PRE_LOAD' && <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleStartLoading()}>開始裝車</Button>}
+            {plan.stage === 'PRE_LOAD' && <Button type="button" variant="outline" disabled={busy} onClick={() => void handleReplan()}>重新排班</Button>}
+            {plan.stage === 'DISPATCHED' && confirmedParameterSuggestions.length > 0 && <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleReplan()}>用新參數重排</Button>}
+            {plan.stage === 'LOADED' && <><Button type="button" variant="secondary" disabled={busy} onClick={() => void handleSimulateDeparture()}>模擬出發</Button><Button type="button" variant="ghost" disabled={busy} onClick={handleUnloadRequest}>退回上車前（需人工處理）</Button></>}
+            <Button type="button" variant="outline" onClick={() => void reset()}>重新開始</Button>
+          </div>
+        </div>
+        {/* 階段列是整場 Demo 的劇情指示器：顏色隨階段改變，台下一眼看出推進到哪一幕 */}
+        <div className="status-strip">
+          <span className="stage-pill"><i />{stageLabel(plan.stage)}</span>
+          <span className="stage-note">{plan.stage === 'PRE_LOAD' ? '貨還在站內，車輛指派與順序都可以改' : plan.stage === 'LOADED' ? '貨已在車上，不能跨車移動，只能改順序' : '車在路上，只能重排還沒送的站'}</span>
+          <span className="status-provider">模擬資料 · OSM 底圖 · Google Routes {google?.enabled ? '未採用' : '停用'}</span>
+        </div>
+      </header>
+
+      <div className="stage">
+        <div className="stage-map">
+          <MapView data={map} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrder} />
+        </div>
+
+        <div className="stage-chat">
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} busy={busy} onStop={() => abortRef.current?.abort()} plan />
+        </div>
+
+        <div className="stage-dock">
+          <FleetRail data={map} plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
+        </div>
+
+        <div className="stage-toasts">
+          {error && <div className="feedback feedback-error" role="alert">{error}</div>}
+          {notice && <div className="feedback feedback-success" role="status">{notice}</div>}
+        </div>
       </div>
+
+      <section className="detail-drawer" aria-label="方案明細">
+        <div className="detail-inner">
+          {plan.stage === 'DISPATCHED' && map && <TimelineBoard data={map} timelineMinutes={timelineMinutes} onChange={(value) => void handleTimelineChange(value)} />}
+          <DeviationBoard data={map?.deviations} busy={busy} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
+          <VehicleBoard plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
+          <DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} rulesExpanded={rulesExpanded} />
+          <OrderTable plan={plan} activeOrderId={activeOrder} onSelectOrder={setActiveOrder} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} />
+          <p className="safety-note">所有數字來自後端確定性計算；方案先預覽，經人工確認後才會建立新版本。</p>
+        </div>
+      </section>
     </div>
-  </div>
+  )
 }

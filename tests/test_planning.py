@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import src.services.planner as planner_module
+from src.domain.models import VehicleStatus
 from src.services.importer import parse_workbook
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.planner import build_baseline, build_ortools
@@ -80,3 +81,22 @@ def test_ortools_reconciles_solver_sequence_without_greedy_reordering(monkeypatc
 
     validation = validate_plan(dataset, plan, matrix)
     assert validation.valid, validation.model_dump()
+
+
+def test_validator_rejects_nonempty_dataset_with_zero_assignments() -> None:
+    dataset, matrix = _dataset_and_matrix()
+    unavailable = dataset.model_copy(
+        update={
+            "vehicles": tuple(
+                vehicle.model_copy(update={"status": VehicleStatus.UNAVAILABLE})
+                for vehicle in dataset.vehicles
+            )
+        }
+    )
+    plan = build_ortools(unavailable, matrix, time_limit_seconds=1)
+
+    validation = validate_plan(unavailable, plan, matrix)
+
+    assert not any(route.order_ids for route in plan.routes)
+    assert validation.valid is False
+    assert "no_orders_assigned" in validation.errors
