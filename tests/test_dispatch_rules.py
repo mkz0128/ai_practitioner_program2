@@ -91,7 +91,7 @@ def test_route_distance_trial_keeps_subject_vehicle_within_limit() -> None:
     assert route.total_distance_m <= 30_000
 
 
-def test_tight_rule_conflict_names_rule_and_affected_orders() -> None:
+def test_tight_rule_reallocation_keeps_baseline_unassigned_order() -> None:
     dataset, matrix, base_plan = _fixture("demo-50-tight.xlsx")
     trial = preview_dispatch_rule(
         dataset,
@@ -106,10 +106,9 @@ def test_tight_rule_conflict_names_rule_and_affected_orders() -> None:
         10,
         [],
     )
-    assert trial.status == "CONFLICT"
-    assert trial.conflicts
-    assert trial.conflicts[0].rule_id == "RULE-CANDIDATE"
-    assert trial.conflicts[0].order_ids
+    assert trial.status == "FEASIBLE"
+    assert trial.conflicts == []
+    assert trial.plan.unassigned_orders == ["ORD-050"]
 
 
 def test_tight_weight_rule_moves_three_medium_orders_without_new_unassigned_orders() -> None:

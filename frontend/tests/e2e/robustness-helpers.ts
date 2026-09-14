@@ -24,9 +24,14 @@ export async function saveStep(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: screenshotPath(name), fullPage: true })
 }
 
-export async function waitForPlan(page: Page): Promise<void> {
-  await expect(page.locator('body')).toContainText('已安排', { timeout: 240_000 })
+export async function waitForPlan(page: Page, expectedAssigned?: string): Promise<void> {
+  // App sets the Plan object before the deterministic map/solver work finishes.
+  // Waiting only for "已安排" can therefore observe the previous plan (or the
+  // new plan while it still says OR-Tools 求解中…).  The success notice is set
+  // only after the import, solve, and map load have completed.
+  await expect(page.locator('.feedback-success').filter({ hasText: '已完成' })).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 60_000 })
+  if (expectedAssigned) await expect(page.locator('.topbar-stats')).toContainText(expectedAssigned, { timeout: 60_000 })
 }
 
 export async function openFreshDataset(page: Page, workbook: string, expectedOrderCount = 50): Promise<void> {
@@ -100,7 +105,7 @@ export async function applyVisibleRule(page: Page): Promise<void> {
   await expect(page.locator('body')).toContainText('已套用', { timeout: 120_000 })
 }
 
-export async function runFullWalkthrough(page: Page, workbook: string, prefix: string, requireHeavyOrders: boolean, urgentSummary = 'ORD-101，信義示範配送點 Z3-51，臺北市，行政區信義，25.033，121.565，Z3，1 件', expectedOrderCount = 50): Promise<string> {
+export async function runFullWalkthrough(page: Page, workbook: string, prefix: string, requireHeavyOrders: boolean, urgentSummary = 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件', expectedOrderCount = 50): Promise<string> {
   await openFreshDataset(page, workbook, expectedOrderCount)
   await saveStep(page, `${prefix}-01-imported`)
   const initialScreen = await page.locator('body').innerText()

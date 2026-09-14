@@ -268,7 +268,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     for (const label of ['訂單編號', '地點名稱', '城市', '緯度', '經度', '包裹件數']) await expect(page.getByText(label, { exact: false }).last()).toBeVisible()
     expect(urgentMissing.message || '').not.toContain('配送地點（地址或座標）')
   })
-  const urgentComplete = await keyboardTypeAndSend(page, '訂單編號 ORD-101，配送區域 Z4，城市臺北市，行政區信義，地點名稱信義示範配送點 Z4-51，緯度 25.033，經度 121.565，包裹件數 1，每件重量 15 公斤，早上配送')
+  const urgentComplete = await keyboardTypeAndSend(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
   await step('W-22', async () => {
     expect(urgentComplete.message || '').toContain('我理解的臨時訂單如下')
     await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible({ timeout: 30_000 })

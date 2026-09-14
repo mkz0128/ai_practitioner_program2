@@ -34,6 +34,18 @@ class UrgentOption:
     insertion_sequence: int
 
 
+def _urgent_vehicle_can_serve(order: Order, vehicle: Any) -> bool:
+    """Use the workbook's full urgent eligibility, including backup zones.
+
+    The demo workbook records a vehicle's primary and adjacent emergency
+    coverage together in ``service_zone_codes``.  Normal planning still uses
+    its geographic objective to prefer the primary route; urgent insertion
+    must enumerate every legal primary/backup vehicle before the dominance
+    filter chooses the meaningful cards.
+    """
+    return order.zone_code in vehicle.service_zone_codes
+
+
 def _copy_plan_with_routes(
     base_plan: PlanResult,
     routes: list[Any],
@@ -77,7 +89,7 @@ def _single_insertions(
             continue
         if vehicle.status.value != "AVAILABLE":
             continue
-        if pending_order.zone_code not in vehicle.service_zone_codes:
+        if not _urgent_vehicle_can_serve(pending_order, vehicle):
             continue
         if base_route.planned_load_kg + pending_order.total_weight_kg > vehicle.max_load_kg:
             continue
@@ -137,7 +149,7 @@ def _local_reassign_insertions(
         target_vehicle = vehicles.get(target_route.vehicle_id)
         if target_vehicle is None or target_vehicle.status.value != "AVAILABLE":
             continue
-        if pending_order.zone_code not in target_vehicle.service_zone_codes:
+        if not _urgent_vehicle_can_serve(pending_order, target_vehicle):
             continue
         deficit_kg = (
             target_route.planned_load_kg
@@ -160,7 +172,7 @@ def _local_reassign_insertions(
             compatible = [
                 order
                 for order in movable_orders
-                if order.zone_code in destination_vehicle.service_zone_codes
+                if _urgent_vehicle_can_serve(order, destination_vehicle)
             ]
             combinations_to_try = [
                 combo

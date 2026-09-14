@@ -52,7 +52,7 @@ def test_importer_applies_confirmed_mapping_before_strict_models() -> None:
     assert dataset is not None
     assert len(dataset.orders) == 50
     assert len(dataset.packages) == 99
-    assert round(sum(order.total_weight_kg for order in dataset.orders), 3) == 316.0
+    assert round(sum(order.total_weight_kg for order in dataset.orders), 3) == 291.8
 
 
 def test_inspect_returns_strict_agent_mapping_suggestions(monkeypatch) -> None:

@@ -41,7 +41,7 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   expect(missing.message || '').toContain('目前還不能計算')
   await page.screenshot({ path: path.join(screenshotDir, 'W-21.png'), fullPage: true })
 
-  const complete = await send(page, '訂單編號 ORD-101，配送區域 Z4，城市臺北市，行政區信義，地點名稱信義示範配送點 Z4-51，緯度 25.033，經度 121.565，包裹件數 1，每件重量 15 公斤，早上配送')
+  const complete = await send(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
   expect(complete.message || '').toContain('我理解的臨時訂單如下')
   await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible()
   await page.screenshot({ path: path.join(screenshotDir, 'W-22.png'), fullPage: true })
@@ -90,7 +90,7 @@ test('BUG-8：Demo 腳本兩句原文五次都進入訂單摘要', async ({ page
   })
 
   const firstSentence = '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤'
-  const secondSentence = 'ORD-101，臺北市信義，25.033 / 121.565，1 件'
+  const secondSentence = 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040 / 121.560，Z3，1 件'
   const replies: string[] = []
 
   for (let run = 1; run <= 5; run += 1) {

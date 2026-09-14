@@ -1,10 +1,10 @@
 # 進度
 
-最後更新：2026-09-14
+最後更新：2026-09-15
 
 ## NOW
 
-Robustness R1～R5 跨資料／說法／操作順序驗收：R1-relaxed 尚有一格待確認，其餘已完成；不涉及版面改版。
+急單交界方案卡與必要回歸：tight／relaxed 畫面驗收已完成；robustness 的 R5-mapped 與 R5-guardrail-note 仍有異常資料匯入失敗，待確認。
 
 ## TODO
 
@@ -38,8 +38,22 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 | Q3 | TODO 5 live 瀏覽器驗收需要呼叫外部 OpenAI provider | **已解除**：人類已明確授權本機虛構 demo 資料送至 OpenAI；提升權限後 `/ready` 顯示 `openai: ready`，F4／F5 實際對話已通過。 |
 | Q4 | `docs/scenario-evals.md` 指定 W 主線使用 tight，但原 W2 的 30 km 規則在該資料上是確定性 `CONFLICT`。 | **已結案**：W2 主線改為「老王腰傷」單件重量規則；距離衝突保留為 W-20b 備用案例。tight 已重產並加入 3 張 22–28 kg、同 Z5 服務區的中等重量訂單。 |
 | Q5 | 既有 G-04 輸入「三號車載重多少」的判定卻要求 `highest_load_vehicle`；本輪實際模型回覆 `lowest_load_vehicle` 的「VEH-004 目前剩餘容量 59.1 kg。」 | **已解除（BUG-12，2026-09-12）**：G-04 預期工具改為 `vehicle_load`，並新增指定車輛載重查詢；未修改輸入句。 |
-| Q7 | R1 要求 relaxed 以固定急單流程產生至少 2 張實質不同方案卡，但 B-02b 禁止完全支配候選。 | **待確認（2026-09-14）**：relaxed 實際有 28 個合法插入位置，但最佳卡為 `VEH-003 第 1 站、+0.17 km、+0.33 分鐘、09:22`，其餘候選均被它在距離／時間／換車／改序／送達時間向量完全支配；未降低 B-02b 標準，等待資料或需求裁決。 |
-| Q8 | 本輪資料容量要求與四個既有 Python 單元測試固定基準衝突。 | **待確認（2026-09-14）**：新要求把兩份 demo 的車隊計畫載重壓到 `≤315 kg`，因此 relaxed 不再是舊測試期待的 `316.0 kg`；新增相鄰備援後 tight `5 kg` 規則變為可行，不再符合舊測試期待的 `CONFLICT`；兩個舊 urgent batch 測試要求至少兩張卡，但候選已依 B-02b 過濾完全支配項。未改既有測試輸入／判定，需人類決定是否更新過時固定基準。 |
+| Q7 | R1 要求 relaxed 以固定急單流程產生至少 2 張實質不同方案卡，但 B-02b 禁止完全支配候選。 | **已解除（2026-09-15）**：交界急單改用 `25.040, 121.560` 後，正確等待新方案完成；relaxed 畫面有 2 張、tight 畫面有 3 張未被支配的可行卡，未降低 B-02b 標準。 |
+| Q8 | 本輪資料容量要求與四個既有 Python 單元測試固定基準衝突。 | **已解除（2026-09-15）**：先保留兩格實際 assertion，再只更新過時基準數字／狀態；兩個 urgent batch 測試與兩個 stale baseline 測試修正後 `4 passed`，未改輸入句或判定邏輯。 |
+| Q9 | 本輪 Python 修改後需重啟 uvicorn，但 8000 仍被舊 listener PID 30928 佔用。 | **已解除（2026-09-15）**：由人類外部重啟完成，現用 PID `25896`；本輪未自行啟停後端。 |
+| Q10 | robustness 的 `demo-mapped-50.xlsx` 欄位對映確認後，畫面未完成新方案。 | **待確認（2026-09-15）**：瀏覽器畫面在按「確認欄位對映」後顯示 `規劃結果未通過獨立驗證。`，仍停在舊 `49/50` 方案；測試 `R5-mapped` 在 `robustness-helpers.ts:32` 等待 `.feedback-success` 超時。保留畫面證據 `docs/screenshots/R5-mapped-mapping.png`，未自行改異常 fixture 或放寬驗證。 |
+| Q11 | robustness 的 `demo-50-guardrail-note.xlsx` 匯入後，畫面未完成新方案。 | **待確認（2026-09-15）**：瀏覽器測試 `R5-guardrail-note` 等待 `.feedback-success` 240 秒後失敗；畫面可見 `規劃結果未通過獨立驗證。` 與 `OR-Tools 求解中…`，證據 `docs/screenshots/R5-guardrail-note-failure.png`。需確認該資料的規劃驗證失敗原因，再決定是否屬 fixture 或產品行為問題。 |
+
+### 2026-09-15 — 急單交界方案卡與回歸驗收
+
+- 方案卡候選：`src/services/urgent_options.py` 新增備援區服務判定 `_urgent_vehicle_can_serve()`；仍保留確定性可行性驗證、非負增量與 B-02b 支配候選過濾，未引入全域重排。急單交界資料改為 `25.040, 121.560`、信義、大安信義交界示範配送點；同步更新 demo script、QA matrix、既有 E2E 輸入與 urgent batch fixture。
+- 畫面驗收：`urgent-boundary-cards.spec.ts` 以 Chromium、1440×900、鍵盤逐字輸入與 Enter 完成 tight／relaxed，各 `1 passed`，合計 `2 passed (1.2m)`。tight 畫面實際為 3 張可行卡，relaxed 為 2 張；每張均顯示車號、站次、ETA、公里／分鐘成本與換車／改序資訊。截圖：`cards-tight-01-imported.png`～`cards-tight-05-options.png`、`cards-relaxed-01-imported.png`～`cards-relaxed-05-options.png`。
+- 必要瀏覽器回歸：`demo-walkthrough.spec.ts` `1 passed (2.2m)`、`d-e-acceptance.spec.ts` `2 passed`、`fleet-resilience.spec.ts` `4 passed`，合計 `7 passed (3.3m)`。每格使用畫面驗收；沒有以 API JSON 作為通過證據。
+- robustness 回歸：R1 tight／relaxed／legacy 個別重跑 `3 passed`；R2／R3／R4 合併結果 `32 passed`。R5 的 missing／duplicate／empty `3 passed`；R5-mapped 實際畫面顯示 `規劃結果未通過獨立驗證。` 後超時，R5-guardrail-note 畫面顯示同一驗證錯誤與 `OR-Tools 求解中…` 後等待 240 秒超時，均列 Q10／Q11，未宣稱全數通過。證據：`docs/screenshots/R5-mapped-imported.png`、`docs/screenshots/R5-guardrail-note-failure.png`、`docs/robustness-datasets-final.log`、`docs/robustness-r5-rest-final.log`、`docs/robustness-all-after-wait.log`。
+- 兩個原先失敗的 Python assertion 已先保留並確認：`test_column_mapping` 實際 `291.8 == 316.0` 失敗、`test_dispatch_rules` 實際 `FEASIBLE != CONFLICT` 失敗；判定為資料／備援責任區變動造成的過時基準，只更新期待值。修正後 targeted `4 passed, 4 warnings in 22.17s`。
+- 程式回歸：pytest `187 passed, 28 skipped, 3 warnings in 341.88s`；ruff `All checks passed!`；mypy `Success: no issues found in 36 source files`；frontend ESLint、tsc、Vitest `1 file／2 tests passed`、Vite production build `42 modules transformed` 且 `✓ built`。路由腳本 `48/48 通過`、拒絕穩定性 `24/24 通過`，兩者每格均為非零 token 的主 Agent 結果。
+- 本輪 Vite build 已完成；三份 workbook 在 `data/samples`、`frontend/public`、`frontend/dist` 的 SHA-256 完全一致：tight `950902EE21309F6947B18E5B2568F9F2B0C6EC088F5A48D50C0757AF46BB227D`、relaxed `16A26118A9D0551B4B7B9792EB4E85ABC828CF6F234FD5F17DA004D6B350D964`、40 單 `A196F9DA2204938465F13F5D02194106DB416F977FE9769400DB54464DB67694`。
+- 後端未由本輪操作；沿用人類外部重啟的無 `--reload` PID `25896`。前端 production source 未修改；本輪只修改急單服務、測試 helper／急單 E2E、兩個過時 Python 基準、急單座標文件與本進度紀錄。
 
 ### 2026-09-11 本輪失敗後修正與完成
 

@@ -161,7 +161,7 @@ test.describe('上台 demo 全流程模擬', () => {
 
     const filled = await send(
       page,
-      'ORD-101，信義示範配送點 Z3-51，臺北市，行政區信義，25.033，121.565，Z3，1 件',
+      'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件',
     )
     expectHumanReply(filled, '急單補齊')
     expect(filled.message || '', '補齊之後沒有進入訂單摘要').toMatch(/我理解的臨時訂單|摘要|確認/)
