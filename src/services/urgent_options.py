@@ -19,6 +19,7 @@ from src.services.validator import PlanValidation, validate_plan
 
 OptionMode = Literal["INSERTION", "ROUTE_REORDER"]
 MIN_MEANINGFUL_DISTANCE_GAP_M = 3_000
+ANCHOR_PRESERVATION_RADIUS_M = 2_500
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,15 @@ def _single_insertions(
         if base_route.planned_load_kg + pending_order.total_weight_kg > vehicle.max_load_kg:
             continue
         for position in range(len(base_route.order_ids) + 1):
+            if position == 0 and base_route.order_ids:
+                first_order_id = base_route.order_ids[0]
+                pending_index = matrix.node_ids.index(pending_order.order_id)
+                first_index = matrix.node_ids.index(first_order_id)
+                if matrix.distance_m[pending_index][first_index] <= ANCHOR_PRESERVATION_RADIUS_M:
+                    # Preserve an already nearby first stop.  An urgent stop
+                    # may still be inserted after it, exposing the real
+                    # earlier-delivery versus route-disruption trade-off.
+                    continue
             candidate_ids = [*base_route.order_ids]
             candidate_ids.insert(position, pending_order.order_id)
             candidate_route = _route_metrics_preserving_order(
@@ -271,13 +281,20 @@ def _plan_signature(plan: PlanResult) -> tuple[tuple[str, ...], ...]:
 
 def _candidate_inserted_vehicle_key(
     plan: PlanResult, incoming_order_ids: list[str]
-) -> tuple[tuple[str, str | None], ...]:
+) -> tuple[tuple[str, str | None, int | None], ...]:
     assignments = {
-        stop.order_id: route.vehicle_id
+        stop.order_id: (route.vehicle_id, stop.sequence)
         for route in plan.routes
         for stop in route.stops
     }
-    return tuple((order_id, assignments.get(order_id)) for order_id in incoming_order_ids)
+    return tuple(
+        (
+            order_id,
+            assignments.get(order_id, (None, None))[0],
+            assignments.get(order_id, (None, None))[1],
+        )
+        for order_id in incoming_order_ids
+    )
 
 
 def _candidate_score(base_plan: PlanResult, candidate: PlanResult) -> tuple[Any, ...]:
@@ -668,7 +685,7 @@ def build_urgent_options(
             local_plans.append(candidate)
 
     options: list[UrgentOption] = []
-    selected_assignment_keys: set[tuple[tuple[str, str | None], ...]] = set()
+    selected_assignment_keys: set[tuple[tuple[str, str | None, int | None], ...]] = set()
     all_feasible_plans = [*feasible_plans, *local_plans]
     for candidate in all_feasible_plans:
         assignment_key = _candidate_inserted_vehicle_key(candidate, incoming_order_ids)

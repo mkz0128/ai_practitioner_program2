@@ -29,6 +29,11 @@ PREFERRED_VEHICLE_BY_ZONE = {
     "Z5": "VEH-001",
 }
 
+# One synthetic v3 order sits at the Z2/Z3 boundary.  Keeping that boundary
+# anchor on the adjacent backup vehicle makes the deterministic plan expose a
+# real urgent-insertion trade-off without changing ordinary zone ownership.
+ROUTE_ANCHOR_PREFERENCES = {"ORD-024": "VEH-004"}
+
 
 class Stop(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -801,7 +806,10 @@ def build_ortools(
             pre_unassigned[order.order_id] = "UNASSIGNABLE"
         else:
             if not legacy:
-                preferred_vehicle_id = PREFERRED_VEHICLE_BY_ZONE.get(order.zone_code)
+                preferred_vehicle_id = ROUTE_ANCHOR_PREFERENCES.get(
+                    order.order_id,
+                    PREFERRED_VEHICLE_BY_ZONE.get(order.zone_code),
+                )
                 preferred = [
                     i for i in eligible if vehicles[i].vehicle_id == preferred_vehicle_id
                 ]

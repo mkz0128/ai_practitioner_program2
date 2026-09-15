@@ -5,22 +5,17 @@ import {
   expectCleanScreen,
   expectHumanReply,
   includesAny,
+  openFreshDataset,
   sample,
   saveStep,
   sendUi,
-  waitForPlan,
 } from './robustness-helpers'
 
 test.describe.configure({ mode: 'serial' })
 
 async function openSequencePage(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/')
-  await waitForPlan(page)
-  await page.getByRole('button', { name: '重新開始', exact: true }).click()
-  await waitForPlan(page)
-  await page.getByLabel('上傳 Excel').first().setInputFiles(sample('demo-50-tight.xlsx'))
-  await waitForPlan(page)
+  await openFreshDataset(page, sample('demo-50-tight.xlsx'))
 }
 
 test('R3-1：交錯操作不污染脈絡', async ({ page }) => {

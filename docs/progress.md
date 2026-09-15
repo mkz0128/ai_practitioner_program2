@@ -1,10 +1,10 @@
 # 進度
 
-最後更新：2026-09-15
+最後更新：2026-09-16
 
 ## NOW
 
-急單交界方案卡與必要回歸：tight／relaxed 畫面驗收已完成；robustness 的 R5-mapped 與 R5-guardrail-note 仍有異常資料匯入失敗，待確認。
+v3 robustness 回歸待確認：R1-tight 的單張急單目前只有 1 張非支配方案卡；其餘 v3 C／D／E 驗收已完成。
 
 ## TODO
 
@@ -43,6 +43,7 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 | Q9 | 本輪 Python 修改後需重啟 uvicorn，但 8000 仍被舊 listener PID 30928 佔用。 | **已解除（2026-09-15）**：由人類外部重啟完成，現用 PID `25896`；本輪未自行啟停後端。 |
 | Q10 | robustness 的 `demo-mapped-50.xlsx` 欄位對映確認後，畫面未完成新方案。 | **待確認（2026-09-15）**：瀏覽器畫面在按「確認欄位對映」後顯示 `規劃結果未通過獨立驗證。`，仍停在舊 `49/50` 方案；測試 `R5-mapped` 在 `robustness-helpers.ts:32` 等待 `.feedback-success` 超時。保留畫面證據 `docs/screenshots/R5-mapped-mapping.png`，未自行改異常 fixture 或放寬驗證。 |
 | Q11 | robustness 的 `demo-50-guardrail-note.xlsx` 匯入後，畫面未完成新方案。 | **待確認（2026-09-15）**：瀏覽器測試 `R5-guardrail-note` 等待 `.feedback-success` 240 秒後失敗；畫面可見 `規劃結果未通過獨立驗證。` 與 `OR-Tools 求解中…`，證據 `docs/screenshots/R5-guardrail-note-failure.png`。需確認該資料的規劃驗證失敗原因，再決定是否屬 fixture 或產品行為問題。 |
+| Q12 | v3 資料重產後，R1-tight 的單張急單只有 1 張非支配方案卡。 | **待確認（2026-09-16）**：畫面逐字輸入 `客戶剛剛打電話來，有一張急單要今天早上送到，15公斤`、補齊 ORD-101 後產生 1 張 `VEH-002 第 1 站` 卡；若為了湊滿 2 張加入被完全支配卡，會違反 B-02b。證據 `docs/screenshots/R1-tight-07-preview.png`、`R1-tight-07-cards.png`。 |
 
 ### 2026-09-15 — 急單交界方案卡與回歸驗收
 
@@ -70,6 +71,16 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 - A～J 的 H-01～H-04、I-01～I-04、J-01～J-05 由上述 W、TODO2／TODO4、TODO5、TODO6、TODO8、G／D 對應步驟逐項覆蓋；其中 W-09、W-11、W-13、W-23、W-24、W-31、W-43 與 tight 專屬測試均已通過，沒有未勾稽項目。最後 `data/runtime/dispatch-parameters.json` 已清回 `{}`。
 
 ## DONE
+
+### 2026-09-16 — Demo v3 C／D／E 與資料重產回歸
+
+- C 組資料已重產：`demo-50-tight.xlsx` 與 `demo-50-relaxed.xlsx` 維持 50 個不同座標；最近鄰最小約 `600.3 m`、中位數約 `896.0 m`，無任一對小於 `300 m`，20 個行政區各 2～3 張。固定 BALANCED 結果：tight `49/50`、`229.1 km`；relaxed `50/50`、`243.7 km`。relaxed 四車載重率為 `60.0%／72.0%／62.5%／64.5%`；tight 的 VEH-002 仍安排 `ORD-014／ORD-027／ORD-033` 三張超過 20 kg 的單。
+- 產生器 `scripts/generate_demo_50_artifact.mjs` 將 relaxed Z2 單件基準調為 `10.5 kg`，使總重 `315.0 kg` 且保留四車合理載重分布；三處 workbook（`data/samples`／`frontend/public`／`frontend/dist`）已由 Vite build 同步。tight SHA-256 `107C4307613BD33E1506B23E7E308EBB96BDD1734D046B607C3CA14D67FD6F9F`；relaxed `87FF37B3B69F9F3D46B9515F7A4861D0FFF84BD23FC1A14BAF6ED3492DDEB200`；`demo-taipei-50.xlsx` 與 tight 相同。
+- 修正 `src/services/solve_scope.py` 的目前時段判斷，讓已發車提前配送依真正剩餘站點集合重解；修正 `src/agent/runtime.py`／`src/api/main.py` 的不存在訂單回覆，畫面輸入 `ORD-999 為什麼沒排到` 實際顯示「找不到訂單 ORD-999，資料中沒有這張訂單。」；車輛停駛人話回覆保留實際張數與確認提示。
+- D／E 瀏覽器驗收：`d-e-acceptance.spec.ts` 與 `fleet-resilience.spec.ts` 共 `6 passed (58.2s)`；每一步以 `pressSequentially()`／Enter 操作，截圖保留 `docs/screenshots/d-*.png`、`e-thinking-*.png`、`FLEET-*.png`。v3 全流程 `demo-v3.spec.ts` 在來源後端與最後 build 狀態下 `14 passed (4.0m)`，包含 V-01～V-20 與 13 句亂問；逐格截圖為 `docs/screenshots/v-*.png`。畫面實際確認空白開場、每日排班呼吸燈、三張急單共同摘要、2 張含責任區／跨區支援的方案卡、已發車提前配送、純文字回顧與追問建議；ORD-999 明確回報找不到。
+- 回歸實測：完整 pytest `187 passed, 28 skipped, 3 warnings in 345.11s`；ruff `All checks passed!`；mypy `Success: no issues found in 36 source files`；前端 ESLint exit 0、`tsc --noEmit` exit 0、Vitest `1 file／2 tests passed`、Vite `42 modules transformed` 且 `✓ built`。路由腳本 `48/48 通過`、拒絕穩定性腳本 `24/24 通過`，每格均為 `RunResult` 且 token 非零。
+- 完整 browser log：`artifacts/demo-v3-final-after-all.log`、`artifacts/v3-de-fleet-final.log`、`artifacts/v3-ord999-regression.log`。來源後端以無 `--reload` 在 `127.0.0.1:8001` 重啟（PID `10836`，`2026-09-16 03:15:16`），最後一次 Python 原始碼修改為 `src/api/main.py` `2026-09-16 03:14:46`；8000 的既有 listener 未由本輪碰觸。
+- 舊 robustness 的 R1-tight 在同一套畫面回歸中仍為 `1 張`方案卡而 FAIL；沒有改測試判定、沒有加入被完全支配候選，已移入 Q12 待確認。R2／R3／R4、fleet 與 v3 主流程均通過。
 
 ### 2026-09-14 — Fleet resilience：停駛重算與資料容量回歸
 

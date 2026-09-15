@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, chat, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewRouteOrder, resetRuntimeState, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
-import { ChatPanel, MappingReview, type PendingMapping } from './components/ChatPanel'
+import { ApiError, chat, confirmCrossVehicleRouteOrder, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getPlanVersions, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewCrossVehicleRouteOrder, previewRouteOrder, resetRuntimeState, restorePlan, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
+import { ChatPanel } from './components/ChatPanel'
 import { MapView } from './components/MapView'
 import { OrderTable } from './components/OrderTable'
 import { Badge, Button, Card, CardContent } from './components/ui'
@@ -10,8 +10,10 @@ import { FleetRail } from './components/FleetRail'
 import { DeviationBoard } from './components/DeviationBoard'
 import { formatNumber } from './lib/utils'
 import { formatValidationError } from './lib/fieldLabels'
-import type { ChatResponse, ColumnMappingResponse, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
+import type { ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
+
+type ActivityState = { skill: string; phase: string }
 
 function createSessionId(): string {
   return `CONVERSATION-${crypto.randomUUID()}`
@@ -73,12 +75,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(null)
-  const [mappingDraft, setMappingDraft] = useState<Record<string, Record<string, string>>>({})
-  const [mappingName, setMappingName] = useState('')
+  const [activity, setActivity] = useState<ActivityState | null>(null)
   const [timelineMinutes, setTimelineMinutes] = useState(120)
   const [confirmedParameterSuggestions, setConfirmedParameterSuggestions] = useState<string[]>([])
+  const [showDeviationSuggestions, setShowDeviationSuggestions] = useState(false)
   const [conversationOrderId, setConversationOrderId] = useState<string | null>(null)
+  const [manualAdjustTarget, setManualAdjustTarget] = useState<{ vehicleId: string | null; orderId: string | null }>({ vehicleId: null, orderId: null })
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => { getProviderStatus().then((result) => setProviders(result.providers)).catch(() => setProviders([])); getDispatchRules().then((result) => { setDispatchRules(result.rules); setActiveRuleCount(result.active_count) }).catch(() => { setDispatchRules([]); setActiveRuleCount(0) }) }, [])
@@ -90,31 +92,31 @@ export default function App() {
   }, [])
 
   const loadFile = useCallback(async (file: File, columnMapping?: Record<string, Record<string, string>>, mappingName?: string) => {
-    setBusy(true); setError(null); setNotice('讀取今日訂單…')
+    setBusy(true); setError(null); setNotice('讀取今日訂單…'); setActivity({ skill: '每日排班', phase: '讀取訂單…' })
     abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
     try {
       const imported = await importWorkbook(file, columnMapping, mappingName, controller.signal)
       if (!imported.validation.is_valid) { setError(imported.validation.errors.map(formatValidationError).join('；') || '資料需要人工複核，請先修正。'); return }
-      setNotice('建立距離矩陣…')
+      setNotice('建立距離矩陣…'); setActivity({ skill: '每日排班', phase: '建立距離矩陣…' })
       // 這裡只是讓「建立距離矩陣…」有機會畫出來再往下跑。
       // 不要用 requestAnimationFrame——分頁沒有在繪製時（視窗被蓋住、
       // 投影切換、瀏覽器面板隱藏）rAF 永遠不會觸發，整個開場就卡死在這一行。
       // 2026-09-14 實測：Playwright 有在繪製所以看不出來，真的開瀏覽器就中。
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-      setNotice('OR-Tools 求解中…')
+      setNotice('OR-Tools 求解中…'); setActivity({ skill: '每日排班', phase: 'OR-Tools 求解中…' })
       const created = await createPlan(imported.dataset_id, 'BALANCED', controller.signal)
-      setPlan(created); setConversationOrderId(created.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null); setMap(await getMapData(created.plan_id, created.version, controller.signal)); await refreshDispatchRules(); setNotice(`已完成 ${formatNumber(created.completeness.assigned_order_count)}／${formatNumber(created.completeness.total_order_count)} 張訂單的排班，方案待人工確認。`)
-    } catch (requestError) { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(friendlyError(requestError)) } finally { setBusy(false) }
+      setActivity({ skill: '每日排班', phase: '獨立驗證中…' }); setPlan(created); setConversationOrderId(created.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null); setMap(await getMapData(created.plan_id, created.version, controller.signal)); await refreshDispatchRules(); setNotice(`已完成 ${formatNumber(created.completeness.assigned_order_count)}／${formatNumber(created.completeness.total_order_count)} 張訂單的排班，方案待人工確認。`)
+    } catch (requestError) { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(friendlyError(requestError)) } finally { setBusy(false); setActivity(null) }
   }, [refreshDispatchRules])
 
   const inspectFile = useCallback(async (file: File): Promise<ColumnMappingResponse | null> => {
-    setBusy(true); setError(null); setNotice(null)
+    setBusy(true); setError(null); setNotice(null); setActivity({ skill: '每日排班', phase: '讀取訂單…' })
     abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
     try {
       const result = await inspectWorkbook(file, controller.signal)
       return result.status === 'CANONICAL' ? null : result
     } finally {
-      setBusy(false)
+      setBusy(false); setActivity(null)
     }
   }, [])
 
@@ -124,9 +126,7 @@ export default function App() {
       const mapping = await inspectFile(file)
       if (mapping?.status === 'INVALID') { setError(mappingError(mapping)); return }
       if (mapping?.requires_confirmation) {
-        setPendingMapping({ file, response: mapping })
-        setMappingDraft(mapping.mapping)
-        setMappingName('')
+        setError('這份檔案需要欄位對映確認，請從調度對話的「附加檔案」上傳並確認。')
         return
       }
       await loadFile(file, mapping?.mapping)
@@ -135,61 +135,15 @@ export default function App() {
     }
   }, [inspectFile, loadFile])
 
-  // 一定要載 tight，不要換成 relaxed。實測（2026-09-14）：
-  //   relaxed 的 VEH-003 最大單件只有 7.5 kg，超過 20 kg 的有 0 張，
-  //   「老王腰傷、20 公斤以上不要給他」套下去是「影響 0 張、距離 0 km」——整幕是空的；
-  //   而且 relaxed 是 50/50，沒有排不進去的單，「它不會硬塞」那題也沒東西演。
-  //   tight 的 VEH-003 有 4 張超過 20 kg（22／22／22／45），且 ORD-050 排不進去。
-  const DEFAULT_DEMO_WORKBOOK = 'demo-50-tight.xlsx'
-  const loadDefaultDemo = useCallback(async () => {
-    try {
-      const response = await fetch(`/${DEFAULT_DEMO_WORKBOOK}`)
-      if (!response.ok) throw new Error('預設範例資料載入失敗。')
-      const blob = await response.blob()
-      await handleInitialFile(new File([blob], DEFAULT_DEMO_WORKBOOK, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-    } catch (requestError) {
-      setError(friendlyError(requestError))
-    }
-  }, [handleInitialFile])
-
-  // 只能在掛載時跑一次。
-  // 不要寫成 useEffect(..., [loadDefaultDemo])——loadDefaultDemo 的識別會隨著
-  // handleInitialFile / loadFile / refreshDispatchRules 這條相依鏈變動，
-  // 於是每次 render 都重跑一次開場載入。loadFile 第一行是 abortRef.current?.abort()，
-  // 而聊天用的是同一個 abortRef，結果就是「使用者送出訊息後畫面永遠停在計算中」。
-  // 2026-09-14 實測：後端 8 秒就回答完，瀏覽器超過 50 秒還卡著，Console 沒有任何錯誤。
-  const bootstrapped = useRef(false)
-  useEffect(() => {
-    if (bootstrapped.current) return
-    bootstrapped.current = true
-    void loadDefaultDemo()
-  }, [loadDefaultDemo])
-
-  function updateInitialMapping(sheet: string, source: string, target: string) {
-    setMappingDraft((current) => {
-      const nextSheet = { ...(current[sheet] || {}) }
-      if (target) nextSheet[source] = target
-      else delete nextSheet[source]
-      return { ...current, [sheet]: nextSheet }
-    })
-  }
-
-  async function confirmInitialMapping() {
-    if (!pendingMapping) return
-    try {
-      await loadFile(pendingMapping.file, mappingDraft, mappingName.trim() || undefined)
-      setPendingMapping(null); setMappingDraft({}); setMappingName('')
-    } catch {
-      // loadFile already presents a user-facing validation message.
-    }
-  }
-
   const onChat = useCallback(async (message: string, action?: 'PREVIEW_URGENT'): Promise<{ response: ChatResponse | null; error?: string }> => {
     const controller = new AbortController()
     abortRef.current?.abort()
     abortRef.current = controller
     try {
       const response = await chat(sessionId, message, { plan_id: plan?.plan_id || null, plan_version: plan?.version || null, dataset_id: plan?.dataset_id || null, order_id: conversationOrderId, stage: plan?.stage || 'PRE_LOAD', timeline_minutes: plan?.stage === 'DISPATCHED' ? timelineMinutes : null }, controller.signal, action)
+      const deviationView = response.evidence.find((entry) => entry.tool === 'inspect_dispatch_deviations')?.data.view
+      if (deviationView === 'SUGGESTIONS') setShowDeviationSuggestions(true)
+      if (deviationView === 'SUMMARY') setShowDeviationSuggestions(false)
       const insertedOrderId = previewInsertedOrderId(response)
       if (insertedOrderId) setConversationOrderId(insertedOrderId)
       const priorityPreviewVersion = response.evidence.find(
@@ -230,15 +184,20 @@ export default function App() {
   }, [busy, sessionId])
 
   const handleConfirmRule = useCallback(async (option: DispatchRuleOption) => {
-    if (busy || !option.plan_id || option.base_version === null) return
+    if (!plan || busy || !option.plan_id || option.base_version === null) return
     setBusy(true); setError(null); setNotice(null)
     try {
       const result = await confirmDispatchRule(option)
       await refreshDispatchRules()
+      const replanned = await createPlan(plan.dataset_id, plan.objective || 'BALANCED')
+      setPlan(replanned)
+      setMap(await getMapData(replanned.plan_id, replanned.version))
+      setConversationOrderId(replanned.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null)
       setRulesExpanded(true)
-      setNotice(`已套用 ${formatNumber(result.active_count)} 條規則；重新排班後生效。`)
+      const ruleCountText = option.rule.additional_rule ? '1 條規則設定（含兩項限制）' : `${formatNumber(result.active_count)} 條規則`
+      setNotice(`已套用 ${ruleCountText}；已依新規則重新排班。`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
-  }, [busy, refreshDispatchRules])
+  }, [busy, plan, refreshDispatchRules])
 
   const handleConfirmDeviation = useCallback(async (suggestion: DispatchDeviationSuggestion) => {
     if (!plan || busy || plan.stage !== 'DISPATCHED') return
@@ -246,10 +205,18 @@ export default function App() {
     try {
       await confirmDispatchParameter(plan.plan_id, plan.version, suggestion.zone_code, suggestion.from_service_minutes, suggestion.to_service_minutes)
       setConfirmedParameterSuggestions((current) => current.includes(suggestion.suggestion_id) ? current : [...current, suggestion.suggestion_id])
+      setShowDeviationSuggestions(true)
       setMap(await getMapData(plan.plan_id, plan.version, undefined, timelineMinutes))
       setNotice(`已確認 ${suggestion.zone_code} 服務時間 ${suggestion.from_service_minutes} → ${suggestion.to_service_minutes} 分鐘；重新排班後生效。`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, timelineMinutes])
+
+  const handleManualAdjust = useCallback((option: UrgentPlanOption) => {
+    const vehicleId = option.current_state?.vehicle_id || null
+    const orderId = option.change?.order_id || null
+    setManualAdjustTarget({ vehicleId, orderId })
+    window.setTimeout(() => { document.querySelector('[aria-label="訂單看板"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 0)
+  }, [])
 
   const handleDeactivateRule = useCallback(async (ruleId: string) => {
     if (busy) return
@@ -332,10 +299,42 @@ export default function App() {
     } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
   }, [busy, plan, timelineMinutes])
 
-  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setActiveOrder(null); setConversationOrderId(null); setPendingMapping(null); setMappingDraft({}); setMappingName(''); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setError(null); setNotice(null); try { await resetRuntimeState(); await loadDefaultDemo() } catch (requestError) { setError(friendlyError(requestError)) } }
+  const handlePreviewCrossVehicleRouteOrder = useCallback(async (sourceVehicleId: string, targetVehicleId: string, orderId: string, targetSequence: number): Promise<CrossVehicleRouteOrderPreview> => {
+    if (!plan) throw new Error('目前沒有可預覽的方案。')
+    return previewCrossVehicleRouteOrder(plan.plan_id, plan.version, sourceVehicleId, targetVehicleId, orderId, targetSequence, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
+  }, [plan, timelineMinutes])
+
+  const handleConfirmCrossVehicleRouteOrder = useCallback(async (preview: CrossVehicleRouteOrderPreview) => {
+    if (!plan || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const confirmed = await confirmCrossVehicleRouteOrder(plan.plan_id, plan.version, preview.source_vehicle_id, preview.target_vehicle_id, preview.order_id, preview.target_sequence, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
+      setPlan(confirmed)
+      setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      setNotice(`已套用 ${preview.order_id} 的跨車站序，方案版本更新為 v${confirmed.version}。`)
+    } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
+  }, [busy, plan, timelineMinutes])
+
+  const handleHistoryMove = useCallback(async (direction: 'undo' | 'redo') => {
+    if (!plan || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const history = await getPlanVersions(plan.plan_id)
+      const versions = [...history.versions].sort((left, right) => left.version - right.version)
+      const index = versions.findIndex((item) => item.version === plan.version)
+      const target = direction === 'undo' ? versions[index - 1] : versions[index + 1]
+      if (!target) { setNotice(direction === 'undo' ? '目前沒有更早的可復原版本。' : '目前沒有更新的可前進版本。'); return }
+      const restored = await restorePlan(plan.plan_id, target.version)
+      setPlan(restored)
+      setMap(await getMapData(restored.plan_id, restored.version, undefined, restored.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      setNotice(`${direction === 'undo' ? '已回到' : '已前進到'}第 ${target.version} 版預覽。`)
+    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
+  }, [busy, plan, timelineMinutes])
+
+  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setActiveOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
   const google = providers.find((item) => item.name === 'google_routes')
 
-  if (!plan) return <div className="startup-shell"><div className="startup-card"><div className="brand-lockup"><span className="brand-mark">DT</span><span>Dispatch Tower</span></div><h1>配送調度控制塔</h1><p className="startup-status" role="status">{notice || (busy ? '讀取今日訂單…' : '準備今日資料…')}</p>{pendingMapping && <MappingReview pending={pendingMapping} value={mappingDraft} onChange={updateInitialMapping} name={mappingName} onNameChange={setMappingName} onConfirm={() => void confirmInitialMapping()} onCancel={() => { setPendingMapping(null); setMappingDraft({}) }} busy={busy} />}{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div></div>
+  if (!plan) return <div className="empty-shell"><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
 
   return (
     <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
@@ -376,7 +375,7 @@ export default function App() {
         </div>
 
         <div className="stage-chat">
-          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} busy={busy} onStop={() => abortRef.current?.abort()} plan />
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} />
         </div>
 
         <div className="stage-dock">
@@ -392,10 +391,10 @@ export default function App() {
       <section className="detail-drawer" aria-label="方案明細">
         <div className="detail-inner">
           {plan.stage === 'DISPATCHED' && map && <TimelineBoard data={map} timelineMinutes={timelineMinutes} onChange={(value) => void handleTimelineChange(value)} />}
-          <DeviationBoard data={map?.deviations} busy={busy} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
+           <DeviationBoard data={map?.deviations} busy={busy} showSuggestions={showDeviationSuggestions} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
           <VehicleBoard plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
           <DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} rulesExpanded={rulesExpanded} />
-          <OrderTable plan={plan} activeOrderId={activeOrder} onSelectOrder={setActiveOrder} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} />
+          <OrderTable plan={plan} activeOrderId={activeOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} onSelectOrder={setActiveOrder} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
           <p className="safety-note">所有數字來自後端確定性計算；方案先預覽，經人工確認後才會建立新版本。</p>
         </div>
       </section>

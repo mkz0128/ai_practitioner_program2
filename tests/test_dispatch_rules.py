@@ -113,13 +113,13 @@ def test_tight_rule_reallocation_keeps_baseline_unassigned_order() -> None:
 
 def test_tight_weight_rule_moves_three_medium_orders_without_new_unassigned_orders() -> None:
     dataset, matrix, base_plan = _fixture("demo-50-tight.xlsx")
-    medium_order_ids = {"ORD-014", "ORD-015", "ORD-017"}
+    medium_order_ids = {"ORD-014", "ORD-027", "ORD-033"}
     assert {
         order.order_id
         for route in base_plan.routes
-        if route.vehicle_id == "VEH-003"
+        if route.vehicle_id == "VEH-002"
         for order in dataset.orders
-        if order.order_id in route.order_ids and 22.0 <= order.total_weight_kg <= 28.0
+        if order.order_id in route.order_ids and order.total_weight_kg > 20.0
     } == medium_order_ids
 
     trial = preview_dispatch_rule(
@@ -127,7 +127,7 @@ def test_tight_weight_rule_moves_three_medium_orders_without_new_unassigned_orde
         matrix,
         base_plan,
         DispatchRuleDraft(
-            subject_id="VEH-003",
+            subject_id="VEH-002",
             rule_type="MAX_PACKAGE_WEIGHT",
             value=20.0,
         ),
@@ -139,7 +139,7 @@ def test_tight_weight_rule_moves_three_medium_orders_without_new_unassigned_orde
     assert trial.status == "FEASIBLE"
     assert trial.plan.unassigned_orders == ["ORD-050"]
     vehicle_three = next(
-        route for route in trial.plan.routes if route.vehicle_id == "VEH-003"
+        route for route in trial.plan.routes if route.vehicle_id == "VEH-002"
     )
     assert all(
         order_id not in vehicle_three.order_ids

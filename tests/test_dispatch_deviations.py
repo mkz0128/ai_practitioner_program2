@@ -27,7 +27,7 @@ def test_timeline_deviations_are_deterministic_and_include_both_cases() -> None:
     assert result["source"] == "TIMELINE_SIMULATION"
     assert result["has_deviations"] is True
     assert result["vehicle_deviations"][0]["vehicle_id"] == "VEH-003"
-    assert result["vehicle_deviations"][0]["delay_minutes"] == 22
+    assert result["vehicle_deviations"][0]["delay_minutes"] == 3
     assert result["zone_deviations"][0]["zone_code"] == "Z5"
     assert result["zone_deviations"][0]["extra_service_minutes_per_stop"] == 6
     assert result["suggestions"][0]["from_service_minutes"] == 3

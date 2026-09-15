@@ -185,11 +185,13 @@ def prioritize_remaining_order(
             arrival = _arrival(current_s, travel_s, orders[candidate].time_slot, legacy)
             if arrival is None:
                 continue
-            slot_is_current_window = (
-                current_s < AFTERNOON_START and orders[candidate].time_slot == "MORNING"
-            ) or (
-                current_s < EVENING_START and orders[candidate].time_slot == "AFTERNOON"
-            )
+            if current_s < AFTERNOON_START:
+                current_slot = "MORNING"
+            elif current_s < EVENING_START:
+                current_slot = "AFTERNOON"
+            else:
+                current_slot = "EVENING"
+            slot_is_current_window = orders[candidate].time_slot == current_slot
             slot_rank = 0 if slot_is_current_window else 1
             target_rank = 0 if candidate == order_id and not reordered else 1
             choices.append(

@@ -84,6 +84,7 @@ from src.services.importer import SHEET_FIELDS, ColumnMapping, parse_workbook, v
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.plan_diff import compute_plan_diff
 from src.services.planner import (
+    PREFERRED_VEHICLE_BY_ZONE,
     Objective,
     PlanResult,
     build_baseline,
@@ -187,6 +188,15 @@ class RouteOrderRequest(StrictRequest):
     timeline_minutes: int | None = Field(default=None, ge=0, le=660)
 
 
+class CrossVehicleRouteOrderRequest(StrictRequest):
+    base_plan_version: int = Field(ge=1)
+    source_vehicle_id: str = Field(min_length=1)
+    target_vehicle_id: str = Field(min_length=1)
+    order_id: str = Field(min_length=1)
+    target_sequence: int = Field(ge=1)
+    timeline_minutes: int | None = Field(default=None, ge=0, le=660)
+
+
 class RestorePlanRequest(StrictRequest):
     source_version: int = Field(ge=1)
     dispatcher_reference: str = Field(min_length=1, max_length=120)
@@ -239,6 +249,12 @@ class ColumnMappingRequest(StrictRequest):
     save_as: str | None = Field(default=None, max_length=120)
 
 
+class AdditionalDispatchRuleRequest(StrictRequest):
+    rule_type: Literal["LATEST_RETURN_TIME"]
+    value: str
+    duration: Literal["PERMANENT", "THIS_WEEK", "TODAY"] = "PERMANENT"
+
+
 class DispatchRuleMutationRequest(StrictRequest):
     plan_id: str = Field(min_length=1)
     base_plan_version: int = Field(ge=1)
@@ -250,10 +266,12 @@ class DispatchRuleMutationRequest(StrictRequest):
         "MAX_STOPS",
         "EXCLUDED_ZONE",
         "ALLOWED_TIME_WINDOW",
+        "LATEST_RETURN_TIME",
     ]
     value: float | str
     source_utterance: str = Field(min_length=1, max_length=4000)
     duration: Literal["PERMANENT", "THIS_WEEK", "TODAY"] = "PERMANENT"
+    additional_rule: AdditionalDispatchRuleRequest | None = None
 
 
 class DispatchParameterConfirmationRequest(StrictRequest):
@@ -890,6 +908,154 @@ def _route_order_candidate(
     if not validation.valid:
         return route, candidate_plan, "這個站序未通過配送區域、載重或時段驗證。", validation
     return route, candidate_plan, None, validation
+
+
+def _cross_vehicle_route_order_candidate(
+    base: PlanRecord,
+    dataset_record: DatasetRecord,
+    payload: CrossVehicleRouteOrderRequest,
+) -> tuple[PlanResult | None, str | None, PlanValidation, Any, Any]:
+    source = next(
+        (item for item in base.plan.routes if item.vehicle_id == payload.source_vehicle_id),
+        None,
+    )
+    target = next(
+        (item for item in base.plan.routes if item.vehicle_id == payload.target_vehicle_id),
+        None,
+    )
+    if source is None or target is None:
+        return None, "找不到指定車輛。", base.validation, source, target
+    if source.vehicle_id == target.vehicle_id:
+        return None, "來源與目標車輛必須不同。", base.validation, source, target
+    if payload.order_id not in source.order_ids:
+        return None, "這張訂單不在來源車輛上。", base.validation, source, target
+    if base.state in {"LOADED", "DISPATCHED"}:
+        return None, "開始裝車後不能跨車移動；既有車輛指派已鎖定。", base.validation, source, target
+    source_ids = [order_id for order_id in source.order_ids if order_id != payload.order_id]
+    target_ids = list(target.order_ids)
+    target_index = min(payload.target_sequence - 1, len(target_ids))
+    target_ids.insert(target_index, payload.order_id)
+    vehicles = {item.vehicle_id: item for item in dataset_record.dataset.vehicles}
+    orders = {item.order_id: item for item in dataset_record.dataset.orders}
+    service_by_zone = parameter_state()["service_minutes_by_zone"]
+    legacy = uses_legacy_timing(dataset_record.dataset)
+    source_vehicle = vehicles.get(source.vehicle_id)
+    target_vehicle = vehicles.get(target.vehicle_id)
+    if source_vehicle is None or target_vehicle is None:
+        return None, "找不到指定車輛。", base.validation, source, target
+    source_candidate = _parameterized_route(
+        source_ids, source_vehicle, orders, base.matrix, service_by_zone, legacy
+    )
+    target_candidate = _parameterized_route(
+        target_ids, target_vehicle, orders, base.matrix, service_by_zone, legacy
+    )
+    if source_candidate is None or target_candidate is None:
+        return None, "這次換車會讓配送時段或回站時間不合法。", base.validation, source, target
+    if target_candidate.planned_load_kg > target_vehicle.max_load_kg + 1e-6:
+        return None, "這次換車會超出目標車輛載重上限。", base.validation, source, target
+    routes = [
+        source_candidate if item.vehicle_id == source.vehicle_id
+        else target_candidate if item.vehicle_id == target.vehicle_id
+        else item
+        for item in base.plan.routes
+    ]
+    candidate_plan = base.plan.model_copy(
+        update={
+            "routes": routes,
+            "total_distance_m": sum(item.total_distance_m for item in routes),
+            "total_driving_time_s": sum(item.total_duration_s for item in routes),
+        }
+    )
+    validation = validate_plan(dataset_record.dataset, candidate_plan, base.matrix)
+    if not validation.valid:
+        return None, "這次換車未通過服務區域、載重或時段驗證。", validation, source, target
+    return candidate_plan, None, validation, source, target
+
+
+def _cross_vehicle_route_order_preview_payload(
+    base: PlanRecord,
+    dataset_record: DatasetRecord,
+    payload: CrossVehicleRouteOrderRequest,
+) -> dict[str, Any]:
+    candidate_plan, reason, validation, source_before, target_before = (
+        _cross_vehicle_route_order_candidate(base, dataset_record, payload)
+    )
+    source_after = next(
+        (item for item in (candidate_plan.routes if candidate_plan else [])
+         if item.vehicle_id == payload.source_vehicle_id),
+        source_before,
+    )
+    target_after = next(
+        (item for item in (candidate_plan.routes if candidate_plan else [])
+         if item.vehicle_id == payload.target_vehicle_id),
+        target_before,
+    )
+    before_routes = [route for route in (source_before, target_before) if route is not None]
+    after_routes = [route for route in (source_after, target_after) if route is not None]
+    before_total_distance = sum(route.total_distance_m for route in before_routes)
+    after_total_distance = sum(route.total_distance_m for route in after_routes)
+    before_total_duration = sum(route.total_duration_s for route in before_routes)
+    after_total_duration = sum(route.total_duration_s for route in after_routes)
+    eta_changes: list[dict[str, Any]] = []
+    before_etas = {
+        stop.order_id: stop.eta
+        for route in before_routes
+        for stop in route.stops
+    }
+    after_etas = {
+        stop.order_id: stop.eta
+        for route in after_routes
+        for stop in route.stops
+    }
+    for order_id, before_eta in before_etas.items():
+        after_eta = after_etas.get(order_id)
+        if after_eta is None:
+            continue
+        delta = round(
+            (
+                datetime.fromisoformat(after_eta)
+                - datetime.fromisoformat(before_eta)
+            ).total_seconds()
+            / 60,
+            1,
+        )
+        if delta:
+            eta_changes.append(
+                {
+                    "order_id": order_id,
+                    "before_eta": before_eta,
+                    "after_eta": after_eta,
+                    "delta_minutes": delta,
+                }
+            )
+    return {
+        "plan_id": base.plan_id,
+        "base_version": base.version,
+        "preview_version": max(store.plans.get(base.plan_id, {0: None})) + 1,
+        "source_vehicle_id": payload.source_vehicle_id,
+        "target_vehicle_id": payload.target_vehicle_id,
+        "order_id": payload.order_id,
+        "target_sequence": payload.target_sequence,
+        "feasible": candidate_plan is not None and reason is None and validation.valid,
+        "reason": reason,
+        "requires_human_confirmation": True,
+        "source_before": _route_snapshot(source_before) if source_before else None,
+        "source_after": _route_snapshot(source_after) if source_after else None,
+        "target_before": _route_snapshot(target_before) if target_before else None,
+        "target_after": _route_snapshot(target_after) if target_after else None,
+        "diff": {
+            "distance_delta_m": after_total_distance - before_total_distance,
+            "duration_delta_s": after_total_duration - before_total_duration,
+            "source_load_delta_kg": (source_after.planned_load_kg - source_before.planned_load_kg)
+            if source_after and source_before else 0,
+            "target_load_delta_kg": (target_after.planned_load_kg - target_before.planned_load_kg)
+            if target_after and target_before else 0,
+            "eta_changes": eta_changes,
+        },
+        "validator": validation.model_dump(mode="json"),
+        "provider_mode": base.matrix.provider_mode,
+        "matrix_hash": matrix_hash(base.matrix),
+    }
 
 
 def _route_order_preview_payload(
@@ -1702,6 +1868,58 @@ def confirm_dispatch_rule(payload: DispatchRuleMutationRequest, request: Request
         settings.solver_time_limit_seconds,
         list_dispatch_rules(include_inactive=False),
     )
+    additional_rule: DispatchRule | None = None
+    if payload.additional_rule is not None:
+        primary_rule = DispatchRule(
+            rule_id="RULE-CANDIDATE-PRIMARY",
+            subject_type=payload.subject_type,
+            subject_id=payload.subject_id,
+            rule_type=payload.rule_type,
+            value=payload.value,
+            source_utterance=payload.source_utterance,
+            created_at="1970-01-01T00:00:00+00:00",
+            expires_at=expires_at_for_duration(payload.duration),
+        )
+        additional_rule = DispatchRule(
+            rule_id="RULE-CANDIDATE-SECONDARY",
+            subject_type=payload.subject_type,
+            subject_id=payload.subject_id,
+            rule_type=payload.additional_rule.rule_type,
+            value=payload.additional_rule.value,
+            source_utterance=payload.source_utterance,
+            created_at="1970-01-01T00:00:00+00:00",
+            expires_at=expires_at_for_duration(payload.additional_rule.duration),
+        )
+        combined_trial = preview_rule_trial(
+            dataset_record.dataset,
+            base_record.matrix,
+            base_record.plan,
+            DispatchRuleDraft(
+                subject_type=payload.subject_type,
+                subject_id=payload.subject_id,
+                rule_type=additional_rule.rule_type,
+                value=additional_rule.value,
+                duration=payload.additional_rule.duration,
+            ),
+            payload.source_utterance,
+            settings.solver_time_limit_seconds,
+            [*list_dispatch_rules(include_inactive=False), primary_rule],
+        )
+        trial = combined_trial.model_copy(
+            update={
+                "status": (
+                    "FEASIBLE"
+                    if trial.status == "FEASIBLE"
+                    and combined_trial.status == "FEASIBLE"
+                    else "CONFLICT"
+                ),
+                "affected_order_ids": sorted(
+                    set(trial.affected_order_ids)
+                    | set(combined_trial.affected_order_ids)
+                ),
+                "conflicts": [*trial.conflicts, *combined_trial.conflicts],
+            }
+        )
     if trial.status != "FEASIBLE":
         return _error(
             request,
@@ -1723,6 +1941,12 @@ def confirm_dispatch_rule(payload: DispatchRuleMutationRequest, request: Request
         expires_at=expires_at_for_duration(payload.duration),
     )
     save_dispatch_rule(rule)
+    if additional_rule is not None:
+        save_dispatch_rule(
+            additional_rule.model_copy(
+                update={"rule_id": f"RULE-{uuid4().hex[:12].upper()}"}
+            )
+        )
     repository.append_audit(
         event_id=f"AUD-{uuid4().hex[:12].upper()}",
         event_type="DISPATCH_RULE_CREATED",
@@ -2029,6 +2253,59 @@ def route_order_confirm(plan_id: str, payload: RouteOrderRequest, request: Reque
     }
 
 
+@app.post("/api/v1/plans/{plan_id}/route-order/cross-vehicle/preview")
+def cross_vehicle_route_order_preview(
+    plan_id: str, payload: CrossVehicleRouteOrderRequest, request: Request
+) -> Any:
+    base = store.get_plan(plan_id, payload.base_plan_version)
+    if base is None:
+        return _error(request, 404, "PLAN_NOT_FOUND", "找不到基準規劃版本。")
+    dataset_record = store.get_dataset(base.dataset_id)
+    if dataset_record is None:
+        return _error(request, 404, "DATASET_NOT_FOUND", "找不到規劃資料集。")
+    return _cross_vehicle_route_order_preview_payload(base, dataset_record, payload) | {
+        "request_id": _request_id(request),
+    }
+
+
+@app.post("/api/v1/plans/{plan_id}/route-order/cross-vehicle/confirm")
+def cross_vehicle_route_order_confirm(
+    plan_id: str, payload: CrossVehicleRouteOrderRequest, request: Request
+) -> Any:
+    base = store.get_plan(plan_id, payload.base_plan_version)
+    if base is None:
+        return _error(request, 404, "PLAN_NOT_FOUND", "找不到基準規劃版本。")
+    dataset_record = store.get_dataset(base.dataset_id)
+    if dataset_record is None:
+        return _error(request, 404, "DATASET_NOT_FOUND", "找不到規劃資料集。")
+    candidate, reason, validation, _source, _target = _cross_vehicle_route_order_candidate(
+        base, dataset_record, payload
+    )
+    if candidate is None or reason is not None or not validation.valid:
+        return _error(
+            request,
+            409,
+            "CROSS_VEHICLE_ROUTE_NOT_FEASIBLE",
+            reason or "跨車站序未通過獨立驗證；原方案未變更。",
+            validation=validation.model_dump(mode="json"),
+            requires_manual_review=True,
+        )
+    next_version = max(store.plans.get(plan_id, {0: None})) + 1
+    record = PlanRecord(
+        plan_id=plan_id,
+        dataset_id=base.dataset_id,
+        version=next_version,
+        state=base.state,
+        plan=candidate,
+        validation=validation,
+        matrix=base.matrix,
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    store.add_plan(record)
+    repository.save_plan(record)
+    return _plan_payload(record) | {"request_id": _request_id(request)}
+
+
 @app.get("/api/v1/plans/{plan_id}/map-data")
 def get_map_data(
     plan_id: str,
@@ -2179,8 +2456,12 @@ def get_map_data(
     }
 
 
-def _urgent_inserted_orders(plan: PlanResult, order_ids: list[str]) -> list[dict[str, Any]]:
+def _urgent_inserted_orders(
+    plan: PlanResult, order_ids: list[str], dataset: Dataset
+) -> list[dict[str, Any]]:
     inserted_orders: list[dict[str, Any]] = []
+    orders = {order.order_id: order for order in dataset.orders}
+    vehicles = {vehicle.vehicle_id: vehicle for vehicle in dataset.vehicles}
     for order_id in order_ids:
         assignment = next(
             (
@@ -2198,6 +2479,17 @@ def _urgent_inserted_orders(plan: PlanResult, order_ids: list[str]) -> list[dict
                 "sequence": assignment[1] if assignment else None,
                 "eta": assignment[2] if assignment else None,
                 "status": "ASSIGNED" if assignment else "UNASSIGNED",
+                "responsibility": (
+                    "責任區"
+                    if assignment
+                    and PREFERRED_VEHICLE_BY_ZONE.get(
+                        orders[order_id].zone_code
+                    )
+                    == assignment[0]
+                    else "跨區支援"
+                    if assignment and assignment[0] in vehicles
+                    else None
+                ),
             }
         )
     return inserted_orders
@@ -2227,6 +2519,7 @@ def _urgent_option_payload(
     record: PlanRecord,
     base_record: PlanRecord,
     incoming_ids: list[str],
+    dataset: Dataset,
     label: str,
 ) -> dict[str, Any]:
     diff = option.diff
@@ -2255,7 +2548,9 @@ def _urgent_option_payload(
         "feasible": True,
         "selectable": True,
         "requires_human_confirmation": True,
-        "inserted_orders": _urgent_inserted_orders(option.plan, incoming_ids),
+        "inserted_orders": _urgent_inserted_orders(
+            option.plan, incoming_ids, dataset
+        ),
         "cost": {
             "distance_delta_m": distance_delta_m,
             "distance_delta_km": round(distance_delta_m / 1000, 1),
@@ -2447,7 +2742,9 @@ def _urgent_insert_preview_response(
                 readable_reasons[order_id] = "TIME_OR_ROUTE_CONFLICT"
         if include_unassignable_option:
             diff = compute_plan_diff(base_record.plan, partial_plan)
-            inserted_orders = _urgent_inserted_orders(partial_plan, incoming_ids)
+            inserted_orders = _urgent_inserted_orders(
+                partial_plan, incoming_ids, new_dataset
+            )
             return {
                 "plan_id": plan_id,
                 "base_version": base_record.version,
@@ -2583,13 +2880,14 @@ def _urgent_insert_preview_response(
         preview_warnings.append(
             {"code": preview_matrix.warning, "message": "路線 provider 回傳警告。"}
         )
-    inserted_orders = _urgent_inserted_orders(preview_plan, incoming_ids)
+    inserted_orders = _urgent_inserted_orders(preview_plan, incoming_ids, new_dataset)
     option_payloads = [
         _urgent_option_payload(
             option,
             preview_records[index],
             base_record,
             incoming_ids,
+            new_dataset,
             f"方案 {chr(ord('A') + index)}",
         )
         for index, option in enumerate(options)
@@ -2905,7 +3203,15 @@ def _urgent_workflow_message(
         }
         details = []
         for item in missing:
-            fields = [labels.get(str(field), str(field)) for field in item["missing_fields"]]
+            fields: list[str] = []
+            for field in item["missing_fields"]:
+                field_name = str(field)
+                if field_name in {"latitude", "longitude"}:
+                    label = "座標"
+                else:
+                    label = labels.get(field_name, field_name)
+                if label not in fields:
+                    fields.append(label)
             details.append(f"{item['order_ref']} 缺少：{'、'.join(fields)}")
         return "目前還不能計算。" + "；".join(details) + "。請一次補齊後再繼續。"
     if stage == "REVIEW_READY":
@@ -2965,6 +3271,27 @@ def _normalize_urgent_order_context(
     """
     normalized_orders: list[UrgentOrderDraft] = []
     for draft in understanding.orders:
+        zone = next(
+            (item for item in dataset.zones if item.zone_code == draft.zone_code),
+            None,
+        )
+        coordinate_complete = draft.latitude is not None and draft.longitude is not None
+        derived_updates: dict[str, Any] = {}
+        derived_fields = list(draft.derived_fields)
+        if coordinate_complete and zone is not None:
+            if not draft.city and zone.covered_cities:
+                derived_updates["city"] = zone.covered_cities[0]
+                derived_fields.append("city")
+            if not draft.district and zone.covered_districts:
+                derived_updates["district"] = zone.covered_districts[0]
+                derived_fields.append("district")
+            if not draft.location_label:
+                derived_updates["location_label"] = f"{zone.zone_name}配送點"
+                derived_fields.append("location_label")
+            if derived_fields:
+                derived_updates["derived_fields"] = list(dict.fromkeys(derived_fields))
+        if derived_updates:
+            draft = draft.model_copy(update=derived_updates)
         if not draft.district:
             normalized_orders.append(draft)
             continue
@@ -3084,10 +3411,24 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         return "這個我不能改；目前只支援方案卡列出的六種配送調整。"
     if tool == "plan_dispatch":
         if item.get("status") == "INFEASIBLE":
-            return "目前排不出來：沒有任何訂單能在目前限制下指派。"
+            unassigned = _message_ids(item.get("unassigned_orders"))
+            reason_map = item.get("unassigned_reasons")
+            reason_text = ""
+            if isinstance(reason_map, dict):
+                details = [
+                    f"{order_id}：{reason}"
+                    for order_id, reason in reason_map.items()
+                    if isinstance(order_id, str) and isinstance(reason, str)
+                ]
+                reason_text = f"；原因：{'、'.join(details)}" if details else ""
+            return f"目前排不出來：{unassigned or '沒有訂單'} 無法指派{reason_text}。"
         assigned = _message_number(item.get("assigned_order_count"))
+        total = _message_number(item.get("total_order_count"))
         if assigned is not None:
-            return f"配送方案試算完成：已安排 {assigned} 張訂單，請檢查後再確認。"
+            total_text = f"/{total}" if total is not None else ""
+            unassigned = _message_ids(item.get("unassigned_orders"))
+            suffix = f"；{unassigned} 未安排" if unassigned else "；全部訂單都有安排"
+            return f"配送方案試算完成：已安排 {assigned}{total_text} 張訂單，{suffix}。"
         return "配送方案試算完成，請檢查後再確認。"
     if tool == "highest_load_vehicle":
         vehicle_id = item.get("vehicle_id")
@@ -3141,14 +3482,47 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
             return f"目前方案已安排 {assigned}/{total} 張訂單{suffix}。"
         return "目前已有配送方案，可查看各車分配、載重與未安排訂單。"
     if tool == "inspect_dispatch_deviations":
-        return "目前沒有記錄到可回顧的配送偏差。"
+        vehicle_items = item.get("vehicle_deviations")
+        zone_items = item.get("zone_deviations")
+        if item.get("view") == "SUGGESTIONS":
+            suggestions = item.get("suggestions")
+            if isinstance(suggestions, list) and suggestions:
+                suggestion_messages = [
+                    str(entry.get("message"))
+                    for entry in suggestions
+                    if isinstance(entry, dict)
+                    and isinstance(entry.get("message"), str)
+                ]
+                return "建議調整：" + "；".join(suggestion_messages) + "。"
+            return "今天沒有可套用的配送參數建議。"
+        deviation_details: list[str] = []
+        for entries in (vehicle_items, zone_items):
+            if not isinstance(entries, list):
+                continue
+            deviation_details.extend(
+                str(entry.get("message"))
+                for entry in entries
+                if isinstance(entry, dict)
+                and isinstance(entry.get("message"), str)
+            )
+        return (
+            "今天回顧：" + " ".join(deviation_details)
+            if deviation_details
+            else "今天目前沒有記錄到配送偏差。"
+        )
     if tool == "explain_unassigned":
         order_id = item.get("order_id")
         reason = item.get("reason")
+        if item.get("status") == "ORDER_NOT_FOUND":
+            return f"找不到訂單 {order_id}，資料中沒有這張訂單。"
         reason_labels = {
             "CAPACITY_LIMIT": "車輛載重上限",
             "SERVICE_ZONE_UNAVAILABLE": "沒有符合的服務區域",
             "TIME_OR_ROUTE_CONFLICT": "時段或路線限制",
+            "TIME_WINDOW_CONFLICT": "配送時段限制",
+            "VEHICLE_UNAVAILABLE": "可用車輛不足",
+            "UNASSIGNABLE": "載重、服務區域或時段限制",
+            "UNASSIGNED_BY_SOLVER": "載重、服務區域或時段限制",
             "ORDER_IS_ASSIGNED": "這張訂單其實已安排",
         }
         if isinstance(order_id, str):
@@ -3159,6 +3533,15 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         order_id = item.get("order_id")
         if item.get("status") == "ORDER_NOT_FOUND":
             return f"找不到訂單 {order_id}，資料中沒有這張訂單。"
+        assignment_reason = item.get("assignment_reason")
+        source_utterance = item.get("source_utterance")
+        if isinstance(order_id, str) and isinstance(assignment_reason, str):
+            suffix = (
+                f" 原句：{source_utterance}"
+                if isinstance(source_utterance, str) and source_utterance
+                else ""
+            )
+            return assignment_reason + suffix
         vehicle_id = item.get("vehicle_id")
         load = _message_number(item.get("planned_load_kg"))
         if isinstance(order_id, str) and isinstance(vehicle_id, str):
@@ -3199,7 +3582,14 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                 )
                 return (
                     f"{vehicle_id} {action}試算完成：目前可安排 {assigned} 張，"
-                    f"未安排 {len(unassigned_orders)} 張；請檢查後再確認。"
+                    f"未安排 {len(unassigned_orders)} 張"
+                    + (
+                        f"。{item['conflict_summary']}。"
+                        if isinstance(item.get("conflict_summary"), str)
+                        and item.get("conflict_summary")
+                        else "；"
+                    )
+                    + "請檢查後再確認。"
                 )
         return f"車輛 {vehicle_id} 的出勤狀態試算未完成，請檢查車輛編號。"
     if tool == "change_order_constraint":
@@ -3813,6 +4203,12 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             is_urgent_insertion=True,
             action="PREVIEW",
         )
+        urgent_run = None
+    elif session.last_tool == "preview_dispatch_rule" and urgent_state.stage == "IDLE":
+        # A rule clarification is an Agent-owned continuation.  The urgent
+        # interpreter is deliberately skipped for this lifecycle edge so a
+        # numeric rule follow-up cannot be mistaken for a new urgent draft.
+        urgent_understanding = UrgentUnderstanding(is_urgent_insertion=False, action="NONE")
         urgent_run = None
     else:
         try:

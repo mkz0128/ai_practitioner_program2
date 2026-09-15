@@ -36,7 +36,8 @@ export async function waitForPlan(page: Page, expectedAssigned?: string): Promis
 
 export async function openFreshDataset(page: Page, workbook: string, expectedOrderCount = 50): Promise<void> {
   await openFreshPlan(page)
-  await page.getByLabel('上傳 Excel').first().setInputFiles(workbook)
+  await page.getByLabel('上傳 Excel').last().setInputFiles(workbook)
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   await waitForPlan(page)
   await expect(page.locator('.topbar-stats')).toContainText(`${expectedOrderCount} 張訂單`, { timeout: 240_000 })
 }
@@ -44,11 +45,8 @@ export async function openFreshDataset(page: Page, workbook: string, expectedOrd
 export async function openFreshPlan(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  await waitForPlan(page)
-  const reset = page.getByRole('button', { name: '重新開始', exact: true })
-  await expect(reset).toBeVisible()
-  await reset.click()
-  await waitForPlan(page)
+  await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByLabel('配送地圖', { exact: true })).toHaveCount(0)
 }
 
 export async function uploadViaChatPanel(page: Page, workbook: UploadInput): Promise<void> {

@@ -34,7 +34,9 @@ from src.services.dispatch_parameters import apply_service_time_parameters
 from src.services.dispatch_rules import (
     DispatchRule,
     DispatchRuleDraft,
+    DispatchRuleTrial,
     build_plan_with_rules,
+    expires_at_for_duration,
     list_dispatch_rules,
     rule_summary,
 )
@@ -246,6 +248,20 @@ class DelaySimulationInput(BaseModel):
     delay_minutes: Literal[10, 20, 30]
 
 
+class DeviationInspectionInput(BaseModel):
+    """Select the deterministic conversation view for an after-departure review."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    view: Literal["SUMMARY", "SUGGESTIONS"] = Field(
+        default="SUMMARY",
+        description=(
+            "SUMMARY 用於第一次詢問今日成效，只回傳純文字回顧；"
+            "SUGGESTIONS 只用於追問明天怎麼調整，才顯示可套用的參數建議。"
+        ),
+    )
+
+
 class StrategyComparisonInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -253,12 +269,20 @@ class StrategyComparisonInput(BaseModel):
 
 
 class DispatchRuleInput(BaseModel):
-    """Strict semantic fields for the five supported prohibition rules."""
+    """Strict semantic fields for the six supported prohibition rules."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
     subject_type: Literal["VEHICLE", "ZONE"] = "VEHICLE"
-    subject_id: str | None = Field(default=None, min_length=1)
+    subject_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "使用者點名車輛時填資料集的 canonical vehicle_id；一號車、二號車、"
+            "三號車、四號車依序對應 VEH-001、VEH-002、VEH-003、VEH-004。"
+            "沒有明確車號時留空，不要從司機姓名猜車。"
+        ),
+    )
     subject_reference_kind: Literal["VEHICLE_ID", "DRIVER_NAME", "UNSPECIFIED"] = Field(
         default="UNSPECIFIED",
         description=(
@@ -272,10 +296,19 @@ class DispatchRuleInput(BaseModel):
         "MAX_STOPS",
         "EXCLUDED_ZONE",
         "ALLOWED_TIME_WINDOW",
+        "LATEST_RETURN_TIME",
     ] | None = None
     value: float | str | None = None
     value_source: Literal["EXPLICIT", "MISSING"] = "MISSING"
     duration: Literal["PERMANENT", "THIS_WEEK", "TODAY"] = "PERMANENT"
+    additional_rule_type: Literal["LATEST_RETURN_TIME"] | None = Field(
+        default=None,
+        description="同一則訊息另外明確提供最晚收工時間時填 LATEST_RETURN_TIME，否則留空。",
+    )
+    additional_value: str | None = Field(
+        default=None,
+        description="additional_rule_type 對應的 HH:MM 時刻；沒有明確時刻時留空。",
+    )
 
 
 class PlanDispatchInput(BaseModel):
@@ -437,6 +470,19 @@ def _record_missing_fields(
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
+def _unassigned_reason_label(reason: str | None) -> str:
+    labels = {
+        "CAPACITY_LIMIT": "車輛載重上限",
+        "SERVICE_ZONE_UNAVAILABLE": "沒有符合的服務區域",
+        "TIME_OR_ROUTE_CONFLICT": "配送時段或路線限制",
+        "TIME_WINDOW_CONFLICT": "配送時段限制",
+        "VEHICLE_UNAVAILABLE": "可用車輛不足",
+        "UNASSIGNABLE": "載重、服務區域或時段限制",
+        "UNASSIGNED_BY_SOLVER": "載重、服務區域或時段限制",
+    }
+    return labels.get(reason or "", "目前限制未能安排")
+
+
 @function_tool(strict_mode=True)
 def prepare_confirmation(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Return human-confirmation guidance without mutating plan state."""
@@ -531,6 +577,7 @@ def _driver_rule_clarification(
                 "MAX_STOPS",
                 "EXCLUDED_ZONE",
                 "ALLOWED_TIME_WINDOW",
+                "LATEST_RETURN_TIME",
             ],
             "requires_human_confirmation": False,
         }
@@ -553,11 +600,11 @@ def _driver_rule_clarification(
     route_orders = [
         order for order in context.dataset.orders if order.order_id in route_order_ids
     ]
+    last_eta = route.stops[-1].eta[11:16] if route and route.stops else "尚無站點"
     max_single_package_weight_kg = round(
         max((order.total_weight_kg for order in route_orders), default=0.0), 1
     )
     orders_over_20kg = sum(order.total_weight_kg > 20.0 for order in route_orders)
-    orders_over_25kg = sum(order.total_weight_kg > 25.0 for order in route_orders)
     options = [
         {
             "rule_type": "MAX_ROUTE_DISTANCE",
@@ -593,16 +640,26 @@ def _driver_rule_clarification(
             "current_value": ["MORNING", "AFTERNOON", "EVENING"],
             "unit": "時段",
         },
+        {
+            "rule_type": "LATEST_RETURN_TIME",
+            "label": "最晚收工時間",
+            "current_value": last_eta,
+            # 前端印的是「目前 {current_value} {unit}」。時刻本身已經是完整資訊。
+            # 再接一個單位會變成「目前 15:02 時間」。這裡刻意留空字串。
+            "unit": "",
+            "current_detail": f"這台車目前最後一站預估 {last_eta} 送達",
+        },
     ]
     return {
         "tool": "preview_dispatch_rule",
         "status": "NEEDS_CLARIFICATION",
         "message": (
-            f"了解。要限制 {vehicle.vehicle_id} 的單件重量上限，多重算重？\n"
-            f"{vehicle.vehicle_id} 目前狀況：最大單件 {max_single_package_weight_kg:g} kg；"
-            f"超過 20 kg 的有 {orders_over_20kg} 張；"
-            f"超過 25 kg 的有 {orders_over_25kg} 張。\n"
-            "另外請告訴我規則期限：永久（PERMANENT）、本週（THIS_WEEK）或今天（TODAY）。"
+            "好，我需要三件事：\n"
+            "① 這個限制維持多久？今天／本週／長期。\n"
+            f"② 單件重量上限幾公斤？{vehicle.vehicle_id} 目前最重 "
+            f"{max_single_package_weight_kg:g} kg，"
+            f"超過 20 kg 的有 {orders_over_20kg} 張。\n"
+            f"③ 最晚幾點收工？這台車目前最後一站預估 {last_eta}。"
         ),
         "vehicle_id": vehicle.vehicle_id,
         "vehicle_name": vehicle.vehicle_name,
@@ -622,7 +679,7 @@ def _driver_rule_clarification(
 def preview_dispatch_rule(
     ctx: RunContextWrapper[DispatchAgentContext], request: DispatchRuleInput
 ) -> str:
-    """Preview one of five driver or vehicle operating restrictions.
+    """Preview one of six driver or vehicle operating restrictions.
 
     The only supported prohibition rules are single-package weight, total load,
     one-trip distance, service-area exclusion, and allowed delivery time.
@@ -662,11 +719,18 @@ def preview_dispatch_rule(
         return _dataset_required_response(ctx.context, "preview_dispatch_rule")
     if (
         request.subject_id is None
-        and request.subject_reference_kind == "VEHICLE_ID"
         and ctx.context.last_tool == "preview_dispatch_rule"
         and isinstance(ctx.context.vehicle_id, str)
     ):
-        request = request.model_copy(update={"subject_id": ctx.context.vehicle_id})
+        # This is the same rule tool's structured continuation: the prior
+        # clarification already established the vehicle, so only the current
+        # turn's missing limit values are accepted here.
+        request = request.model_copy(
+            update={
+                "subject_id": ctx.context.vehicle_id,
+                "subject_reference_kind": "VEHICLE_ID",
+            }
+        )
     if (
         request.subject_id is None
         or request.subject_reference_kind != "VEHICLE_ID"
@@ -699,7 +763,26 @@ def preview_dispatch_rule(
     valid_value = value_is_number if numeric_rule else isinstance(request.value, str)
     if request.rule_type == "ALLOWED_TIME_WINDOW" and isinstance(request.value, str):
         valid_value = request.value in {"MORNING", "AFTERNOON", "EVENING"}
-    if not subject_exists or not valid_value or (
+    if request.rule_type == "LATEST_RETURN_TIME" and isinstance(request.value, str):
+        clock = request.value.strip().split(":")
+        valid_value = (
+            len(clock) == 2
+            and all(part.isdigit() for part in clock)
+            and 0 <= int(clock[0]) <= 23
+            and 0 <= int(clock[1]) <= 59
+        )
+    secondary_valid = (
+        request.additional_rule_type is None
+        and request.additional_value is None
+    ) or (
+        request.additional_rule_type == "LATEST_RETURN_TIME"
+        and isinstance(request.additional_value, str)
+        and len(request.additional_value.strip().split(":")) == 2
+        and all(part.isdigit() for part in request.additional_value.strip().split(":"))
+        and 0 <= int(request.additional_value.strip().split(":")[0]) <= 23
+        and 0 <= int(request.additional_value.strip().split(":")[1]) <= 59
+    )
+    if not subject_exists or not valid_value or not secondary_valid or (
         request.subject_type != "VEHICLE" and request.rule_type != "EXCLUDED_ZONE"
     ):
         evidence = {
@@ -715,12 +798,15 @@ def preview_dispatch_rule(
                 "MAX_STOPS",
                 "EXCLUDED_ZONE",
                 "ALLOWED_TIME_WINDOW",
+                "LATEST_RETURN_TIME",
             ],
             "requires_human_confirmation": False,
         }
         ctx.context.evidence.append(evidence)
         _tool_finished(ctx.context, "preview_dispatch_rule")
         return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    assert request.rule_type is not None
+    assert request.value is not None
     draft = DispatchRuleDraft(
         subject_type=request.subject_type,
         subject_id=request.subject_id,
@@ -738,6 +824,68 @@ def preview_dispatch_rule(
         time_limit_seconds=10,
         existing_rules=list_dispatch_rules(include_inactive=False),
     )
+    secondary_rule_data: dict[str, Any] | None = None
+    if (
+        request.additional_rule_type == "LATEST_RETURN_TIME"
+        and request.additional_value is not None
+    ):
+        primary_rule = DispatchRule(
+            rule_id="RULE-CANDIDATE-PRIMARY",
+            subject_type=draft.subject_type,
+            subject_id=request.subject_id,
+            rule_type=request.rule_type,
+            value=request.value,
+            source_utterance=source_utterance,
+            created_at="1970-01-01T00:00:00+00:00",
+            expires_at=expires_at_for_duration(draft.duration),
+        )
+        secondary_draft = DispatchRuleDraft(
+            subject_type=draft.subject_type,
+            subject_id=draft.subject_id,
+            rule_type=request.additional_rule_type,
+            value=request.additional_value,
+            duration=request.duration,
+        )
+        secondary_trial = preview_dispatch_rule_trial(
+            ctx.context.dataset,
+            ctx.context.matrix,
+            base_plan,
+            secondary_draft,
+            source_utterance,
+            time_limit_seconds=10,
+            existing_rules=[*list_dispatch_rules(include_inactive=False), primary_rule],
+        )
+        trial = DispatchRuleTrial(
+            status=(
+                "FEASIBLE"
+                if trial.status == "FEASIBLE"
+                and secondary_trial.status == "FEASIBLE"
+                else "CONFLICT"
+            ),
+            plan=secondary_trial.plan,
+            validator=secondary_trial.validator,
+            diff=secondary_trial.diff,
+            affected_order_ids=sorted(
+                set(trial.affected_order_ids)
+                | set(secondary_trial.affected_order_ids)
+            ),
+            conflicts=[*trial.conflicts, *secondary_trial.conflicts],
+        )
+        secondary_rule_data = {
+            **secondary_draft.model_dump(mode="json"),
+            "source_utterance": source_utterance,
+            "summary": rule_summary(
+                DispatchRule(
+                    rule_id="RULE-CANDIDATE-SECONDARY",
+                    subject_type=secondary_draft.subject_type,
+                    subject_id=request.subject_id,
+                    rule_type=request.additional_rule_type,
+                    value=request.additional_value,
+                    source_utterance=source_utterance,
+                    created_at="1970-01-01T00:00:00+00:00",
+                )
+            ),
+        }
     status = trial.status
     rule_data = {
         **draft.model_dump(mode="json"),
@@ -754,14 +902,31 @@ def preview_dispatch_rule(
             )
         ),
     }
+    if secondary_rule_data is not None:
+        rule_data["additional_rule"] = secondary_rule_data
+    affected_text = (
+        "、".join(trial.affected_order_ids)
+        if trial.affected_order_ids
+        else "沒有訂單需要改派"
+    )
+    last_eta_after = max(
+        (stop.eta for route in trial.plan.routes for stop in route.stops),
+        default=None,
+    )
+    last_eta_text = last_eta_after[11:16] if isinstance(last_eta_after, str) else "—"
+    rule_message = (
+        f"{rule_data['summary']}"
+        + (f"；{secondary_rule_data['summary']}" if secondary_rule_data is not None else "")
+        + f"。影響訂單：{affected_text}；試算後最後一站預估 {last_eta_text}。"
+    )
     evidence = {
         "tool": "preview_dispatch_rule",
         "status": status,
         "trial_status": status,
         "message": (
-            "規則試算完成，請檢查影響後再按套用。"
+            rule_message
             if status == "FEASIBLE"
-            else "這條規則造成衝突，請選擇破例、放寬或取消。"
+            else f"{rule_message}這條規則造成衝突，請選擇破例、放寬或取消。"
         ),
         "vehicle_id": request.subject_id,
         "rule": rule_data,
@@ -869,6 +1034,7 @@ def plan_dispatch(
         "total_distance_m": plan.total_distance_m,
         "total_driving_time_s": plan.total_driving_time_s,
         "assigned_order_count": assigned_order_count,
+        "total_order_count": len(ctx.context.dataset.orders),
         # Report vehicles that actually carry at least one order.  The plan
         # still contains every eligible vehicle (including empty routes), but
         # user-facing summaries must not claim an empty vehicle was used.
@@ -1114,7 +1280,10 @@ def inspect_plan_overview(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
 
 
 @function_tool(strict_mode=True)
-def inspect_dispatch_deviations(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
+def inspect_dispatch_deviations(
+    ctx: RunContextWrapper[DispatchAgentContext],
+    request: DeviationInspectionInput,
+) -> str:
     """Report deterministic actual-versus-estimated deviations after departure.
 
     Use only for the dispatched F5 timeline, vehicle lag, zone service-time
@@ -1124,12 +1293,16 @@ def inspect_dispatch_deviations(ctx: RunContextWrapper[DispatchAgentContext]) ->
     a general question about today's dispatch status even when the user does
     not explicitly say the word delay.
     """
-    _tool_started(ctx.context, "inspect_dispatch_deviations", {})
+    view = request.view
+    if view == "SUMMARY" and ctx.context.last_tool == "inspect_dispatch_deviations":
+        view = "SUGGESTIONS"
+    _tool_started(ctx.context, "inspect_dispatch_deviations", {"view": view})
     if ctx.context.stage != "DISPATCHED":
         evidence = {
             "tool": "inspect_dispatch_deviations",
             "status": "STAGE_NOT_DISPATCHED",
             "stage": ctx.context.stage,
+            "view": view,
             "message": "配送偏差回顧要在已發車時間軸中進行。",
             "requires_human_confirmation": False,
         }
@@ -1157,8 +1330,22 @@ def inspect_dispatch_deviations(ctx: RunContextWrapper[DispatchAgentContext]) ->
             if detail_messages
             else "今天目前沒有記錄到配送偏差。"
         )
+        if view == "SUGGESTIONS":
+            summary_message = (
+                "依今天的配送偏差，建議調整 "
+                + "、".join(
+                    f"{item['zone_code']} 每站服務時間 "
+                    f"{item['from_service_minutes']} → {item['to_service_minutes']} 分鐘"
+                    for item in deviations.get("suggestions", [])
+                    if isinstance(item, dict)
+                )
+                + "；請選擇是否套用。"
+                if deviations.get("suggestions")
+                else "今天沒有可套用的配送參數建議。"
+            )
         evidence = {
             "tool": "inspect_dispatch_deviations",
+            "view": view,
             "status": "RECORDED" if deviations["has_deviations"] else "NO_DEVIATION",
             **deviations,
             "message": summary_message,
@@ -1182,6 +1369,16 @@ def explain_unassigned(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
     if not _planning_data_ready(ctx.context):
         return _dataset_required_response(ctx.context, "explain_unassigned")
     plan = _plan_for_query(ctx.context)
+    known_order_ids = {order.order_id for order in ctx.context.dataset.orders}
+    if order_id not in known_order_ids:
+        evidence = {
+            "tool": "explain_unassigned",
+            "order_id": order_id,
+            "status": "ORDER_NOT_FOUND",
+        }
+        ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "explain_unassigned")
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     reason = plan.unassigned_reasons.get(order_id)
     if reason is None:
         reason = "ORDER_IS_ASSIGNED"
@@ -1226,6 +1423,43 @@ def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
             "tool": "explain_assignment",
             **evidence.model_dump(mode="json"),
         }
+        assignment_reason: str | None = None
+        if evidence.assigned and evidence.vehicle_id is not None:
+            active_rules = list_dispatch_rules(include_inactive=False)
+            for rule in active_rules:
+                if (
+                    rule.subject_type == "VEHICLE"
+                    and rule.subject_id != evidence.vehicle_id
+                    and rule.rule_type == "MAX_PACKAGE_WEIGHT"
+                    and isinstance(rule.value, (int, float))
+                    and evidence.order_weight_kg > float(rule.value)
+                ):
+                    assignment_reason = (
+                        f"因為 {rule.subject_id} 單件重量上限是 {float(rule.value):g} kg，"
+                        f"{order_id} 重 {evidence.order_weight_kg:g} kg，"
+                        f"所以改由 {evidence.vehicle_id} 安排。"
+                    )
+                    evidence_payload["source_utterance"] = rule.source_utterance
+                    break
+        if assignment_reason is not None:
+            evidence_payload["assignment_reason"] = assignment_reason
+        evidence_payload["message"] = (
+            assignment_reason
+            + (
+                f" 原句：{evidence_payload['source_utterance']}"
+                if isinstance(evidence_payload.get("source_utterance"), str)
+                else ""
+            )
+            if assignment_reason
+            else (
+                f"訂單 {order_id} 目前安排在 {evidence.vehicle_id}。"
+                if evidence.vehicle_id is not None
+                else (
+                    f"訂單 {order_id} 目前沒有安排到車輛；"
+                    f"確定性驗證原因：{_unassigned_reason_label(plan.unassigned_reasons.get(order_id))}。"
+                )
+            )
+        )
     ctx.context.evidence.append(evidence_payload)
     _tool_finished(ctx.context, "explain_assignment")
     return json.dumps(evidence_payload, ensure_ascii=False, sort_keys=True)
@@ -2918,8 +3152,11 @@ def create_dispatch_agent(
             "inspect_dispatch_deviations only for actual-versus-estimated timeline deviation "
             "after departure; in DISPATCHED this includes a general status question, vehicle lag, "
             "zone service-time deviation, or parameter "
-            "correction suggestions; use only its deterministic evidence and never invent a "
-            "number. Do not use it for an ordinary plan overview. Use "
+             "correction suggestions; use only its deterministic evidence and never invent a "
+             "number. For the first general review, call it with view=SUMMARY and return only "
+             "the human-readable review text. For a follow-up asking what to change tomorrow, "
+             "call it with view=SUGGESTIONS so the deterministic suggestions become selectable "
+             "cards. Do not use it for an ordinary plan overview. Use "
             "explain_assignment only for a semantic question about where or why one assigned "
             "order is routed, or for an unknown order ID that must be reported as not found. "
             "Application metadata's selected order_id is only a referential value for a current "
@@ -2929,10 +3166,11 @@ def create_dispatch_agent(
             "request to explain this assignment, this order, or this stop, in any language, is "
             "such a clear reference whenever metadata supplies order_id: use explain_assignment "
             "with that order_id rather than inspect_plan_overview, because the question is about "
-            "one placement and not about fleet-wide completeness. Use "
-            "explain_unassigned only "
-            "when a known "
-            "order is explicitly unassigned and the question asks for its validator-backed reason. "
+            "one placement and not about fleet-wide completeness. Use explain_unassigned when "
+            "the current-plan question is about why a known order could not be placed or remains "
+            "outside the assignment, so the answer must cite its validator-backed unassigned "
+            "reason. Do not use explain_assignment for that outcome; explain_assignment is only "
+            "for an order that is assigned or an unknown order that must be reported as not found. "
             "Treat a day-scoped request not to dispatch a named whole vehicle as "
             "change_vehicle_availability, even when the wording gives no reason; "
             "do not turn it into a driver-weight restriction. Use preview_dispatch_rule "
@@ -2969,9 +3207,10 @@ def create_dispatch_agent(
             "today, moved to another day, or cancelled; use enforce_hard_time_windows when "
             "the user asks that nobody be late. Use change_frozen_stops with vehicle_id "
             "when the user wants a whole vehicle route frozen. Use preview_dispatch_rule for "
-            "driver or vehicle restrictions. Only the five "
+            "driver or vehicle restrictions. The six supported restriction types are "
             "prohibition rule types in that tool are allowed: MAX_PACKAGE_WEIGHT, "
-            "MAX_ROUTE_DISTANCE, MAX_STOPS, EXCLUDED_ZONE and ALLOWED_TIME_WINDOW. "
+            "MAX_ROUTE_DISTANCE, MAX_STOPS, EXCLUDED_ZONE, ALLOWED_TIME_WINDOW and "
+            "LATEST_RETURN_TIME. "
             "When a restriction is vague, call preview_dispatch_rule with missing strict "
             "fields so it returns deterministic current values and choices; never invent "
             "a limit. Comparative wording such as shorter, lighter, not too heavy, or "
@@ -3006,7 +3245,7 @@ def create_dispatch_agent(
             "assignment preference, not a new urgent order; call reject_unsupported_change. "
             "A concrete "
             "speed request—driving faster or slower, hurry, ETA, or service time—is always "
-            "outside the five prohibition rules, even when it names a driver; call "
+            "outside the six prohibition rules, even when it names a driver; call "
             "reject_unsupported_change and do not call preview_dispatch_rule. "
             "driver rule is always a trial first and is never persisted by the Agent. "
             "that combines choosing a shown option card (for example, 'use option A') with "

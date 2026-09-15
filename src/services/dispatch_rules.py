@@ -21,6 +21,7 @@ DispatchRuleType = Literal[
     "MAX_STOPS",
     "EXCLUDED_ZONE",
     "ALLOWED_TIME_WINDOW",
+    "LATEST_RETURN_TIME",
 ]
 RuleDuration = Literal["PERMANENT", "THIS_WEEK", "TODAY"]
 
@@ -174,6 +175,29 @@ def _active_rules(rules: list[DispatchRule]) -> list[DispatchRule]:
     ]
 
 
+def _clock_minutes(value: object) -> int | None:
+    """Parse the strict HH:MM rule value without interpreting user language."""
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        return None
+    return hour * 60 + minute
+
+
+def _stop_clock_minutes(value: str) -> int | None:
+    try:
+        return _clock_minutes(datetime.fromisoformat(value).strftime("%H:%M"))
+    except ValueError:
+        return None
+
+
 def _rule_allows_order(rule: DispatchRule, vehicle_id: str, order: Order) -> bool:
     if rule.subject_type != "VEHICLE" or rule.subject_id != vehicle_id:
         return True
@@ -183,6 +207,10 @@ def _rule_allows_order(rule: DispatchRule, vehicle_id: str, order: Order) -> boo
         return order.zone_code != str(rule.value)
     if rule.rule_type == "ALLOWED_TIME_WINDOW":
         return TimeSlot(order.time_slot).value == str(rule.value)
+    if rule.rule_type == "LATEST_RETURN_TIME":
+        # The route-level ETA check below is authoritative. This branch keeps
+        # the order eligibility predicate conservative for malformed values.
+        return _clock_minutes(rule.value) is not None
     return True
 
 
@@ -268,6 +296,14 @@ def _rule_conflicts(
                     if order_id in orders
                     and TimeSlot(orders[order_id].time_slot).value != str(rule.value)
                 )
+            elif rule.rule_type == "LATEST_RETURN_TIME":
+                limit = _clock_minutes(rule.value)
+                if limit is not None:
+                    affected.extend(
+                        stop.order_id
+                        for stop in route.stops
+                        if (_stop_clock_minutes(stop.eta) or 0) > limit
+                    )
         if affected:
             conflicts.append(
                 RuleConflict(
@@ -288,6 +324,7 @@ def _conflict_reason(rule: DispatchRule) -> str:
         "MAX_STOPS": "站數超過規則上限",
         "EXCLUDED_ZONE": "訂單區域被車輛排除",
         "ALLOWED_TIME_WINDOW": "訂單時段不在車輛允許時段",
+        "LATEST_RETURN_TIME": "最後送達時間超過最晚收工時間",
     }
     return labels[rule.rule_type]
 
@@ -649,12 +686,18 @@ def rule_summary(rule: DispatchRule) -> str:
         "MAX_STOPS": "站數",
         "EXCLUDED_ZONE": "排除區域",
         "ALLOWED_TIME_WINDOW": "允許時段",
+        "LATEST_RETURN_TIME": "最晚收工",
     }
     suffix = {
         "MAX_PACKAGE_WEIGHT": " kg",
         "MAX_ROUTE_DISTANCE": " km",
         "MAX_STOPS": " 站",
     }.get(rule.rule_type, "")
-    if rule.rule_type in {"MAX_PACKAGE_WEIGHT", "MAX_ROUTE_DISTANCE", "MAX_STOPS"}:
+    if rule.rule_type in {
+        "MAX_PACKAGE_WEIGHT",
+        "MAX_ROUTE_DISTANCE",
+        "MAX_STOPS",
+        "LATEST_RETURN_TIME",
+    }:
         return f"{rule.subject_id} {labels[rule.rule_type]} ≤ {value}{suffix}"
     return f"{rule.subject_id} {labels[rule.rule_type]}：{value}"

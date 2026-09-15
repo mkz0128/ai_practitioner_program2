@@ -29,6 +29,8 @@ EXPECTED_PATHS = {
     "/api/v1/plans/{plan_id}/load",
     "/api/v1/plans/{plan_id}/route-order/preview",
     "/api/v1/plans/{plan_id}/route-order/confirm",
+    "/api/v1/plans/{plan_id}/route-order/cross-vehicle/preview",
+    "/api/v1/plans/{plan_id}/route-order/cross-vehicle/confirm",
     "/api/v1/plans/{plan_id}/urgent-insert/preview",
     "/api/v1/plans/{plan_id}/urgent-insert/batch-preview",
     "/api/v1/plans/{plan_id}/simulate-departure",
