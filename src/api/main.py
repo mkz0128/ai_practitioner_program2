@@ -3189,31 +3189,29 @@ def _urgent_workflow_message(
     if stage == "BLOCKED":
         return "不能跳過資料檢查、插單預覽或人工確認；原方案沒有變更。"
     if missing:
-        labels = {
-            "order_id": "訂單編號",
-            "location_label": "地點名稱",
-            "city": "城市",
-            "district": "行政區",
-            "latitude": "緯度",
-            "longitude": "經度",
-            "zone_code": "配送區域",
-            "package_weight_kg": "每件重量",
-            "declared_package_count": "包裹件數",
-            "time_slot": "配送時段",
-        }
-        details = []
-        for item in missing:
-            fields: list[str] = []
-            for field in item["missing_fields"]:
-                field_name = str(field)
-                if field_name in {"latitude", "longitude"}:
-                    label = "座標"
-                else:
-                    label = labels.get(field_name, field_name)
-                if label not in fields:
-                    fields.append(label)
-            details.append(f"{item['order_ref']} 缺少：{'、'.join(fields)}")
-        return "目前還不能計算。" + "；".join(details) + "。請一次補齊後再繼續。"
+        missing_names = {str(field) for item in missing for field in item["missing_fields"]}
+        display_fields: list[str] = []
+        if "order_id" in missing_names:
+            display_fields.append("訂單編號")
+        if {"latitude", "longitude"} & missing_names:
+            display_fields.append("座標")
+        if "zone_code" in missing_names:
+            display_fields.append("配送區域")
+        if "package_weight_kg" in missing_names:
+            display_fields.append("重量")
+        if "declared_package_count" in missing_names:
+            display_fields.append("件數")
+        if "time_slot" in missing_names:
+            display_fields.append("配送時段")
+        if {"location_label", "city", "district"} & missing_names:
+            display_fields.append("配送地點")
+        first_line = "、".join(display_fields[:3])
+        second_line = "、".join(display_fields[3:])
+        grouped = "\n".join(line for line in (first_line, second_line) if line)
+        return (
+            "目前還不能計算。臨時訂單還缺少這些欄位，才能算：\n"
+            f"{grouped}。請一次補齊後再繼續。"
+        )
     if stage == "REVIEW_READY":
         summaries = []
         for order in orders:
@@ -3474,7 +3472,10 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                 load = _message_number(vehicle.get("planned_load_kg"))
                 limit = _message_number(vehicle.get("max_load_kg"))
                 if isinstance(vehicle_id, str) and load is not None and limit is not None:
-                    load_summary.append(f"{vehicle_id} 載重 {load:g}/{limit:g} kg")
+                    # _message_number 回傳的已經是格式化過的字串, 再套 :g 會拋
+                    # ValueError: Unknown format code 'g' for object of type 'str',
+                    # 讓「現在的方案長什麼樣」「今天成效如何」這類問句全部回 502。
+                    load_summary.append(f"{vehicle_id} 載重 {load}/{limit} kg")
         if assigned is not None and total is not None:
             suffix = f"；未安排：{unassigned}" if unassigned else "；目前沒有未安排訂單"
             if load_summary:
@@ -3595,6 +3596,10 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
     if tool == "change_order_constraint":
         order_id = item.get("order_id")
         slot = item.get("time_slot")
+        if item.get("status") == "MISSING_ORDER_ID":
+            message = item.get("message")
+            if isinstance(message, str) and message.strip():
+                return message
         return f"已試算訂單 {order_id} 改為 {slot} 時段，方案尚未套用；請查看新的方案卡。"
     if tool == "change_frozen_stops":
         stop_count = _message_number(item.get("selected_stop_count"))
@@ -3603,9 +3608,13 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
     if tool == "reassign_order_preview":
         order_id = item.get("order_id")
         target = item.get("target_vehicle_id")
+        if item.get("status") in {"NOT_FOUND", "ORDER_NOT_FOUND"}:
+            return f"找不到訂單 {order_id}，這次換車／改派沒有執行，原方案沒有變更。"
         return f"已試算訂單 {order_id} 改派至 {target} 的方案，請檢查方案卡。"
     if tool == "prioritize_order_preview":
         order_id = item.get("order_id")
+        if item.get("status") in {"NOT_FOUND", "ORDER_NOT_FOUND"}:
+            return f"找不到訂單 {order_id}，無法提前或先送，原方案沒有變更。"
         eta = _eta_clock(item.get("estimated_eta"))
         suffix = f"，預估 {eta} 到達" if eta else ""
         return f"已試算訂單 {order_id} 提前配送{suffix}；對話中的新方案卡尚未套用。"
@@ -4061,7 +4070,10 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                 agent_matrix = preview_record_for_change.matrix
 
     def finish_urgent_workflow(
-        understanding: UrgentUnderstanding, runner_result: Any
+        understanding: UrgentUnderstanding,
+        runner_result: Any,
+        *,
+        entry_tool: str = "urgent_insertion_workflow",
     ) -> Any:
         understanding = _normalize_urgent_order_context(understanding, dataset)
         existing_ids = {order.order_id for order in dataset.orders}
@@ -4175,11 +4187,18 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         urgent_usage = getattr(
             getattr(runner_result, "context_wrapper", None), "usage", None
         )
+        # The public HTTP contract exposes the completed deterministic workflow
+        # as the evidence record. The semantic entry tool is an internal
+        # routing detail; returning it here would make callers inspect a
+        # partial draft instead of the final workflow state.
+        workflow_evidence = [
+            {"tool": "urgent_insertion_workflow", "data": evidence_data}
+        ]
         return {
             "session_id": payload.session_id,
             "agent_run_id": f"RUN-{uuid4().hex[:12].upper()}",
             "message": final_output,
-            "evidence": [{"tool": "urgent_insertion_workflow", "data": evidence_data}],
+            "evidence": workflow_evidence,
             "requires_human_confirmation": preview is not None,
             "usage": {
                 "total_tokens": int(getattr(urgent_usage, "total_tokens", 0) or 0),
@@ -4208,6 +4227,14 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         # A rule clarification is an Agent-owned continuation.  The urgent
         # interpreter is deliberately skipped for this lifecycle edge so a
         # numeric rule follow-up cannot be mistaken for a new urgent draft.
+        urgent_understanding = UrgentUnderstanding(is_urgent_insertion=False, action="NONE")
+        urgent_run = None
+    elif urgent_state.stage == "IDLE":
+        # A fresh conversation must reach the main dispatch Agent so its
+        # strict tool descriptions decide between urgent-intake entry points
+        # and ordinary plan operations.  The structured urgent interpreter is
+        # reserved for merging an already active draft or handling a visible
+        # preview; it must not act as a pre-agent router for a new message.
         urgent_understanding = UrgentUnderstanding(is_urgent_insertion=False, action="NONE")
         urgent_run = None
     else:
@@ -4335,6 +4362,16 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
         "frozen_stop_count": session.frozen_stop_count,
         "frozen_stop_ids": list(session.frozen_stop_ids),
         "pending_fields": list(session.pending_fields),
+        "known_order_ids": (
+            sorted(order.order_id for order in agent_dataset.orders)
+            if agent_dataset is not None
+            else []
+        ),
+        "unassigned_order_ids": (
+            list(agent_record.plan.unassigned_orders)
+            if agent_record is not None
+            else []
+        ),
         "last_tool": session.last_tool,
         "previous_rule_vehicle_id": (
             context_vehicle_id if session.last_tool == "preview_dispatch_rule" else None
@@ -4462,7 +4499,11 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                 str(item) for item in urgent_intake.get("referenced_order_ids", [])
             ],
         )
-        return finish_urgent_workflow(intake_understanding, result)
+        return finish_urgent_workflow(
+            intake_understanding,
+            result,
+            entry_tool="begin_urgent_insertion",
+        )
 
     # A plan requested through the Agent is persisted here, after the SDK has
     # selected and executed plan_dispatch.  This keeps the conversation as the

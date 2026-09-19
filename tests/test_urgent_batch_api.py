@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from src.agent.runtime import DispatchAgentContext
 from src.agent.urgent_workflow import (
     URGENT_PREVIEW_REQUIRED_FIELDS,
     UrgentOrderDraft,
@@ -478,7 +479,28 @@ def test_agent_urgent_state_machine_reviews_then_previews_once(monkeypatch) -> N
     async def fake_understanding(message, state):
         return outputs.pop(0), object()
 
+    async def fake_dispatch_agent(message, dataset, matrix, **kwargs):
+        first_understanding = outputs.pop(0)
+        context = DispatchAgentContext(
+            dataset=dataset,
+            matrix=matrix,
+            current_user_message=message,
+            plan=kwargs.get("plan"),
+        )
+        context.budget.total_tokens = 1
+        context.evidence.append(
+            {
+                "tool": "begin_urgent_insertion",
+                "action": first_understanding.action,
+                "orders": [
+                    order.model_dump(mode="json") for order in first_understanding.orders
+                ],
+            }
+        )
+        return "已收到臨時訂單資料。", context, object()
+
     monkeypatch.setattr("src.api.main.understand_urgent_message", fake_understanding)
+    monkeypatch.setattr("src.api.main.run_dispatch_agent", fake_dispatch_agent)
     monkeypatch.setattr("src.api.main.settings.openai_api_key", "configured-for-test")
     first = client.post(
         "/api/v1/agent/chat",
@@ -533,9 +555,52 @@ def test_agent_urgent_state_machine_reports_missing_fields_per_order(monkeypatch
                 ],
             ),
             object(),
+            )
+
+    first_understanding = (
+        UrgentUnderstanding(
+            is_urgent_insertion=True,
+            action="ADD_OR_UPDATE",
+            orders=[
+                UrgentOrderDraft(order_id="TMP-401"),
+                UrgentOrderDraft(
+                    order_id="TMP-402",
+                    zone_code="Z1",
+                    city="新北市",
+                    district="板橋",
+                    location_label="合成測試點 TMP-402",
+                    latitude=25.0114,
+                    longitude=121.4618,
+                    time_slot="AM",
+                    declared_package_count=1,
+                    package_weight_kg=1.0,
+                    priority="HIGH",
+                ),
+            ],
         )
+    )
+
+    async def fake_dispatch_agent(message, dataset, matrix, **kwargs):
+        context = DispatchAgentContext(
+            dataset=dataset,
+            matrix=matrix,
+            current_user_message=message,
+            plan=kwargs.get("plan"),
+        )
+        context.budget.total_tokens = 1
+        context.evidence.append(
+            {
+                "tool": "begin_urgent_insertion",
+                "action": first_understanding.action,
+                "orders": [
+                    order.model_dump(mode="json") for order in first_understanding.orders
+                ],
+            }
+        )
+        return "已收到臨時訂單資料。", context, object()
 
     monkeypatch.setattr("src.api.main.understand_urgent_message", fake_understanding)
+    monkeypatch.setattr("src.api.main.run_dispatch_agent", fake_dispatch_agent)
     monkeypatch.setattr("src.api.main.settings.openai_api_key", "configured-for-test")
     response = client.post(
         "/api/v1/agent/chat",
@@ -586,7 +651,28 @@ def test_preview_validation_keeps_urgent_context_for_followup(monkeypatch) -> No
     async def fake_understanding(message, state):
         return outputs.pop(0), object()
 
+    async def fake_dispatch_agent(message, dataset, matrix, **kwargs):
+        first_understanding = outputs.pop(0)
+        context = DispatchAgentContext(
+            dataset=dataset,
+            matrix=matrix,
+            current_user_message=message,
+            plan=kwargs.get("plan"),
+        )
+        context.budget.total_tokens = 1
+        context.evidence.append(
+            {
+                "tool": "begin_urgent_insertion",
+                "action": first_understanding.action,
+                "orders": [
+                    order.model_dump(mode="json") for order in first_understanding.orders
+                ],
+            }
+        )
+        return "已收到臨時訂單資料。", context, object()
+
     monkeypatch.setattr("src.api.main.understand_urgent_message", fake_understanding)
+    monkeypatch.setattr("src.api.main.run_dispatch_agent", fake_dispatch_agent)
     monkeypatch.setattr("src.api.main.settings.openai_api_key", "configured-for-test")
     context = {"plan_id": plan_id, "plan_version": version}
 

@@ -71,7 +71,7 @@ export default function App() {
   const [activeRuleCount, setActiveRuleCount] = useState(0)
   const [rulesExpanded, setRulesExpanded] = useState(false)
   const [activeVehicle, setActiveVehicle] = useState<string | null>(null)
-  const [activeOrder, setActiveOrder] = useState<string | null>(null)
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -187,6 +187,7 @@ export default function App() {
     if (!plan || busy || !option.plan_id || option.base_version === null) return
     setBusy(true); setError(null); setNotice(null)
     try {
+      const beforePlan = plan
       const result = await confirmDispatchRule(option)
       await refreshDispatchRules()
       const replanned = await createPlan(plan.dataset_id, plan.objective || 'BALANCED')
@@ -195,7 +196,16 @@ export default function App() {
       setConversationOrderId(replanned.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null)
       setRulesExpanded(true)
       const ruleCountText = option.rule.additional_rule ? '1 條規則設定（含兩項限制）' : `${formatNumber(result.active_count)} 條規則`
-      setNotice(`已套用 ${ruleCountText}；已依新規則重新排班。`)
+      const subjectBefore = beforePlan.vehicles.find((vehicle) => vehicle.vehicle_id === option.rule.subject_id)
+      const subjectAfter = replanned.vehicles.find((vehicle) => vehicle.vehicle_id === option.rule.subject_id)
+      const receiver = replanned.vehicles
+        .filter((vehicle) => vehicle.vehicle_id !== option.rule.subject_id)
+        .map((vehicle) => ({ vehicle, before: beforePlan.vehicles.find((item) => item.vehicle_id === vehicle.vehicle_id) }))
+        .sort((left, right) => (right.vehicle.planned_load_kg - (right.before?.planned_load_kg || 0)) - (left.vehicle.planned_load_kg - (left.before?.planned_load_kg || 0)))[0]
+      const loadBalanceMessage = subjectBefore && subjectAfter && receiver && receiver.before
+        ? `因為這條規則，${subjectBefore.vehicle_id} 少了 ${Math.max(0, subjectBefore.order_count - subjectAfter.order_count)} 張（${formatNumber(subjectBefore.load_utilization * 100, 0)}% → ${formatNumber(subjectAfter.load_utilization * 100, 0)}%），這些單主要由 ${receiver.vehicle.vehicle_id} 接手（${formatNumber(receiver.before.load_utilization * 100, 0)}% → ${formatNumber(receiver.vehicle.load_utilization * 100, 0)}%）。如果要讓載重平均一點，可以放寬重量上限或收工時間。`
+        : ''
+      setNotice(`已套用 ${ruleCountText}；已依新規則重新排班。${loadBalanceMessage}`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, refreshDispatchRules])
 
@@ -331,7 +341,7 @@ export default function App() {
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, timelineMinutes])
 
-  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setActiveOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
+  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setExpandedOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
   const google = providers.find((item) => item.name === 'google_routes')
 
   if (!plan) return <div className="empty-shell"><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
@@ -371,7 +381,7 @@ export default function App() {
 
       <div className="stage">
         <div className="stage-map">
-          <MapView data={map} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={setActiveOrder} />
+          <MapView data={map} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={(orderId) => { setExpandedOrder(orderId) }} />
         </div>
 
         <div className="stage-chat">
@@ -394,7 +404,7 @@ export default function App() {
            <DeviationBoard data={map?.deviations} busy={busy} showSuggestions={showDeviationSuggestions} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
           <VehicleBoard plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
           <DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} rulesExpanded={rulesExpanded} />
-          <OrderTable plan={plan} activeOrderId={activeOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} onSelectOrder={setActiveOrder} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
+           <OrderTable plan={plan} activeOrderId={expandedOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} onSelectOrder={(orderId) => { if (!orderId) { setExpandedOrder(null); return } setExpandedOrder((current) => current === orderId ? null : orderId) }} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
           <p className="safety-note">所有數字來自後端確定性計算；方案先預覽，經人工確認後才會建立新版本。</p>
         </div>
       </section>

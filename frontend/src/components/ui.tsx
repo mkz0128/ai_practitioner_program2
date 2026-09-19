@@ -9,7 +9,7 @@ export function Button({ className, variant = 'primary', ...props }: ButtonHTMLA
     ghost: 'text-slate-600 hover:bg-slate-100 disabled:text-slate-300',
     danger: 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:text-red-300',
   }
-  return <button className={cn('inline-flex min-h-9 items-center justify-center rounded-lg px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2', variants[variant], className)} {...props} />
+  return <button className={cn('inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2', variants[variant], className)} {...props} />
 }
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

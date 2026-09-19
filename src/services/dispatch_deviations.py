@@ -141,7 +141,6 @@ def compute_dispatch_deviations(
                 actual_completed_count=actual["completed_count"],
                 message=(
                     f"{vehicle_id} 今天實際比預估慢 {delay_minutes} 分鐘。"
-                    "已記錄。"
                 ),
             )
         )
@@ -164,7 +163,7 @@ def compute_dispatch_deviations(
         reason="每站平均行駛負擔最高",
         message=(
             f"{zone_code} 區每站停留時間平均比預估多 "
-            f"{extra_service_minutes} 分鐘（每站平均行駛負擔最高）。已記錄。"
+            f"{extra_service_minutes} 分鐘（每站平均行駛負擔最高）。"
         ),
     )
     recorded_at = ROUTE_BASE_TIME + timedelta(minutes=timeline_minutes)
@@ -192,4 +191,15 @@ def compute_dispatch_deviations(
             }
         ],
         "dataset_order_count": len(dataset.orders),
+        "assigned_order_count": sum(len(route.order_ids) for route in plan.routes),
+        "total_order_count": len(dataset.orders),
+        "total_distance_km": round(plan.total_distance_m / 1000, 1),
+        "average_load_percent": round(
+            sum(route.planned_load_kg for route in plan.routes)
+            / sum(route.max_load_kg for route in plan.routes)
+            * 100
+        ),
+        "hardest_zone_order_count": sum(
+            1 for order in dataset.orders if order.zone_code == zone_code
+        ),
     }

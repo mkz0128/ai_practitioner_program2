@@ -100,7 +100,11 @@ class UrgentOrderDraft(BaseModel):
         default=None, ge=-180, le=180, description="本則訊息明確提供的經度。"
     )
     time_slot: TimeSlotValue | None = Field(
-        default=None, description="本則訊息明確提供的配送時段。"
+        default=None,
+        description=(
+            "本則訊息明確提供的配送時段；『今天早上送到』、『今天早上配送』、"
+            "『早上送』都表示 MORNING，『下午』表示 AFTERNOON，『晚上』表示 EVENING。"
+        ),
     )
     declared_package_count: int | None = Field(
         default=None, ge=1, le=3, description="本則訊息明確提供的包裹件數。"
@@ -189,6 +193,13 @@ class UrgentUnderstanding(BaseModel):
 
     is_urgent_insertion: bool
     action: UrgentAction = "NONE"
+    preview_requested: bool = Field(
+        default=False,
+        description=(
+            "只有使用者在 REVIEW_READY 狀態明確要求產生、查看或顯示臨時插單預覽時為 true。"
+            "這是語意欄位，不是從字串關鍵字判斷；此時 action 必須是 PREVIEW 且 orders 必須為空。"
+        ),
+    )
     orders: list[UrgentOrderDraft] = Field(default_factory=list, max_length=20)
     referenced_order_ids: list[str] = Field(default_factory=list, max_length=20)
 
@@ -512,6 +523,29 @@ def create_urgent_understanding_agent(
         model=model,
         instructions=(
             "Classify the current message semantically. Do not use keyword matching. "
+            "Hard boundary: this interpreter may return is_urgent_insertion=true only "
+            "when the current message supplies a new temporary-delivery fact or explicitly "
+            "operates on the displayed urgent draft. A request to inspect, summarize, or "
+            "describe the current dispatch plan—including its shape, arrangement, or status—"
+            "must return is_urgent_insertion=false, action=NONE, and empty orders, even "
+            "when a draft or preview is present. "
+            "First check whether the current message contains a new temporary-delivery fact "
+            "or an explicit operation on the already shown urgent draft. If it contains neither, "
+            "always set is_urgent_insertion=false and action=NONE; do not let the presence of "
+            "urgent_stage, a pending order, or an earlier draft change that result. Questions "
+            "about the plan, status, version, vehicle load, assignment, strategy, or deviations "
+            "are examples of this unrelated case and belong to the main dispatch Agent. In that "
+            "case return no draft orders and no supplied fields; never copy a field from the "
+            "draft metadata into the current message's structured result. Viewing, describing, "
+            "or asking what the current plan looks like is not an operation on the urgent draft, "
+            "even when the message is vague or mentions the plan itself. "
+            "This interpreter only owns new temporary-delivery facts and explicit operations "
+            "on an already shown urgent draft. If the current message is a read-only question "
+            "about the fleet or plan—overview, strategy comparison, vehicle load, greatest load, "
+            "plan version, assignment, or delivery deviation—always set "
+            "is_urgent_insertion=false and action=NONE, regardless of urgent_stage. The main "
+            "dispatch Agent owns those queries. Never replay the draft because its metadata is "
+            "present. "
             "An existing order ID from the current plan combined with a request to stop "
             "today, move to a later day, arrive earlier, meet an arrival deadline, or change "
             "its delivery slot is not an urgent-order draft; set is_urgent_insertion=false "
@@ -524,6 +558,11 @@ def create_urgent_understanding_agent(
             "Set is_urgent_insertion=true only for adding one or more temporary delivery "
             "orders, supplying missing fields for that active workflow, choosing preview, "
             "modifying the shown draft, or cancelling it. Extract only facts the user supplied. "
+            "Even when the message supplies only a time slot and weight, it still describes "
+            "one new urgent order: return one order object containing those supplied fields; "
+            "do not return an empty orders list or discard the time slot. In particular, "
+            "『有一張急單要今天早上送到，15公斤』 must produce one order with "
+            "time_slot=MORNING and package_weight_kg=15. "
             "Never invent location, zone, weight, count, MORNING/AFTERNOON/EVENING, "
             "priority, IDs or coordinates. "
             "Interpret city and district as separate fields: city is the supplied "
@@ -544,12 +583,19 @@ def create_urgent_understanding_agent(
              "In that format, recognize the typed roles in order: new order ID, concrete "
              "delivery point, city, latitude, longitude, zone, and package count; each value "
              "that is clearly present is explicit even when the labels are omitted. "
+             "A slash-separated numeric pair such as 25.036/121.567 is also an explicit "
+             "latitude followed by longitude pair; place the first number in latitude and "
+             "the second in longitude, and do not require a separate location_label when "
+             "both coordinates are present. "
              "When a value is labelled in the same message, the label is authoritative: "
              "行政區信義 means district=信義, 臺北市 is city, and the concrete place name "
              "before it remains location_label. Do not absorb an 行政區 value or a city value "
              "into location_label, and do not use the place-name text as the district. "
              "When a complete draft supplies all required fields, preserve each value "
             "and let deterministic application code resolve a unique zone when possible. "
+            "Treat the complete phrase 『今天早上送到』, 『今天早上配送』, or 『早上送』 "
+            "as time_slot=MORNING, and the corresponding afternoon/evening phrases as "
+            "AFTERNOON/EVENING; do not omit an explicit time slot from supplied_fields. "
             "When only some urgent-order facts are supplied, leave every absent field "
             "empty so the application can ask for the exact missing fields. "
             "A standalone existing order ID belongs in referenced_order_ids. When a new order "
@@ -561,13 +607,23 @@ def create_urgent_understanding_agent(
             "is_urgent_insertion=false and action=NONE, and put the ID in referenced_order_ids. "
             "ADD_OR_UPDATE and MODIFY only "
             "collect data. PREVIEW is allowed only when the application says a complete summary "
-            "was already shown and the user explicitly chooses preview. Requests to skip preview, "
+            "was already shown and the user explicitly chooses preview. At REVIEW_READY, an "
+            "explicit request to generate, create, or show the urgent insertion preview, such "
+            "as 『產生插單預覽』, MUST return is_urgent_insertion=true, action=PREVIEW, and "
+            "preview_requested=true, orders=[]; preserve the existing draft instead "
+            "of creating a blank order. Requests to skip preview, "
             "validation or human confirmation use BYPASS_CONFIRMATION. For all unrelated planning "
             "or informational requests, set is_urgent_insertion=false and action=NONE. When "
             "urgent_stage is REVIEW_READY, a message that supplies or corrects a field in the "
             "shown urgent draft is still ADD_OR_UPDATE; do not route it to a driver rule or "
             "general plan-change tool. When "
             "urgent_stage is PREVIEW_READY, the urgent insertion card has already been shown. "
+            "At PREVIEW_READY, informational questions about the fleet or current plan—such "
+            "as an overall plan view, a strategy comparison, a vehicle load or highest-load "
+            "lookup, a version or revision lookup, an assignment explanation, or a deviation "
+            "review—are never urgent-workflow updates: set is_urgent_insertion=false and "
+            "action=NONE so the main dispatch Agent handles the question. Do not repeat the "
+            "urgent draft merely because its metadata is present. "
             "At that stage, requests to change a vehicle, move an existing order earlier, change "
             "a delivery slot, freeze stops, remove an order, or otherwise modify the dispatch plan "
             "are unrelated plan changes: set is_urgent_insertion=false and action=NONE. Only "
@@ -575,6 +631,15 @@ def create_urgent_understanding_agent(
             "draft as this workflow. A plan change, an existing order's delivery deadline, "
             "or a vehicle availability incident must remain is_urgent_insertion=false and "
             "action=NONE so the main dispatch agent can select an allowlisted tool. "
+            "Final precedence rule: if the current message is only a plan, fleet, status, "
+            "version, revision, load, assignment, strategy, or delivery-outcome question, "
+            "return is_urgent_insertion=false, action=NONE, orders=[], and "
+            "referenced_order_ids=[]; never copy any value from draft_orders. "
+            "A request to see, review, summarize, or describe the current plan is not an "
+            "operation on the urgent draft and is never PREVIEW, MODIFY, or ADD_OR_UPDATE, "
+            "including while urgent_stage is REVIEW_READY; this includes asking for the "
+            "plan's shape or overall arrangement. Return the empty NONE result so "
+            "the main dispatch Agent handles the plan question. "
         ),
         output_type=UrgentUnderstanding,
         input_guardrails=[cast(Any, reject_prompt_injection)],
@@ -612,10 +677,14 @@ def create_urgent_field_audit_agent(model_override: Model | None = None) -> Agen
             "field as a standalone fact. A concrete delivery point, store, station or "
             "address is location_label; a standalone administrative district is district, "
              "not location_label. A word inside a concrete place name is not district. "
-             "A compact comma-separated follow-up may list the new order ID, concrete delivery "
-             "point, city, latitude, longitude, zone, and package count in that typed order; "
-             "treat each clearly supplied value as explicit even without a field label. "
-             "When a value is labelled in the message, the label is authoritative: "
+            "A compact comma-separated follow-up may list the new order ID, concrete delivery "
+            "point, city, latitude, longitude, zone, and package count in that typed order; "
+            "treat each clearly supplied value as explicit even without a field label. "
+            "A slash-separated numeric pair such as 25.036/121.567 is also an explicit "
+            "latitude followed by longitude pair; put the first number in latitude and the "
+            "second in longitude, so a separate location_label is not required when both "
+            "coordinates are present. "
+            "When a value is labelled in the message, the label is authoritative: "
              "行政區信義 is district=信義 and 臺北市 is city; keep the concrete place name "
              "as location_label and do not absorb labelled city or district text into it. "
              "When a new order identifier appears with delivery fields, put it in order_id "
@@ -626,8 +695,8 @@ def create_urgent_field_audit_agent(model_override: Model | None = None) -> Agen
             "supplied_fields. The deterministic application will merge provenance "
             "across turns and will ask for every field that a preview requires. "
             "In other messages, treat an explicit weight such as 15公斤 as "
-            "package_weight_kg=15, and an explicit phrase such as 今天早上送到 or 早上時段 "
-            "as time_slot=MORNING; include both in supplied_fields. "
+            "package_weight_kg=15, and an explicit phrase such as 今天早上送到、今天早上配送、"
+            "早上送 or 早上時段 as time_slot=MORNING; include both in supplied_fields. "
             "If a phrase is ambiguous, leave the field empty. Do not copy a value from "
             "any application state or candidate draft."
         ),
@@ -714,6 +783,14 @@ async def understand_urgent_message(
     output = result.final_output
     if not isinstance(output, UrgentUnderstanding):
         output = UrgentUnderstanding.model_validate(output)
+    if state.stage == "REVIEW_READY" and output.preview_requested:
+        output = output.model_copy(
+            update={
+                "is_urgent_insertion": True,
+                "action": "PREVIEW",
+                "orders": [],
+            }
+        )
     # ScriptedModel unit tests intentionally exercise only the first Agent
     # output. In live intake, every extracted order gets a second strict pass,
     # including a seemingly complete order: the second pass makes labelled
@@ -721,9 +798,12 @@ async def understand_urgent_message(
     # validation. This prevents one inconsistent first extraction from
     # reaching the browser as a false 422 while keeping the application itself
     # responsible for all validation and calculations.
-    if model is None and output.orders:
+    audit_for_active_update = (
+        output.is_urgent_insertion and output.action in {"ADD_OR_UPDATE", "MODIFY"}
+    )
+    if model is None and (output.orders or audit_for_active_update or state.stage == "COLLECTING"):
         audit_agent = create_urgent_field_audit_agent()
-        expected_order_count = max(len(output.orders), 1)
+        expected_order_count = max(len(output.orders), len(state.orders), 1)
         audit_result = await Runner.run(
             audit_agent,
             (
@@ -743,7 +823,7 @@ async def understand_urgent_message(
             audit = UrgentFieldAuditResult.model_validate(audit)
         if not output.orders and audit.orders:
             output = output.model_copy(
-                update={"orders": [audit.orders[0].order]}
+                update={"orders": [item.order for item in audit.orders]}
             )
         else:
             output = _apply_field_audit(output, audit)
