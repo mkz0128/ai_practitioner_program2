@@ -523,6 +523,13 @@ def create_urgent_understanding_agent(
         model=model,
         instructions=(
             "Classify the current message semantically. Do not use keyword matching. "
+            "Highest-priority workflow boundary: when application state says "
+            "urgent_stage=REVIEW_READY and summary_already_shown=true, and the current "
+            "message explicitly asks to generate, create, or show the urgent insertion "
+            "preview, return is_urgent_insertion=true, action=PREVIEW, "
+            "preview_requested=true, and orders=[]; do not return ADD_OR_UPDATE, MODIFY, "
+            "NONE, or a blank draft, and do not ask for fields that are already in the "
+            "shown summary. "
             "Hard boundary: this interpreter may return is_urgent_insertion=true only "
             "when the current message supplies a new temporary-delivery fact or explicitly "
             "operates on the displayed urgent draft. A request to inspect, summarize, or "
@@ -783,7 +790,9 @@ async def understand_urgent_message(
     output = result.final_output
     if not isinstance(output, UrgentUnderstanding):
         output = UrgentUnderstanding.model_validate(output)
-    if state.stage == "REVIEW_READY" and output.preview_requested:
+    if state.stage == "REVIEW_READY" and (
+        output.preview_requested or output.action == "PREVIEW"
+    ):
         output = output.model_copy(
             update={
                 "is_urgent_insertion": True,

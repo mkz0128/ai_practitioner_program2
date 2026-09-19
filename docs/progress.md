@@ -1,10 +1,10 @@
 # 進度
 
-最後更新：2026-09-18
+最後更新：2026-09-19
 
 ## NOW
 
-本輪路由修正、A-2 與 C 組程式變更已完成；追加修正急單 strict intake 對斜線座標的欄位擷取，待外部以無 `--reload` 重啟後，才可重跑 demo-v3 與完整 OpenAI 驗收。未重啟前不宣稱新版瀏覽器或路由結果。
+本輪新版後端瀏覽器與回歸驗收已完成；目前唯一未達滿分的是路由矩陣 P1 的 T-13-01，實際工具為對外的 `urgent_insertion_workflow`，回覆內容正確列出三張急單缺欄。下一步只處理該矩陣期待工具與對外工作流邊界的穩定性，不改資料與版面。
 
 ## TODO
 
@@ -460,3 +460,12 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 - 重寫 `spec-driven/ACTIVE_SPEC.md` 為 v2 單一規格（吸收原草案內容，13 節）。
 - 重寫 `README.md`、`AGENTS.md`。
 - 建立三個 v2 產品 skill：`daily-dispatch.md`（F1／F2）、`urgent-insertion.md`（F3／F4）、`en-route-adjustment.md`（F5／F6）。
+
+### 2026-09-19 — 新版後端與完整回歸驗收
+
+- 修正 `src/agent/runtime.py`：已發車階段移除不適用的正式重排／確認工具，避免「明天怎麼改」誤走方案試算；工具物件過濾改用 identity 判斷，修復已發車提前配送的 `TypeError`；急單 strict intake 明確要求沒有早／午／晚時段時留空，不從日期自行推斷。
+- 瀏覽器：`demo-v3.spec.ts` 14/14、`fleet-resilience.spec.ts` 4/4、`polish.spec.ts` 1 支中的 PL-01～PL-14 全通過；畫面逐字輸入、Enter 與逐項截圖均完成。PL-08 曾一次模型抽取波動，重跑後通過。
+- 路由矩陣完整 148 格：P0 10/10、P1 92/93、P2 15/15、P3 30/30，總計 147/148。唯一失敗：T-13-01「客戶剛打來，三張急單今天要送」，實際 `urgent_insertion_workflow`，應為 `preview_multiple_urgent_insert`；畫面回覆正確列出訂單編號、座標、配送區域、重量、件數、配送時段、配送地點等缺欄。完整 log：`artifacts/tool-routing-matrix-current.log`。
+- intent `48/48`（`artifacts/intent-routing-current.log`）、refusal `24/24`（`artifacts/refusal-stability-current.log`）。
+- Python：pytest `187 passed, 28 skipped, 4 warnings`；ruff `All checks passed!`；mypy `Success: no issues found in 36 source files`；專案 Python `py_compile` 全通過。
+- Frontend：ESLint、tsc、Vitest `2 passed`、Vite production build 全通過。三份 workbook 在 `data/samples`、`frontend/public`、`frontend/dist` 逐份 SHA-256 完全一致：tight `107C4307613BD33E1506B23E7E308EBB96BDD1734D046B607C3CA14D67FD6F9F`；relaxed `87FF37B3B69F9F3D46B9515F7A4861D0FFF84BD23FC1A14BAF6ED3492DDEB200`；mapped `F48AFE632DF09EAB9B3FD9A3FC1C2B136A85BD9AC1CA24D537F9A679960E72DA`。

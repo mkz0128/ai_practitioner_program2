@@ -157,7 +157,9 @@ class UrgentIntakeOrderInput(BaseModel):
         default=None,
         description=(
             "本則訊息明確提供的配送時段；今天早上送到、今天早上配送、早上送"
-            "都是 MORNING，下午是 AFTERNOON，晚上是 EVENING。"
+            "都是 MORNING，下午是 AFTERNOON，晚上是 EVENING。只有日期或"
+            "當天配送意圖、沒有早上／下午／晚上等明確時段時，必須留空，"
+            "不得自行推斷成 MORNING、AFTERNOON 或 EVENING。"
         ),
     )
     declared_package_count: int | None = Field(default=None, ge=1, le=3)
@@ -427,6 +429,11 @@ def _not_found_response(
         operation_message = (
             f"找不到{entity_label} {entity_id}，無法提前或先送，原方案沒有變更。"
         )
+    elif tool_name == "remove_order_preview" and entity_key == "order_id":
+        operation_message = (
+            f"這次要把{entity_label}改到明天或停止今天配送，但找不到{entity_label} "
+            f"{entity_id}，原方案沒有變更。"
+        )
     evidence = {
         "tool": tool_name,
         entity_key: entity_id,
@@ -539,6 +546,10 @@ def begin_urgent_insertion(
     this morning and gives its weight, still create one order object with the
     structured ``time_slot=MORNING`` and ``package_weight_kg`` values; do not
     return an empty order list or discard either explicit fact.
+    When a new-order message gives only a calendar day or a generic same-day
+    delivery requirement without a morning, afternoon, or evening window,
+    leave ``time_slot`` empty so deterministic validation asks for the missing
+    delivery window; never infer a window from the day alone.
     This semantic safety net records only facts supplied by the user. It never
     invokes the optimizer, changes a plan, fetches a route matrix, or confirms
     a proposal. Do not use it to modify an existing order or to assign an
@@ -1561,7 +1572,7 @@ def inspect_dispatch_deviations(
         summary_message = overview + (
             "\n" + "\n".join(detail_messages)
             if detail_messages
-            else "\n今天沒有會影響明天的明顯偏差。"
+            else "\n今天配送成效沒有會影響明天的明顯偏差。"
         )
         if view == "SUGGESTIONS":
             summary_message = (
@@ -1595,6 +1606,13 @@ def explain_unassigned(
 ) -> str:
     """Explain why an existing, unassigned order is not on the current plan.
 
+    Hard boundary: this tool is eligible only after deterministic application
+    data has established that the explicit order_id exists and is unassigned.
+    If the user supplies an order ID but its existence is not established, use
+    ``explain_assignment`` instead, including for wording such as "why was it
+    not assigned", "why did it not get into the plan", or "why was it not
+    scheduled". Never use this tool merely because an order-like sentence
+    sounds unassigned; the existence check must come first.
     Before calling this tool, inspect the explicit order ID against the
     application data. If that ID is absent from known_order_ids, this tool is
     forbidden and ``explain_assignment`` must handle the not-found lookup.
@@ -1675,6 +1693,11 @@ def explain_unassigned(
 def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Look up where one order is assigned and why it was placed there.
 
+    Hard boundary: an explicit order ID whose existence has not been
+    established belongs here for a deterministic not-found result. This is
+    true even when the sentence says the order was not assigned, did not get
+    into the plan, or was not scheduled. Only after deterministic data proves
+    that the ID exists and is unassigned may ``explain_unassigned`` be used.
     Use this before any unassigned explanation when the explicit order ID is
     not known to exist. Use for a single-order location or assignment-reason question, including
     an unknown order ID, which must return an explicit not-found result. This
@@ -3584,6 +3607,20 @@ def create_dispatch_agent(
         tools = [tool for tool in tools if tool is not inspect_dispatch_deviations]
         tools.insert(3, inspect_plan_overview)
         tools.append(preview_dispatch_rule)
+    else:
+        # After departure, a follow-up to the deviation review must resolve to
+        # deterministic parameter suggestions.  The confirmation explainer is
+        # only meaningful for a plan card that is already awaiting application;
+        # exposing it here lets an acknowledgement be mistaken for the
+        # tomorrow-change suggestion flow.
+        # A formal full-plan solve is also no longer a legal operation after
+        # departure; leaving that tool exposed makes a generic tomorrow-change
+        # question compete with the deterministic suggestion view.
+        tools = [
+            tool
+            for tool in tools
+            if tool is not prepare_confirmation and tool is not plan_dispatch
+        ]
     if allow_urgent_intake:
         tools.insert(0, begin_urgent_insertion)
     # The HTTP conversation enters the deterministic urgent workflow through
@@ -3609,6 +3646,26 @@ def create_dispatch_agent(
         instructions=(
             "You are a single dispatch coordinator. Before using conversational context, "
             "The following current-turn decision order is non-negotiable: (1) an explicit "
+            "earlier-delivery boundary takes precedence over all unknown-ID lookup rules: "
+            "when the current message asks an order to arrive earlier, sooner, first, or "
+            "before a deadline, use prioritize_order_preview, even when the named order ID "
+            "is unknown; do not use explain_assignment, explain_unassigned, or any vehicle "
+            "assignment tool. When the current message asks to move delivery to tomorrow, "
+            "another day, stop today's delivery, or cancel today's delivery, use "
+            "remove_order_preview, even when the order ID is unknown; if no ID is supplied, "
+            "pass an empty order_id so the tool gives its missing-ID response. These two "
+            "operation boundaries are determined by the current turn before any not-found "
+            "lookup interpretation. A question asking only how many orders are unassigned, "
+            "how many did not fit, or how many remain unresolved without naming one specific "
+            "order is a fleet-wide inspect_plan_overview question, never explain_unassigned. "
+            "explain_unassigned is only for one specific known unassigned order. A comparison "
+            "asking which vehicle carries the least, has the fewest assigned goods, or is "
+            "the emptiest—including wording such as 誰裝得最少—always uses "
+            "lowest_load_vehicle, never highest_load_vehicle. A driver health or capability "
+            "statement such as a named driver's back injury or inability to carry heavy goods, "
+            "when it asks for a vehicle restriction rather than assigning an order to that "
+            "person, always uses preview_dispatch_rule; it is a vehicle restriction and not an "
+            "unsupported human-name assignment. (2) an explicit "
             "request to ignore, skip, bypass, or avoid validation or human confirmation "
             "before formal dispatch is always reject_unsupported_change; never choose "
             "plan_dispatch for that request, even when the user asks to dispatch immediately. "
