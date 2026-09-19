@@ -469,3 +469,17 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 - intent `48/48`（`artifacts/intent-routing-current.log`）、refusal `24/24`（`artifacts/refusal-stability-current.log`）。
 - Python：pytest `187 passed, 28 skipped, 4 warnings`；ruff `All checks passed!`；mypy `Success: no issues found in 36 source files`；專案 Python `py_compile` 全通過。
 - Frontend：ESLint、tsc、Vitest `2 passed`、Vite production build 全通過。三份 workbook 在 `data/samples`、`frontend/public`、`frontend/dist` 逐份 SHA-256 完全一致：tight `107C4307613BD33E1506B23E7E308EBB96BDD1734D046B607C3CA14D67FD6F9F`；relaxed `87FF37B3B69F9F3D46B9515F7A4861D0FFF84BD23FC1A14BAF6ED3492DDEB200`；mapped `F48AFE632DF09EAB9B3FD9A3FC1C2B136A85BD9AC1CA24D537F9A679960E72DA`。
+
+### 2026-09-19 — Demo 七幕與亂問題逐字稿
+
+- 新增 `frontend/tests/e2e/verbatim.spec.ts`，以 Chromium、1440×900、`pressSequentially()`＋Enter，逐字完成七幕 24 步與亂問題 14 步；未修改 `src/` 或 `frontend/src/`。
+- Playwright 實跑 `1 passed (7.2m)`；逐字稿 38 個區塊、38 張截圖完整產生。逐字稿：`docs/demo-verbatim-transcript.md`；截圖：`docs/screenshots/VB-1-1.png`～`VB-7-2.png`、`VB-Q-01.png`～`VB-Q-14.png`。
+- 逐字稿保留畫面實際全文、工具、耗時與畫面摘要；未以 API 直接送訊息作為驗收證據。
+- 已觀察到的差異與疑點詳見本輪回報：3-2 的重拖預覽仍顯示 ORD-042 舊狀態；5-3 只顯示「產生插單預覽」按鈕尚未出卡；6-3 套用回覆「已出發的規劃不可再次確認。」；Q-01 未明說「配送調度助理」；Q-03 未列急單必填欄位。
+
+### 2026-09-19 — F5 發車後提前配送待確認
+
+- 已修改 `src/services/solve_scope.py`，在 `DISPATCHED` 時從目前位置重算同車剩餘站點，保留已送達前綴；已修改 `src/api/main.py`，確認只接受保留車輛指派、既有訂單集合與 frozen prefix 的途中候選；已修改 `src/agent/runtime.py`，以 strict deadline 欄位處理中午前要求，並在 ETA 不變時產生不可套用卡。
+- 靜態驗證：`py_compile`、`ruff`、`mypy` 與 `scripts/backend_health_probe.py` 均通過；health probe 為 HTTP 200。
+- 瀏覽器逐字實跑仍失敗：`f5-priority-confirm.spec.ts` 兩格均收到畫面訊息「已出發的規劃不可再次確認。」；第一格 ORD-043 的卡仍顯示「先送這單／可選／距離 0 km／時間 0 分鐘／預估送達 13:00」，第二格 ORD-011 預覽有 `09:43 → 09:19`，但確認仍被同一個 409 擋下。
+- 待確認：8000 上的 `--reload` worker 沒有載入目前 workspace 的 `src/api/main.py`。原始碼暫時診斷字串未出現在瀏覽器回應；等外部確認服務實際工作目錄／worker 已載入本次修改後，再重跑 F5 瀏覽器驗收與完整回歸。不可將目前結果標為 DONE。

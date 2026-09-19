@@ -7,8 +7,11 @@ from src.domain.models import Dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
 from src.services.planner import (
     AFTERNOON_START,
+    BASE_TIME,
     EVENING_START,
+    LEGACY_BASE_TIME,
     PlanResult,
+    Stop,
     VehicleRoute,
     _arrival,
     _route_metrics_preserving_order,
@@ -134,6 +137,127 @@ def rebuild_fixed_assignment_plan(
     )
 
 
+def _route_metrics_from_current_position(
+    base_route: VehicleRoute,
+    order_ids: list[str],
+    vehicle: Any,
+    orders: dict[str, Any],
+    matrix: MatrixResult,
+    frozen_prefix: list[str],
+    target_order_id: str,
+    timeline_minutes: int,
+    legacy: bool,
+) -> VehicleRoute | None:
+    """Recalculate one dispatched route without moving its completed prefix."""
+    index = {node_id: position for position, node_id in enumerate(matrix.node_ids)}
+    if "DEPOT-001" not in index or any(order_id not in index for order_id in order_ids):
+        return None
+    if order_ids[: len(frozen_prefix)] != frozen_prefix:
+        return None
+
+    original_stops = {stop.order_id: stop for stop in base_route.stops}
+    current_node = "DEPOT-001"
+    current_s = max(0, timeline_minutes) * 60
+    total_distance = 0
+    total_duration = 0
+    stops: list[Stop] = []
+
+    # Keep the completed prefix exactly as it was.  It is historical fact, not
+    # a new estimate produced by the replan.
+    for order_id in frozen_prefix:
+        original = original_stops.get(order_id)
+        if original is None:
+            return None
+        from_index, to_index = index[current_node], index[order_id]
+        total_distance += matrix.distance_m[from_index][to_index]
+        total_duration += matrix.duration_s[from_index][to_index]
+        stops.append(original.model_copy(update={"sequence": len(stops) + 1}))
+        current_node = order_id
+
+    remaining = [order_id for order_id in order_ids if order_id not in frozen_prefix]
+    reordered: list[str] = []
+    while remaining:
+        choices: list[tuple[int, int, int, int, str, int]] = []
+        for order_id in remaining:
+            from_index, to_index = index[current_node], index[order_id]
+            arrival = _arrival(
+                current_s,
+                matrix.duration_s[from_index][to_index],
+                orders[order_id].time_slot,
+                legacy,
+            )
+            if arrival is None:
+                continue
+            if current_s < (LEGACY_BASE_TIME.hour * 3600 if legacy else AFTERNOON_START):
+                current_slot = "MORNING"
+            elif current_s < EVENING_START:
+                current_slot = "AFTERNOON"
+            else:
+                current_slot = "EVENING"
+            slot_rank = 0 if orders[order_id].time_slot == current_slot else 1
+            target_rank = 0 if order_id == target_order_id and not reordered else 1
+            choices.append(
+                (
+                    slot_rank,
+                    target_rank,
+                    matrix.distance_m[from_index][to_index],
+                    arrival[0],
+                    order_id,
+                    arrival[1],
+                )
+            )
+        if not choices:
+            return None
+        _, _, _, start_s, selected, finish_s = min(choices)
+        from_index, to_index = index[current_node], index[selected]
+        total_distance += matrix.distance_m[from_index][to_index]
+        total_duration += matrix.duration_s[from_index][to_index]
+        stops.append(
+            Stop(
+                sequence=len(stops) + 1,
+                order_id=selected,
+                time_slot=orders[selected].time_slot,
+                eta=(
+                    (LEGACY_BASE_TIME if legacy else BASE_TIME)
+                    + timedelta(seconds=start_s)
+                ).isoformat(),
+                order_weight_kg=orders[selected].total_weight_kg,
+                latitude=orders[selected].latitude,
+                longitude=orders[selected].longitude,
+                leg_distance_m=matrix.distance_m[from_index][to_index],
+                leg_duration_s=matrix.duration_s[from_index][to_index],
+            )
+        )
+        current_node = selected
+        current_s = finish_s
+        reordered.append(selected)
+        remaining.remove(selected)
+
+    depot_index, last_index = index["DEPOT-001"], index[current_node]
+    return_s = current_s + matrix.duration_s[last_index][depot_index]
+    if return_s > (9 * 3600 if legacy else 11 * 3600):
+        return None
+    total_distance += matrix.distance_m[last_index][depot_index]
+    total_duration += matrix.duration_s[last_index][depot_index]
+    load = round(
+        vehicle.current_load_kg
+        + sum(orders[order_id].total_weight_kg for order_id in order_ids),
+        3,
+    )
+    return VehicleRoute(
+        vehicle_id=vehicle.vehicle_id,
+        order_ids=[stop.order_id for stop in stops],
+        planned_load_kg=load,
+        max_load_kg=vehicle.max_load_kg,
+        load_utilization=round(load / vehicle.max_load_kg, 6),
+        total_distance_m=total_distance,
+        total_duration_s=total_duration,
+        stops=stops,
+        starts_at_depot=False,
+        ends_at_depot=True,
+    )
+
+
 def prioritize_remaining_order(
     base_plan: PlanResult,
     dataset: Dataset,
@@ -168,6 +292,47 @@ def prioritize_remaining_order(
         return None
 
     orders = {order.order_id: order for order in dataset.orders}
+
+    if timeline_minutes is not None:
+        frozen_prefix = []
+        for candidate in target_route.order_ids:
+            if candidate in frozen:
+                frozen_prefix.append(candidate)
+            else:
+                break
+        if any(candidate in frozen for candidate in target_route.order_ids[len(frozen_prefix) :]):
+            return None
+        vehicle = next(
+            (item for item in dataset.vehicles if item.vehicle_id == target_route.vehicle_id),
+            None,
+        )
+        if vehicle is None:
+            return None
+        rebuilt_route = _route_metrics_from_current_position(
+            target_route,
+            list(target_route.order_ids),
+            vehicle,
+            orders,
+            matrix,
+            frozen_prefix,
+            order_id,
+            timeline_minutes,
+            uses_legacy_timing(dataset),
+        )
+        if rebuilt_route is None:
+            return None
+        routes = [
+            rebuilt_route if route.vehicle_id == target_route.vehicle_id else route
+            for route in base_plan.routes
+        ]
+        return base_plan.model_copy(
+            update={
+                "routes": routes,
+                "total_distance_m": sum(route.total_distance_m for route in routes),
+                "total_driving_time_s": sum(route.total_duration_s for route in routes),
+            }
+        )
+
     matrix_index = {node_id: position for position, node_id in enumerate(matrix.node_ids)}
     legacy = uses_legacy_timing(dataset)
     current_node = prefix[-1] if prefix else "DEPOT-001"

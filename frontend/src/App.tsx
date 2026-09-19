@@ -139,6 +139,8 @@ export default function App() {
     const controller = new AbortController()
     abortRef.current?.abort()
     abortRef.current = controller
+    setError(null)
+    setNotice(null)
     try {
       const response = await chat(sessionId, message, { plan_id: plan?.plan_id || null, plan_version: plan?.version || null, dataset_id: plan?.dataset_id || null, order_id: conversationOrderId, stage: plan?.stage || 'PRE_LOAD', timeline_minutes: plan?.stage === 'DISPATCHED' ? timelineMinutes : null }, controller.signal, action)
       const deviationView = response.evidence.find((entry) => entry.tool === 'inspect_dispatch_deviations')?.data.view
@@ -177,11 +179,11 @@ export default function App() {
     try {
       const confirmed = await confirmPlan(option.plan_id, option.preview_version, sessionId)
       setPlan(confirmed)
-      setMap(await getMapData(confirmed.plan_id, confirmed.version))
+      setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
       if (option.change?.order_id) setConversationOrderId(option.change.order_id)
       setNotice(`已確認${option.label}，建立新版本 v${confirmed.version}；原版本仍保留。`)
-    } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
-  }, [busy, sessionId])
+    } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
+  }, [busy, sessionId, timelineMinutes])
 
   const handleConfirmRule = useCallback(async (option: DispatchRuleOption) => {
     if (!plan || busy || !option.plan_id || option.base_version === null) return

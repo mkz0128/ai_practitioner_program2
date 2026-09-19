@@ -2971,8 +2971,50 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
     record = store.get_plan(plan_id, payload.version)
     if record is None:
         return _error(request, 404, "PLAN_NOT_FOUND", "找不到規劃版本。")
+    dispatched_scope_preview = False
     if record.state == "DISPATCHED":
-        return _error(request, 409, "PLAN_ALREADY_DISPATCHED", "已出發的規劃不可再次確認。")
+        current = store.get_plan(plan_id)
+        session_id = request.headers.get("X-Dispatch-Session")
+        session = agent_sessions.get(session_id) if session_id else None
+        if session is None and session_id:
+            persisted_session = repository.load_agent_session(session_id)
+            session = _session_from_payload(persisted_session) if persisted_session else None
+        frozen_ids = session.frozen_stop_ids if session is not None else ()
+        if (
+            current is not None
+            and current.state == "DISPATCHED"
+            and record.version > current.version
+            and record.dataset_id == current.dataset_id
+            and record.plan.algorithm == "ORTOOLS"
+            and record.validation.valid
+        ):
+            current_routes = {route.vehicle_id: route for route in current.plan.routes}
+            candidate_routes = {route.vehicle_id: route for route in record.plan.routes}
+            dispatched_scope_preview = set(current_routes) == set(candidate_routes)
+            if dispatched_scope_preview:
+                for vehicle_id, current_route in current_routes.items():
+                    candidate_route = candidate_routes[vehicle_id]
+                    if set(candidate_route.order_ids) != set(current_route.order_ids):
+                        dispatched_scope_preview = False
+                        break
+                    frozen_prefix = []
+                    for order_id in current_route.order_ids:
+                        if order_id in frozen_ids:
+                            frozen_prefix.append(order_id)
+                        else:
+                            break
+                    if candidate_route.order_ids[: len(frozen_prefix)] != frozen_prefix:
+                        dispatched_scope_preview = False
+                        break
+            if not dispatched_scope_preview:
+                return _error(
+                    request,
+                    409,
+                    "PLAN_ALREADY_DISPATCHED",
+                    "已出發的規劃只能確認保留已送站點與車輛指派的途中調整。",
+                )
+        else:
+            return _error(request, 409, "PLAN_ALREADY_DISPATCHED", "已出發的規劃不可再次確認。")
     known_unassigned = set(record.plan.unassigned_orders)
     preserves_existing_unassigned = False
     if known_unassigned:
@@ -2982,14 +3024,15 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
             and known_unassigned.issubset(set(previous.plan.unassigned_orders))
             for version, previous in previous_versions.items()
         )
-    if (
+    if not dispatched_scope_preview and (
         record.state != "PROPOSED"
         or record.plan.algorithm != "ORTOOLS"
         or not record.validation.valid
         or (not record.plan.complete and not preserves_existing_unassigned)
     ):
         return _error(request, 409, "PLAN_NOT_CONFIRMABLE", "規劃尚未通過驗證或狀態不允許確認。")
-    record.state = "CONFIRMED"
+    if not dispatched_scope_preview:
+        record.state = "CONFIRMED"
     # A confirmed version becomes the current read/continuation pointer. Preview
     # versions remain immutable and never become current before this checkpoint.
     store.current_versions[plan_id] = record.version
@@ -2997,7 +3040,7 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
     repository.update_plan_state(plan_id, record.version, record.state)
     repository.append_audit(
         f"AUD-{uuid4().hex[:12].upper()}",
-        "PLAN_CONFIRMED",
+        "PLAN_EN_ROUTE_ADJUSTED" if dispatched_scope_preview else "PLAN_CONFIRMED",
         datetime.now(UTC).isoformat(),
         plan_id,
         record.version,
@@ -3013,6 +3056,7 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
         if session is not None and session.plan_id == plan_id:
             session.urgent_workflow = UrgentWorkflowState().model_dump(mode="json")
             session.last_preview_version = None
+            session.plan_version = record.version
             _save_agent_session(session_id, session)
     return _plan_payload(record) | {
         "audit_event_id": f"AUD-{uuid4().hex[:12].upper()}",

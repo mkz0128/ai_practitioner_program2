@@ -277,6 +277,13 @@ class PrioritizeOrderInput(BaseModel):
             "工具會以缺少訂單為由安全返回，不得改叫急單欄位工具。"
         ),
     )
+    requested_arrival_deadline: Literal["BEFORE_NOON", "NONE"] = Field(
+        description=(
+            "若使用者明確要求中午前／12:00 前送達，填 BEFORE_NOON；"
+            "其他提前配送要求填 NONE。這是本次既有訂單的"
+            "到達目標，不是車輛的整體配送時段。"
+        ),
+    )
 
 
 class DelaySimulationInput(BaseModel):
@@ -2497,7 +2504,10 @@ def _priority_preview_metadata(
     after: PlanResult,
     order_id: str,
     validation: Any,
+    requested_arrival_deadline: str | None = None,
 ) -> dict[str, Any]:
+    from datetime import datetime
+
     before_state = _priority_state_snapshot(context, before, order_id)
     after_state = _priority_state_snapshot(context, after, order_id)
     diff = compute_plan_diff(before, after)
@@ -2505,8 +2515,6 @@ def _priority_preview_metadata(
     after_eta = after_state.get("estimated_eta")
     eta_gain_minutes: int | None = None
     if isinstance(before_eta, str) and isinstance(after_eta, str):
-        from datetime import datetime
-
         eta_gain_minutes = max(
             0,
             round(
@@ -2527,6 +2535,19 @@ def _priority_preview_metadata(
     gain_text = (
         f"目標可提前 {eta_gain_minutes} 分鐘；" if eta_gain_minutes else ""
     )
+    deadline_text = ""
+    if requested_arrival_deadline == "BEFORE_NOON" and isinstance(after_eta, str):
+        after_datetime = datetime.fromisoformat(after_eta)
+        deadline = after_datetime.replace(hour=12, minute=0, second=0, microsecond=0)
+        if after_datetime > deadline:
+            late_seconds = int((after_datetime - deadline).total_seconds())
+            late_minutes = (late_seconds + 59) // 60
+            deadline_text = (
+                f"最快只能到 {after_datetime.strftime('%H:%M')}，比客戶要求的中午前晚 "
+                f"{late_minutes} 分鐘。"
+            )
+        else:
+            deadline_text = "可在客戶要求的中午前送達。"
     return {
         "current_state": before_state,
         "replanned_state": after_state,
@@ -2543,6 +2564,7 @@ def _priority_preview_metadata(
             f"{before_eta_text}；該車已送完 {before_state.get('completed_count', 0)} 站。"
             f"剩餘站點從 {before_state.get('current_position', 'DEPOT-001')} 重新規劃，"
             f"{gain_text}多繞 {distance_delta_km:g} 公里、多花 {duration_delta_minutes:g} 分鐘。"
+            f"{deadline_text}"
             + (
                 "沒有訂單因此掉出原本的配送時段。"
                 if valid
@@ -2562,6 +2584,10 @@ def prioritize_order_preview(
     meeting an earlier arrival target, including an order that must arrive
     before a stated time. If application state supplies the selected order ID,
     it may be used when the user refers to that order without repeating the ID.
+    When the current turn explicitly says before noon or before 12:00, set
+    ``requested_arrival_deadline`` to ``BEFORE_NOON``; do not leave that field
+    empty for an explicit noon deadline. For other earlier-delivery requests,
+    leave that field empty.
     If no order ID is supplied or selected, still use this tool and leave
     ``order_id`` empty so it returns a safe missing-order response. This is not
     an urgent-order insertion or a vehicle allowed-time-window rule.
@@ -2588,6 +2614,34 @@ def prioritize_order_preview(
         frozen,
         ctx.context.timeline_minutes,
     )
+    deadline_preview: PlanResult | None = None
+    no_effect_preview: PlanResult | None = None
+    if preview is not None and request.requested_arrival_deadline == "BEFORE_NOON":
+        from datetime import datetime
+
+        target_eta = next(
+            (
+                stop.eta
+                for route in preview.routes
+                for stop in route.stops
+                if stop.order_id == request.order_id
+            ),
+            None,
+        )
+        if isinstance(target_eta, str):
+            target_time = datetime.fromisoformat(target_eta)
+            noon = target_time.replace(hour=12, minute=0, second=0, microsecond=0)
+            if target_time > noon:
+                deadline_preview = preview
+                preview = None
+    if preview is not None:
+        before_state = _priority_state_snapshot(ctx.context, ctx.context.plan, request.order_id)
+        after_state = _priority_state_snapshot(ctx.context, preview, request.order_id)
+        if (
+            before_state.get("estimated_eta") == after_state.get("estimated_eta")
+        ):
+            no_effect_preview = preview
+            preview = None
     if preview is None:
         base = ctx.context.plan
         target_in_route = bool(
@@ -2595,9 +2649,15 @@ def prioritize_order_preview(
             and any(request.order_id in route.order_ids for route in base.routes)
         )
         if base is not None and target_in_route and request.order_id not in frozen:
-            validation = validate_plan(ctx.context.dataset, base, ctx.context.matrix)
+            explanation_plan = deadline_preview or no_effect_preview or base
+            validation = validate_plan(ctx.context.dataset, explanation_plan, ctx.context.matrix)
             priority_metadata = _priority_preview_metadata(
-                ctx.context, base, base, request.order_id, validation
+                ctx.context,
+                base,
+                explanation_plan,
+                request.order_id,
+                validation,
+                request.requested_arrival_deadline,
             )
 
             def summary(plan_result: PlanResult) -> dict[str, Any]:
@@ -2623,14 +2683,19 @@ def prioritize_order_preview(
                     ],
                 }
 
-            base_summary = summary(base)
-            empty_diff = {
-                "reassigned_orders": [],
-                "sequence_changes": [],
-                "vehicle_load_changes": [],
-                "total_distance_delta_m": 0,
-                "total_duration_delta_s": 0,
-            }
+            explanation_summary = summary(explanation_plan)
+            explanation_diff = compute_plan_diff(base, explanation_plan)
+            explanation_eta = next(
+                (
+                    stop.eta
+                    for route in explanation_plan.routes
+                    for stop in route.stops
+                    if stop.order_id == request.order_id
+                ),
+                None,
+            )
+            distance_delta_m = max(0, explanation_diff["total_distance_delta_m"])
+            duration_delta_s = max(0, explanation_diff["total_duration_delta_s"])
             common_option = {
                 "mode": "MODIFICATION",
                 "plan_id": ctx.context.plan_id,
@@ -2642,31 +2707,55 @@ def prioritize_order_preview(
                 },
                 "inserted_orders": [],
                 "unassigned_orders": base.unassigned_orders,
+                "estimated_eta": explanation_eta,
                 "cost": {
-                    "distance_delta_m": 0,
-                    "distance_delta_km": 0,
-                    "duration_delta_s": 0,
-                    "duration_delta_min": 0,
-                    "vehicle_change_count": 0,
-                    "minimum_capacity_slack_kg": None,
+                    "distance_delta_m": distance_delta_m,
+                    "distance_delta_km": round(distance_delta_m / 1000, 1),
+                    "duration_delta_s": duration_delta_s,
+                    "duration_delta_min": round(duration_delta_s / 60, 1),
+                    "vehicle_change_count": len(explanation_diff["reassigned_orders"]),
+                    "minimum_capacity_slack_kg": round(
+                        min(
+                            (
+                                route.max_load_kg - route.planned_load_kg
+                                for route in explanation_plan.routes
+                            ),
+                            default=0.0,
+                        ),
+                        1,
+                    ),
                 },
                 "affected_vehicle_count": 0,
-                "moved_order_count": 0,
+                "moved_order_count": len(explanation_diff["sequence_changes"]),
                 "reordered_order_count": 0,
-                "after": base_summary,
+                "after": explanation_summary,
                 "validator": validation.model_dump(mode="json"),
-                "diff": empty_diff,
+                "diff": explanation_diff,
+                # Keep the structured route context on an unavailable F5 card
+                # so the UI can offer manual adjustment for the affected
+                # vehicle without parsing the explanatory text.
+                "current_state": priority_metadata["current_state"],
             }
+            unavailable_title = (
+                f"最快只能到 {explanation_eta[11:16]}"
+                if (deadline_preview or no_effect_preview) and isinstance(explanation_eta, str)
+                else "沒有合法提前安排"
+            )
+            unavailable_rationale = (
+                f"{priority_metadata['rationale']}"
+                + (
+                    "這張卡不能套用。"
+                    if deadline_preview or no_effect_preview
+                    else "目前沒有合法的提前安排。"
+                )
+            )
             options = [
                 {
                     **common_option,
                     "option_id": f"F5-PRIORITIZE-{ctx.context.plan_version}",
                     "label": "方案 A",
-                    "title": "先送這單",
-                "rationale": (
-                        f"{priority_metadata['rationale']}"
-                        "目前沒有合法的提前安排。"
-                    ),
+                    "title": unavailable_title,
+                    "rationale": unavailable_rationale,
                     "feasible": False,
                     "selectable": False,
                     "requires_human_confirmation": False,
@@ -2684,17 +2773,24 @@ def prioritize_order_preview(
             ]
             evidence = {
                 "tool": "prioritize_order_preview",
-                "status": "NO_LEGAL_REORDER",
+                "status": (
+                    "DEADLINE_UNMET"
+                    if deadline_preview
+                    else "NO_EFFECT"
+                    if no_effect_preview
+                    else "NO_LEGAL_REORDER"
+                ),
                 "stage": ctx.context.stage,
                 **request.model_dump(mode="json"),
                 "frozen_order_ids": list(frozen),
                 "options": options,
-                "message": "目前沒有符合剩餘時段的合法提前順序；維持原順序，需回覆客戶送不到。",
+                "message": unavailable_rationale,
                 "current_state": priority_metadata["current_state"],
                 "cost": priority_metadata["cost"],
                 "sacrificed_order_ids": priority_metadata["sacrificed_order_ids"],
                 "requires_human_confirmation": False,
             }
+            ctx.context.pending_preview_metadata = None
         else:
             evidence = {
                 "tool": "prioritize_order_preview",
@@ -2709,7 +2805,12 @@ def prioritize_order_preview(
         validation = validate_plan(ctx.context.dataset, preview, ctx.context.matrix)
         diff = compute_plan_diff(ctx.context.plan, preview)
         priority_metadata = _priority_preview_metadata(
-            ctx.context, ctx.context.plan, preview, request.order_id, validation
+            ctx.context,
+            ctx.context.plan,
+            preview,
+            request.order_id,
+            validation,
+            request.requested_arrival_deadline,
         )
         if validation.valid:
             _remember_plan_preview(
@@ -3939,6 +4040,11 @@ def create_dispatch_agent(
             "change_order_constraint only when the user explicitly changes the delivery-slot enum. "
             "An order's earlier arrival deadline is a priority request, not a vehicle time-window "
             "restriction; use prioritize_order_preview and never preview_dispatch_rule for it. "
+            "When selecting prioritize_order_preview, extract the arrival target into its strict "
+            "requested_arrival_deadline field: an explicit requirement to arrive before noon or "
+            "before 12:00 is BEFORE_NOON, and only other earlier-delivery requests are NONE. "
+            "Do not use NONE for an explicit noon deadline; the deterministic tool will mark the "
+            "card unavailable when that deadline cannot be met. "
             "Use remove_order_preview only when the user explicitly wants an order not delivered "
             "today, moved to a future date, or cancelled; a future-date request remains removal "
             "even when phrased with a generic change verb. This includes an unnamed 'this order' "
