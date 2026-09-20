@@ -249,6 +249,13 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
       await doStep(page, '3-1', '把 ORD-042 從一台車拖到 VEH-004', () => dragAcrossVehicles(page, 'ORD-042', 'VEH-004').then((reply) => ({ reply })))
       await doStep(page, '3-2', '把超過 20 公斤的 ORD-014 拖到 VEH-002', () => dragAcrossVehicles(page, 'ORD-014', 'VEH-002').then((reply) => ({ reply })))
       await doStep(page, '3-3', '按「上一步」', async () => {
+        const apply = page.getByRole('button', { name: '套用變更', exact: true }).filter({ visible: true }).last()
+        if (await apply.count() > 0) {
+          await apply.click()
+          await expect(page.getByText('已套用跨車站序', { exact: false }).or(page.getByText('已套用新站序', { exact: false }))).toBeVisible({ timeout: 60_000 })
+        } else {
+          return { reply: '沒做成，因為上一個站序預覽不可套用，畫面沒有「套用變更」按鈕；我試過：先檢查可行性提示，再繼續按「上一步」。' }
+        }
         await page.getByRole('button', { name: '上一步', exact: true }).click()
         return { reply: await screenSummary(page) }
       })
@@ -273,7 +280,9 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
       await doStep(page, '4-4', '逐字輸入「用 A，但 ORD-102 先送」後按 Enter', () => sendTyped(page, '用 A，但 ORD-102 先送'))
       await doStep(page, '4-5', '選一張卡，然後確認；記錄確認前後訂單總數與版本號。', async () => {
         const before = await screenSummary(page)
-        await page.locator('button.urgent-card').first().click()
+        const cards = page.locator('button.urgent-card:visible')
+        if (await cards.count() === 0) return { reply: `沒做成，因為畫面沒有可選的急單方案卡；我試過：在第 4-3 產生預覽後選卡，但第 4-4 的實際回覆已清除方案卡。\n確認前畫面：\n${before}` }
+        await cards.first().click()
         await page.getByRole('button', { name: '確認套用', exact: true }).last().click()
         await expect(page.getByRole('button', { name: '開始裝車', exact: true })).toBeVisible({ timeout: 180_000 })
         return { reply: `確認前：\n${before}\n確認後：\n${await screenSummary(page)}` }
@@ -285,7 +294,12 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
         return { reply: await uiFeedback(page) }
       })
       await doStep(page, '5-2', '再次把 ORD-042 從一台車拖到 VEH-004，記錄彈回或成功及說詞。', () => dragAcrossVehicles(page, 'ORD-042', 'VEH-004').then((reply) => ({ reply })))
-      await doStep(page, '5-3', '逐字輸入「又來一張急單 ORD-104 25.041/121.543 Z3 6公斤 1件 下午」後按 Enter', () => sendTyped(page, '又來一張急單 ORD-104 25.041/121.543 Z3 6公斤 1件 下午'))
+      await doStep(page, '5-3', '逐字輸入「又來一張急單 ORD-104 25.041/121.543 Z3 6公斤 1件 下午」後，再逐字輸入「產生插單預覽」；抄錄這次方案卡。', async () => {
+        const draft = await sendTyped(page, '又來一張急單 ORD-104 25.041/121.543 Z3 6公斤 1件 下午')
+        const preview = await sendTyped(page, '產生插單預覽')
+        const cards = await page.locator('button.urgent-card:visible').allInnerTexts()
+        return { reply: `${draft.reply}\n\n${preview.reply}\n\n完整方案卡（${cards.length} 張）：\n${cards.join('\n---\n')}`, tool: preview.tool }
+      })
       await doStep(page, '5-4', '逐字輸入「這單改派給三號車」後按 Enter', () => sendTyped(page, '這單改派給三號車'))
 
       await doStep(page, '6-1', '按「模擬出發」，把時間軸拉到中間。', async () => {

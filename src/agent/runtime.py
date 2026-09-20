@@ -474,9 +474,12 @@ def assistant_help(
     """
     _tool_started(ctx.context, "assistant_help", {"topic": topic})
     messages = {
+        # Lead with who is answering. Without it this reads as a feature list
+        # and never actually answers 「你是誰」. Keep it free of skill labels:
+        # polish.spec.ts PL-05/PL-07 assert this reply carries no tool label.
         "CAPABILITIES": (
-            "可整理訂單、檢查欄位、安排車輛、規劃路線、解釋分配並預覽臨時插單；"
-            "最終方案仍由調度人員確認。"
+            "我是配送調度助理。可以幫你整理訂單、檢查欄位、安排車輛、規劃路線、"
+            "解釋每張單為什麼這樣派，也可以預覽臨時插單；最終方案仍由調度人員確認。"
         ),
         "DATA_REQUIREMENTS": (
             "Excel 需要 orders、packages、vehicles、zones 四張工作表，以及訂單位置、"
@@ -486,9 +489,13 @@ def assistant_help(
             "系統會先彙總每張訂單的包裹重量，再依車輛載重、服務區域、時段與不可拆單規則安排；"
             "超載時會改派或標記無法安排。"
         ),
+        # 「急單需要哪些欄位」 is a question about fields, so answer with the
+        # fields. The previous text described the workflow instead and never
+        # named a single one. Order matches REQUIRED_URGENT_FIELDS so this
+        # cannot drift from what the state machine actually asks for.
         "URGENT_INSERTION": (
-            "臨時訂單會使用已驗證的結構化資料，建立插單前後的最小變動 preview；"
-            "只有人工確認後才會套用。"
+            "急單需要七項：訂單編號、配送地點、座標、配送區域、每件重量、件數、配送時段。"
+            "補齊後會先整理成摘要，再試算可行的插入位置，人工確認後才套用。"
         ),
     }
     evidence = {
@@ -1297,13 +1304,18 @@ def _matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
 def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Return only the vehicle with the highest validated planned load.
 
-    Use this only when the user asks which vehicle is the heaviest or has the
-    highest load. A question about a vehicle being slow, late, or behind its
-    estimate is exclusively a deviation review, not a load comparison, even
-    when the wording asks which vehicle it is. Do not use this
+    Use this only for an aggregate comparison asking which vehicle carries the
+    most cargo, has the largest planned load, is loaded the most, or is the
+    vehicle that "裝最多". Phrases such as "哪一台裝最多" mean the greatest
+    planned load and must resolve to this tool, not remaining capacity. A
+    question about a vehicle being slow, late, or behind its estimate is
+    exclusively a deviation review, not a load comparison, even when the
+    wording asks which vehicle it is. Do not use this
     when the user names a specific vehicle; use ``vehicle_load`` for that
     question. Do not use it for the emptiest vehicle or greatest remaining
-    capacity; use ``lowest_load_vehicle`` there.
+    capacity; use ``lowest_load_vehicle`` there. "哪台車最閒", "哪一台還有
+    空間", "誰裝得最少", and "哪台車還塞得下東西" are the opposite query
+    and must never call this tool.
     """
     _tool_started(ctx.context, "highest_load_vehicle", {})
     if not _planning_data_ready(ctx.context):
@@ -1335,7 +1347,9 @@ def lowest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
 
     Use this only when the user asks which vehicle is currently emptiest,
     carries the least cargo, has the smallest planned load, or has the most
-    room. The result is based on deterministic planned load and vehicle limit.
+    room, including "哪台車最閒", "哪一台還有空間", "誰裝得最少", or
+    "哪台車還塞得下東西". The result is based on deterministic planned load
+    and vehicle limit.
     "Least loaded" and "least cargo" are this tool's aggregate query, not the
     highest-load query. If the user names a specific vehicle, use
     ``vehicle_load`` instead.
@@ -3938,9 +3952,12 @@ def create_dispatch_agent(
             "new dataset or starting a new daily planning run, use FULL_REDISTRIBUTION; that "
             "deterministic guard returns the same refusal and must not create plan evidence. "
             "Otherwise set it NEW_FORMAL_PLAN. Use "
-            "highest_load_vehicle only when asking which vehicle is heaviest or has the "
-            "highest planned load. Use lowest_load_vehicle only when asking which vehicle "
-            "is emptiest, carries the least, or has the greatest remaining capacity. Use "
+            "highest_load_vehicle for every aggregate greatest-load comparison: which vehicle "
+            "is heaviest, has the highest planned load, is loaded the most, or is "
+            "哪一台裝最多. Do not reinterpret 裝最多 as remaining space. Use "
+            "lowest_load_vehicle only when asking which vehicle is emptiest, carries the least, "
+            "has the smallest planned load, or has the greatest remaining capacity, including "
+            "哪台車最閒、哪一台還有空間、誰裝得最少、哪台車還塞得下東西. Use "
             "vehicle_load whenever the user names a specific vehicle and asks for its load, "
             "capacity, or utilization; pass that vehicle's canonical vehicle_id. "
             "Never use lowest_load_vehicle for a route being long or short, distance, stop count, "

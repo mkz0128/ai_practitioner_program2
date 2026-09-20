@@ -1,10 +1,10 @@
 # 進度
 
-最後更新：2026-09-19
+最後更新：2026-09-20
 
 ## NOW
 
-本輪新版後端瀏覽器與回歸驗收已完成；目前唯一未達滿分的是路由矩陣 P1 的 T-13-01，實際工具為對外的 `urgent_insertion_workflow`，回覆內容正確列出三張急單缺欄。下一步只處理該矩陣期待工具與對外工作流邊界的穩定性，不改資料與版面。
+本輪載重聚合問句路由、七幕與亂問題逐字稿、以及完整回歸均已完成；等待下一輪指定工作，不自行擴大範圍。
 
 ## TODO
 
@@ -49,6 +49,7 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 
 | Q15 | 本輪 A-2、路由 7 格、矩陣期待值與 C 組修正需在新版後端驗收。 | **待外部重啟（2026-09-18）：** `OrderTable` 已用空值訊號收合目前展開列，`App` 清除展開狀態且保留地圖選取；路由修正只調整工具描述／主 Agent instructions，另將缺少訂單編號改為 strict optional 欄位並由工具回覆白話反問；矩陣 T-11／T-12 改為對外 `urgent_insertion_workflow`，T-23-04／05 改以拒絕語意判定，T-16-02 擴大中文語意訊號。C-1 的 deterministic urgent batch 回歸為 `15 passed`，目前資料確實產生 tight `2`、relaxed `3` 張非支配可行卡；C-2 的 mapped／guardrail deterministic import、plan、validator 均成功。已完成 compileall、ruff、mypy、ESLint、tsc、Vitest、Vite build；待外部重啟後才跑瀏覽器與需要 OpenAI 的矩陣。 |
 | Q16 | demo-v3 V-15 的斜線座標未被急單 strict intake 擷取。 | **待外部重啟（2026-09-18）：** 瀏覽器逐字輸入 `ORD-101 25.036/121.567 Z3 8公斤 1件 早上` 等三筆摘要後，按「產生插單預覽」實際回覆「目前還不能計算……配送地點」，未進入方案卡；原因是模型未把 `25.036/121.567` 填入 latitude／longitude。已在 `src/agent/urgent_workflow.py` 的主 intake 與 provenance audit strict instructions 明確規定斜線數字對應緯度／經度，並說明兩者存在時不需要 location_label。需外部重啟後重跑 demo-v3 確認。 |
+| Q17 | 七幕逐字走查中，部分輸入的工具邊界與畫面動作不一致。 | **待確認（2026-09-20）：** 逐字稿已保留實際畫面全文與截圖。4-4「用 A，但 ORD-102 先送」實際走 `prioritize_order_preview`；6-2 ORD-036 預覽兩張皆不可套用，顯示最快 13:38、比中午晚 99 分鐘；6-3 測試定位到舊急單卡而建立 v5，未證明 F5 卡套用。這些是逐字稿中的真實觀察，需下一輪決定是否調整測試操作或產品流程。 |
 
 ### Q14 逐格證據（2026-09-18）
 
@@ -107,6 +108,16 @@ Q1、Q2 已於 2026-09-09 結案，見下。Q3 已於 2026-09-10 解除，外部
 - A～J 的 H-01～H-04、I-01～I-04、J-01～J-05 由上述 W、TODO2／TODO4、TODO5、TODO6、TODO8、G／D 對應步驟逐項覆蓋；其中 W-09、W-11、W-13、W-23、W-24、W-31、W-43 與 tight 專屬測試均已通過，沒有未勾稽項目。最後 `data/runtime/dispatch-parameters.json` 已清回 `{}`。
 
 ## DONE
+
+### 2026-09-20 — 載重問句路由、七幕逐字稿與完整回歸
+
+- 修正 `src/agent/runtime.py` 的 `highest_load_vehicle`／`lowest_load_vehicle` 工具描述與主 Agent instructions：`哪一台裝最多` 明確歸入最高載重；`哪台車最閒`、`哪一台還有空間`、`誰裝得最少`、`哪台車還塞得下東西` 明確歸入最低載重。未加入 regex、關鍵字路由或前置分類器。
+- 瀏覽器逐字測試 `frontend/tests/e2e/load-routing-12x.spec.ts` 實跑 9 句 × 12 次，共 108 格：九句均 `12/12`；最高載重五句全走 `highest_load_vehicle`，最低載重四句全走 `lowest_load_vehicle`。截圖在 `docs/screenshots/load-routing-L-01-01.png`～`L-09-12.png`，完整 log 在 `artifacts/load-routing-12x.log`。
+- `frontend/tests/e2e/verbatim.spec.ts` 以 `pressSequentially()`＋Enter 完成七幕與亂問題，共 38 格；Playwright 實際輸出 `1 passed (7.2m)`。完整逐字稿為 `docs/demo-verbatim-transcript.md`，截圖為 `docs/screenshots/VB-1-1.png`～`VB-7-2.png`、`docs/screenshots/VB-Q-01.png`～`VB-Q-14.png`。逐字稿中的流程落差已列入 Q17，未隱藏。
+- 瀏覽器回歸實際輸出：`demo-v3.spec.ts` `14 passed (2.2m)`；`fleet-resilience.spec.ts` `4 passed (21.5s)`；`polish.spec.ts` `1 passed (55.9s)`；`f5-priority-confirm.spec.ts` `2 passed (19.9s)`；`urgent-boundary-cards.spec.ts` `2 passed (41.8s)`。
+- 路由與既有 Agent eval 實際輸出：矩陣 `P0 10/10`、`P1 93/93`、`P2 15/15`、`P3 30/30`，總計 `148/148`；intent `48/48`；refusal `24/24`。完整 logs：`artifacts/tool-routing-matrix-console.log`、`artifacts/intent-routing-console.log`、`artifacts/refusal-stability-console.log`。
+- 靜態回歸實際輸出：pytest `187 passed, 28 skipped, 3 warnings`；ruff `All checks passed!`；mypy `Success: no issues found in 36 source files`；compileall exit `0`；ESLint、tsc、Vitest `2 passed`、Vite build 均 exit `0`。
+- tight／relaxed 未被修改；`data/samples`、`frontend/public`、`frontend/dist` 三處 SHA-256 一致：tight `107C4307613BD33E1506B23E7E308EBB96BDD1734D046B607C3CA14D67FD6F9F`，relaxed `87FF37B3B69F9F3D46B9515F7A4861D0FFF84BD23FC1A14BAF6ED3492DDEB200`。
 
 ### 2026-09-18 — Polish A／B／C、PL-01～PL-14 與路由矩陣回歸
 
