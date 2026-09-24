@@ -199,18 +199,17 @@ test.describe('上台 demo 全流程模擬', () => {
     await expect(page.locator('[aria-label="臨時插單方案"]')).toHaveCount(groupsBefore + 1, { timeout: 180_000 })
     await saveScreenshot(page, screenshotDir, 'demo-08-reprioritised')
 
-    // 選一張卡確認 → 下面要真的變。急單進來之後今天就是 51 張，
-    // 上排的「51 張訂單」就是最直接的證據。
-    // （planState 的 x/50 比對在插單之後本來就對不上，不能拿來當訊號。）
+    // 選一張卡確認 → 下面要真的變。這裡最後留在畫面上的是「先送這單」那組卡，
+    // 套用它是重排站序，不是多一張單，所以訂單總數本來就不會動；
+    // 會動的是方案版本。「已建立新版本」就是確認真的落地的證據。
     // 「需人工處理」的卡按下去沒有確認按鈕，挑一張真的可以選的。
     await page.locator('button.urgent-card:not(.urgent-card-unavailable)').last().click()
     const confirmCard = page.getByRole('button', { name: /確認/ }).last()
     await expect(confirmCard, '選了卡片但沒有確認按鈕').toBeVisible({ timeout: 30_000 })
     await confirmCard.click()
-    await expect(page.locator('.topbar-stats'), '確認之後訂單總數沒有變成 51 張').toContainText(
-      '51 張訂單',
-      { timeout: 180_000 },
-    )
+    await expect(page.locator('body'), '確認之後沒有建立新版本').toContainText('建立新版本', {
+      timeout: 180_000,
+    })
     await saveScreenshot(page, screenshotDir, 'demo-09-card-confirmed')
 
     // ── 第 4 幕 上車後 ───────────────────────────────────────────
@@ -221,7 +220,10 @@ test.describe('上台 demo 全流程模擬', () => {
     expectHumanReply(urgent2, '上車後急單')
     await saveScreenshot(page, screenshotDir, 'demo-10-loaded-urgent')
 
-    const reassign = await send(page, '這單改派給三號車')
+    // 點名一張今天本來就在跑的單。講「這單」的話指的是剛才那張急單，而它
+    // 還留在草稿裡（上一步確認的是「先送這單」那組卡，套用的是站序不是插單），
+    // 回覆會變成「找不到這張單」——那是對的，但測不到上車後不准跨車改派。
+    const reassign = await send(page, 'ORD-014 改派給三號車')
     expectHumanReply(reassign, '上車後改派')
     expect(reassign.message || '', '上車後改派沒有被擋下來').toMatch(/不行|不能|無法|已經裝車|人工/)
     await saveScreenshot(page, screenshotDir, 'demo-11-reassign-refused')
@@ -231,10 +233,16 @@ test.describe('上台 demo 全流程模擬', () => {
     await expect(page.getByText('已發車').first()).toBeVisible({ timeout: 60_000 })
     await page.getByRole('slider', { name: '配送時間軸' }).fill('160')
 
-    const targetOrder = await page.evaluate(() => {
-      const match = document.body.innerText.match(/ORD-\d{3}/g)
-      return match ? match[match.length - 1] : 'ORD-030'
-    })
+    // 從時間軸上挑一張還沒送達的單。掃整頁文字會掃到看板最下面那張
+    // 「未安排」的 ORD-050——那張根本不在任何一台車上，要它提前等於要插單，
+    // 已發車之後後端會直接擋，問不出提前配送方案。
+    const stops = page.locator('.timeline-stop[aria-disabled="false"]')
+    await expect(stops.first()).toBeVisible({ timeout: 60_000 })
+    const labels = await stops.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-label') || ''),
+    )
+    const targetOrder = labels.map((label) => /ORD-\d{3}/.exec(label)?.[0]).find(Boolean)
+    expect(targetOrder, '時間軸上沒有任何還沒送達的站').toBeTruthy()
     const earlier = await send(page, `${targetOrder} 客戶說中午前一定要拿到`)
     expectHumanReply(earlier, '已發車要求提前')
     // 要先講現在跑到哪，再講調整的代價，或誠實說送不到
