@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const relaxedWorkbook = path.resolve('..', 'data', 'samples', 'demo-50-relaxed.xlsx')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
@@ -117,8 +119,8 @@ async function clickPreview(page: Page, id: string, allowError = false): Promise
   return { status: response.status(), raw, body }
 }
 
-async function saveScreenshot(page: Page, id: string) {
-  await page.screenshot({ path: path.join(screenshotDir, `${id}.png`), fullPage: true })
+async function shot(page: Page, id: string) {
+  await saveScreenshot(page, screenshotDir, id)
 }
 
 test('Q-01 司機請假', async ({ page }) => {
@@ -129,7 +131,7 @@ test('Q-01 司機請假', async ({ page }) => {
   expect(data?.status).toBe('PREVIEWED')
   expect(data?.affected_vehicle_id).toBe('VEH-003')
   expect(data?.plan).toBeTruthy()
-  await saveScreenshot(page, 'Q-01')
+  await shot(page, 'Q-01')
 })
 
 test('Q-02 客戶取消', async ({ page }) => {
@@ -140,7 +142,7 @@ test('Q-02 客戶取消', async ({ page }) => {
   expect(data?.status).toBe('PREVIEWED')
   expect(data?.order_id).toBe('ORD-019')
   expect(result.body.message || '').toContain('今天不配送')
-  await saveScreenshot(page, 'Q-02')
+  await shot(page, 'Q-02')
 })
 
 test('Q-03 十張急單', async ({ page }) => {
@@ -161,7 +163,7 @@ test('Q-03 十張急單', async ({ page }) => {
   const options = Array.isArray(previewData?.options) ? previewData.options : []
   expect(options.length).toBeGreaterThan(0)
   await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 180_000 })
-  await saveScreenshot(page, 'Q-03')
+  await shot(page, 'Q-03')
 })
 
 test('Q-04 同客戶兩張同座標急單', async ({ page }) => {
@@ -178,7 +180,7 @@ test('Q-04 同客戶兩張同座標急單', async ({ page }) => {
   const previewData = findEvidence(preview.body, 'urgent_insertion_workflow')
   expect(previewData).toBeTruthy()
   await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 180_000 })
-  await saveScreenshot(page, 'Q-04')
+  await shot(page, 'Q-04')
 })
 
 test('Q-05 評審自創說法', async ({ page }) => {
@@ -187,7 +189,7 @@ test('Q-05 評審自創說法', async ({ page }) => {
   const result = await keyboardSend(page, 'Q-05', '這批貨我想重新安排一下')
   expect(result.body.error).toBeUndefined()
   expect((result.body.message || '').length).toBeGreaterThan(0)
-  await saveScreenshot(page, 'Q-05')
+  await shot(page, 'Q-05')
 })
 
 test('Q-06 打錯字', async ({ page }) => {
@@ -196,7 +198,7 @@ test('Q-06 打錯字', async ({ page }) => {
   const result = await keyboardSend(page, 'Q-06', '三號車今天不能出恰')
   expect(result.body.error).toBeUndefined()
   expect((result.body.message || '').length).toBeGreaterThan(0)
-  await saveScreenshot(page, 'Q-06')
+  await shot(page, 'Q-06')
 })
 
 test('Q-07 中英混雜', async ({ page }) => {
@@ -205,7 +207,7 @@ test('Q-07 中英混雜', async ({ page }) => {
   const result = await keyboardSend(page, 'Q-07', 'VEH-003 today cannot go out')
   expect(result.body.error).toBeUndefined()
   expect(findEvidence(result.body, 'change_vehicle_availability')).toBeTruthy()
-  await saveScreenshot(page, 'Q-07')
+  await shot(page, 'Q-07')
 })
 
 test('Q-08 只講一半的急單', async ({ page }) => {
@@ -218,7 +220,7 @@ test('Q-08 只講一半的急單', async ({ page }) => {
   expect(missingByOrder.length).toBeGreaterThan(0)
   expect(result.body.message || '').toContain('目前還不能計算')
   await expect(page.getByText('目前還不能計算', { exact: false }).last()).toBeVisible({ timeout: 30_000 })
-  await saveScreenshot(page, 'Q-08')
+  await shot(page, 'Q-08')
 })
 
 test('Q-09 插單、改規則、插單、改時段不重整', async ({ page }) => {
@@ -249,7 +251,7 @@ test('Q-09 插單、改規則、插單、改時段不重整', async ({ page }) =
   const timeChange = await keyboardSend(page, 'Q-09-4', 'ORD-019 改成下午送')
   expect(findEvidence(timeChange.body, 'change_order_constraint')).toBeTruthy()
   expect(navigationCount).toBe(0)
-  await saveScreenshot(page, 'Q-09')
+  await shot(page, 'Q-09')
 })
 
 test('Q-10 冷啟動匯入計時', async ({ page }) => {
@@ -258,12 +260,15 @@ test('Q-10 冷啟動匯入計時', async ({ page }) => {
   await page.goto('/')
   const startedAt = performance.now()
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
-  await expect(page.getByText('已完成', { exact: false })).toBeVisible({ timeout: 180_000 })
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
+  // 排班完成的綠色提示拿掉了，改用上排的統計列當完成訊號。
+  await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
   const elapsedSeconds = (performance.now() - startedAt) / 1000
-  const reply = await page.getByText(/已完成 .*張訂單的排班，方案待人工確認。/).last().innerText()
+  const reply = await page.locator('.topbar-stats').innerText()
   console.log(`Q-10 實際輸入：上傳 ${path.basename(relaxedWorkbook)}`)
   console.log(`Q-10 系統實際回覆逐字：${reply}`)
   console.log(`Q-10 冷啟動匯入實際秒數：${elapsedSeconds.toFixed(3)}`)
   expect(elapsedSeconds).toBeGreaterThan(0)
-  await saveScreenshot(page, 'Q-10')
+  await shot(page, 'Q-10')
 })

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+﻿import { expect, test, type Locator, type Page } from '@playwright/test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -103,7 +103,7 @@ async function sendTyped(page: Page, message: string, allowPlanFallback = false)
     const started = Date.now()
     await input.press('Enter')
     if (allowPlanFallback) {
-      await expect(page.locator('.feedback-success:visible').filter({ hasText: '已完成' })).toBeVisible({ timeout: 240_000 })
+      await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
       return { reply: await uiFeedback(page), tool: 'plan_dispatch' }
     }
     try {
@@ -234,7 +234,7 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
       })
       await doStep(page, '1-2', '逐字輸入「請幫我排今天的班」後按 Enter', () => sendTyped(page, '請幫我排今天的班', true))
       await doStep(page, '1-3', '點地圖上方的 VEH-002', async () => {
-        await page.locator('.map-route-filter').filter({ hasText: 'VEH-002' }).click()
+        await page.locator('.map-route-filter').filter({ hasText: '第二車' }).click()
         return { reply: await uiFeedback(page) }
       })
 

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const samples = path.resolve('..', 'data', 'samples')
@@ -28,7 +28,7 @@ async function plan(page: Page) {
   await input.click()
   await input.pressSequentially('請幫我排今天的班')
   await input.press('Enter')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
 }
 
 test('C：三行急單一次貼上，到底吃進去幾張', async ({ page }) => {

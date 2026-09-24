@@ -45,7 +45,7 @@ async function importDemoPlan(page: Page, workbook: string) {
   // Choosing the file only attaches it; the panel says 「附加檔案 / 送出」 and
   // nothing is uploaded until 送出 is pressed.
   await page.getByRole('button', { name: '送出', exact: true }).click()
-  await expect(page.getByText(/已完成 \d+／\d+ 張訂單的排班/)).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 30_000 })
 }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 上台 demo 的完整模擬：從丟檔案開始，把腳本裡每一句話用真的鍵盤打進去，
  * 每一步都同時檢查兩件事——
  *   ① 對話回的內容在語意上是不是我要的（不比對逐字，比對關鍵語意）
@@ -20,7 +20,7 @@ const screenshotDir = path.resolve('..', 'docs', 'screenshots')
  * 而且 tight 的 49/50 自帶「有一張排不進去」的橋段。
  */
 const workbook = path.join(samplesDir, 'demo-50-tight.xlsx')
-const PLANNED = /已完成 \d+／50 張訂單的排班/
+const PLANNED = /\d+\/50 已安排/
 
 type Evidence = { tool: string; data?: Record<string, unknown> }
 type AgentBody = { message?: string; evidence?: Evidence[] }
@@ -100,7 +100,7 @@ test.describe('上台 demo 全流程模擬', () => {
     const uploader = page.locator('input[type="file"][aria-label="上傳 Excel"]').first()
     await expect(uploader).toBeAttached()
     await uploader.setInputFiles(workbook)
-    await expect(page.getByText(/已完成 49／50 張訂單的排班/)).toBeVisible({ timeout: 240_000 })
+    await expect(page.locator('.topbar-stats')).toContainText('49/50 已安排', { timeout: 240_000 })
     await page.screenshot({ path: shot('00-loaded'), fullPage: true })
 
     const afterImport = await planState(page)

@@ -1,6 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
@@ -24,7 +26,7 @@ function installBrowserGuards(page: Page) {
 }
 
 async function waitForPlan(page: Page) {
-  await expect(page.getByText('已完成 50／50 張訂單的排班，方案待人工確認。')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 30_000 })
 }
 
@@ -62,18 +64,18 @@ test('TODO 7：F1-02～F1-07 欄位對映、人工確認、保存與修正後匯
   await expect(page.getByText('信心度')).toBeVisible()
   await expect(page.locator('.mapping-table tbody tr')).toHaveCount(31)
   await expect(page.locator('.mapping-table td').filter({ hasText: '%' }).first()).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-02.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-02')
 
   const locationMapping = page.getByLabel('欄位 orders 收件區')
   await locationMapping.selectOption('city')
   await expect(locationMapping).toHaveValue('city')
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-03.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-03')
   await locationMapping.selectOption('location_label')
 
   await page.getByLabel('保存名稱（選填）').fill('供應商格式 Demo')
   await page.getByRole('button', { name: '確認欄位對映' }).click()
   await waitForPlan(page)
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-04.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-04')
 
   await resetToEmpty(page)
   const savedInspectResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/datasets/inspect-excel') && response.request().method() === 'POST')
@@ -85,7 +87,7 @@ test('TODO 7：F1-02～F1-07 欄位對映、人工確認、保存與修正後匯
   expect(savedBody.requires_confirmation).toBeFalsy()
   await expect(page.getByRole('heading', { name: '請確認欄位對映' })).toHaveCount(0)
   await waitForPlan(page)
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-05.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-05')
 
   await resetToEmpty(page)
   await upload(page, missingWorkbook)
@@ -100,11 +102,11 @@ test('TODO 7：F1-02～F1-07 欄位對映、人工確認、保存與修正後匯
   for (const machineField of ['location_label', 'time_slot', 'weight_kg']) {
     await expect(missingAlert).not.toContainText(machineField)
   }
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-06.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-06')
 
   await upload(page, relaxedWorkbook)
   await waitForPlan(page)
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-07.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-07')
 
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
@@ -123,19 +125,19 @@ test('TODO 7：F1-08～F1-10 檔案錯誤、空資料與重複訂單', async ({ 
     buffer: Buffer.from('this is not an xlsx workbook'),
   })
   await expect(page.getByRole('alert')).toContainText('不是可讀取的 Excel', { timeout: 30_000 })
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-08.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-08')
 
   await resetToEmpty(page)
   await upload(page, emptyWorkbook)
   await expect(page.getByRole('alert')).toContainText('至少提供一筆訂單', { timeout: 30_000 })
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-09.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-09')
 
   await resetToEmpty(page)
   await upload(page, duplicateWorkbook)
   const duplicateAlert = page.getByRole('alert')
   await expect(duplicateAlert).toContainText('ORD-001', { timeout: 30_000 })
   await expect(duplicateAlert).toContainText('重複')
-  await page.screenshot({ path: path.join(screenshotDir, 'F1-10.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F1-10')
 
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])

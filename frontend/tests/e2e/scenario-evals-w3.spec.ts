@@ -1,6 +1,8 @@
 ﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
+import { saveScreenshot } from './screenshot-helper'
+
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-relaxed.xlsx')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
 type Evidence = { tool: string; data: Record<string, unknown> }
@@ -35,16 +37,16 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
 
   const missing = await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
   expect(missing.message || '').toContain('目前還不能計算')
-  await page.screenshot({ path: path.join(screenshotDir, 'W-21.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-21')
 
   const complete = await send(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
   expect(complete.message || '').toContain('我記下來了，確認一下')
   await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, 'W-22.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-22')
 
   const userMessages = page.locator('.chat-log > div').filter({ hasText: '你' })
   expect(await userMessages.count()).toBe(2)
@@ -55,21 +57,21 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   expect(preview.ok()).toBe(true)
   await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('group', { name: '臨時插單方案' }).last().locator('button.urgent-card')).toHaveCount(3)
-  await page.screenshot({ path: path.join(screenshotDir, 'W-24.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-24')
 
   const modified = await send(page, '用 A，但這單先送')
   expect(tool(modified, 'prioritize_order_preview')).toBeTruthy()
   await expect(page.getByText('新方案卡尚未套用')).toBeVisible({ timeout: 60_000 })
-  await page.screenshot({ path: path.join(screenshotDir, 'W-26.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-26')
 
   const refused = await send(page, '把所有單重新分配一遍')
   expect(refused.message || '').toContain('這個我不能改')
-  await page.screenshot({ path: path.join(screenshotDir, 'W-27.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-27')
 
   await page.locator('button.urgent-card').last().click()
   await page.getByRole('button', { name: '取消', exact: true }).last().click()
   await expect(page.getByText('原方案版本沒有變更。').last()).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, 'W-28.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-28')
 
   await page.locator('button.urgent-card').last().click()
   const confirmPromise = page.waitForResponse((response) => response.url().includes('/confirm') && response.request().method() === 'POST', { timeout: 180_000 })
@@ -77,7 +79,7 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   const confirmed = await confirmPromise
   expect(confirmed.ok()).toBe(true)
   await expect(page.getByText('建立新版本', { exact: false }).last()).toBeVisible({ timeout: 60_000 })
-  await page.screenshot({ path: path.join(screenshotDir, 'W-29.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'W-29')
 })
 
 test('BUG-8：Demo 腳本兩句原文五次都進入訂單摘要', async ({ page }) => {
@@ -98,7 +100,7 @@ test('BUG-8：Demo 腳本兩句原文五次都進入訂單摘要', async ({ page
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
     await page.getByLabel('上傳 Excel').setInputFiles(workbook)
-    await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+    await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
 
     await send(page, firstSentence)
     const completion = await send(page, secondSentence)

@@ -3253,10 +3253,12 @@ def _urgent_workflow_message(
         # One unbroken list. Wrapping it after the third item used to split a
         # single sentence mid-way, so a line could end on a field name and the
         # next line start with the full stop.
-        subject = "這張急單" if len(missing) <= 1 else f"這 {len(missing)} 張急單"
+        # Count-neutral on purpose. 「三張急單」 still produces a single draft
+        # at this point, so saying 「這張急單」 contradicted what the dispatcher
+        # had just said, and saying 「這 1 張」 would be just as wrong.
         return (
-            f"{subject}還缺少幾個欄位：{'、'.join(display_fields)}。\n"
-            "一次補齊貼給我，我就可以算。"
+            f"還缺少幾個欄位才能算：{'、'.join(display_fields)}。\n"
+            "每一張都照這個順序補齊給我。"
         )
     if stage == "REVIEW_READY":
         # One order per line. Run together with punctuation separators this was

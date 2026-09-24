@@ -1,6 +1,8 @@
 ﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
+import { saveScreenshot } from './screenshot-helper'
+
 const samplesDir = path.resolve('..', 'data', 'samples')
 const relaxedWorkbook = path.join(samplesDir, 'demo-50-relaxed.xlsx')
 const tightWorkbook = path.join(samplesDir, 'demo-50-tight.xlsx')
@@ -97,40 +99,40 @@ function assertNoDominated(options: Option[]) {
 test('A 區塊：插單對話、缺欄契約與兩則訊息摘要', async ({ page }) => {
   test.setTimeout(900_000)
   installSession(page, `SCENARIO-A-${test.info().testId}`)
-  await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
+  await upload(page, relaxedWorkbook, '50/50 已安排')
 
   const complete = await send(page, '加一張急單 ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，座標 25.040 / 121.560，配送區域 Z3，1 件 15 公斤，早上時段')
   expect(complete.message || '').toContain('我記下來了，確認一下')
   expect(urgentData(complete).stage).toBe('REVIEW_READY')
   await expect(page.getByRole('button', { name: '產生插單預覽' }).last()).toBeVisible()
-  await page.screenshot({ path: path.join(screenshotDir, 'A-01.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-01')
 
   await page.getByRole('button', { name: '重新開始' }).click()
   await expect(page.getByText('下載範例格式')).toBeVisible()
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
   const missing = await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
   expect(missing.message || '').toContain('目前還不能計算')
   expect(missing.message || '').not.toContain('配送地點（地址或座標）')
   for (const label of ['訂單編號', '地點名稱', '城市', '緯度', '經度', '包裹件數']) await expect(page.getByText(label, { exact: false }).last()).toBeVisible()
   expect(missing.message || '').not.toContain('配送區域')
   expect(missing.message || '').not.toContain('優先')
-  await page.screenshot({ path: path.join(screenshotDir, 'A-02.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-02')
 
   const completion = await send(page, 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件')
   expect(completion.message || '').toContain('我記下來了，確認一下')
   expect(urgentData(completion).stage).toBe('REVIEW_READY')
-  await page.screenshot({ path: path.join(screenshotDir, 'A-03.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-03')
 
   await page.getByRole('button', { name: '重新開始' }).click()
   await expect(page.getByText('下載範例格式')).toBeVisible()
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
   const districtOnly = await send(page, '信義區有一張急單')
   const districtData = urgentData(districtOnly)
   const missingByOrder = districtData.missing_by_order as Array<{ missing_fields: string[] }>
   expect(missingByOrder[0]?.missing_fields || []).not.toContain('zone_code')
-  await page.screenshot({ path: path.join(screenshotDir, 'A-05.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-05')
 })
 
 test('A-08：同一句補齊訊息五次都進入摘要', async ({ page }) => {
@@ -144,7 +146,7 @@ test('A-08：同一句補齊訊息五次都進入摘要', async ({ page }) => {
   const replies: string[] = []
   for (let run = 1; run <= 5; run += 1) {
     sessionId = `SCENARIO-A08-${test.info().testId}-${run}`
-    await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
+    await upload(page, relaxedWorkbook, '50/50 已安排')
     await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
     const completion = await send(page, 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件')
     replies.push(completion.message || JSON.stringify(completion))
@@ -153,24 +155,24 @@ test('A-08：同一句補齊訊息五次都進入摘要', async ({ page }) => {
     await expect(page.getByText('下載範例格式')).toBeVisible()
   }
   console.log(`A-08 實際成功率：${replies.filter((reply) => reply.includes('我記下來了，確認一下')).length}/5`)
-  await page.screenshot({ path: path.join(screenshotDir, 'A-08.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-08')
 })
 
 test('A-09：有完整座標時不追問地點名稱', async ({ page }) => {
   test.setTimeout(240_000)
   installSession(page, `SCENARIO-A09-${test.info().testId}`)
-  await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
+  await upload(page, relaxedWorkbook, '50/50 已安排')
   const completion = await send(page, '新增急單 ORD-A09，臺北市，行政區信義，配送區域 Z4，座標 25.033 / 121.565，1 件 15 公斤，早上時段')
   expect(completion.message || '').toContain('我記下來了，確認一下')
   expect(completion.message || '').not.toContain('地點名稱')
   expect(urgentData(completion).missing_by_order || []).toEqual([])
-  await page.screenshot({ path: path.join(screenshotDir, 'A-09.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'A-09')
 })
 
 test('B 區塊：方案卡是局部插入、可行且沒有支配候選', async ({ page }) => {
   test.setTimeout(900_000)
   installSession(page, `SCENARIO-B-${test.info().testId}`)
-  await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
+  await upload(page, relaxedWorkbook, '50/50 已安排')
   const summary = await send(page, '加一張急單 ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，座標 25.040 / 121.560，配送區域 Z3，1 件 15 公斤，早上時段')
   expect(summary.message || '').toContain('我記下來了，確認一下')
   const response = await preview(page)
@@ -187,17 +189,17 @@ test('B 區塊：方案卡是局部插入、可行且沒有支配候選', async 
   await cards.nth(1).focus()
   await page.keyboard.press('Enter')
   await expect(cards.nth(1)).toHaveAttribute('aria-pressed', 'true')
-  await page.screenshot({ path: path.join(screenshotDir, 'B-01.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'B-01')
 })
 
 test('I 區塊：tight 的排不進去與三公里以上取捨', async ({ page }) => {
   test.setTimeout(900_000)
   installSession(page, `SCENARIO-I-${test.info().testId}`)
-  await upload(page, tightWorkbook, '已完成 49／50 張訂單的排班')
+  await upload(page, tightWorkbook, '49/50 已安排')
   const bodyText = await page.locator('body').innerText()
   expect(bodyText).toContain('49/50 已安排')
   expect(bodyText).toContain('ORD-050')
-  await page.screenshot({ path: path.join(screenshotDir, 'I-01.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'I-01')
 
   const summary = await send(page, '新增急單 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
   expect(summary.message || '').toContain('我記下來了，確認一下')
@@ -207,17 +209,17 @@ test('I 區塊：tight 的排不進去與三公里以上取捨', async ({ page }
   const distances = options.map((option) => option.cost.distance_delta_km as number)
   expect(Math.max(...distances) - Math.min(...distances)).toBeGreaterThanOrEqual(3)
   assertNoDominated(options)
-  await page.screenshot({ path: path.join(screenshotDir, 'I-02.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'I-02')
 
   await page.getByRole('button', { name: '重新開始' }).click()
   await expect(page.getByText('下載範例格式')).toBeVisible()
   await page.getByLabel('上傳 Excel').setInputFiles(tightWorkbook)
-  await expect(page.getByText('已完成 49／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('49/50 已安排', { timeout: 180_000 })
   const heavy = await send(page, '新增急單 ORD-I03，配送區域 Z5，城市臺北市，行政區內湖，地點名稱內湖超重示範站，緯度 25.083，經度 121.590，包裹件數 1，每件重量 200 公斤，早上配送')
   expect(heavy.message || '').toContain('我記下來了，確認一下')
   const heavyPreview = await preview(page)
   const heavyOptions = optionsFrom(heavyPreview)
   expect(heavyOptions.some((option) => option.title === '排不進去' && !option.selectable)).toBe(true)
   expect(JSON.stringify(urgentData(heavyPreview))).toContain('ORD-I03')
-  await page.screenshot({ path: path.join(screenshotDir, 'I-03.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'I-03')
 })

@@ -1,4 +1,4 @@
-import path from 'node:path'
+﻿import path from 'node:path'
 
 import { expect, test } from '@playwright/test'
 
@@ -17,7 +17,7 @@ test('F6：偏差車輛與區域會隨輸入資料計算', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
     await page.getByLabel('上傳 Excel').first().setInputFiles(workbook)
-    await expect(page.getByText(/已完成 \d+／\d+ 張訂單的排班/)).toBeVisible({ timeout: 180_000 })
+    await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
     await page.getByRole('button', { name: '開始裝車' }).click()
     await page.getByRole('button', { name: '模擬出發' }).click()
     const timeline = page.getByRole('slider', { name: '配送時間軸' })

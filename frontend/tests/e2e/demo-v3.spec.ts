@@ -51,7 +51,7 @@ async function uploadAndPlan(page: Page): Promise<void> {
   await input.press('Enter')
   await expect(page.getByText('● 正在執行：每日排班', { exact: true })).toBeVisible({ timeout: 10_000 })
   await screenshot(page, 'v-02-running')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await expect(page.locator('.topbar-stats')).toContainText('49/50', { timeout: 60_000 })
 }
 
@@ -211,7 +211,7 @@ test.describe('Demo v3 逐字走查', () => {
       await input.click()
       await input.pressSequentially('請幫我排今天的班')
       await input.press('Enter')
-      await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+      await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
       const reply = await sendVisible(page, question, `v-random-${index + 1}`)
       expect(reply).not.toContain('已完成確定性工具計算')
       expect(reply).not.toContain('{"')

@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -95,7 +97,7 @@ test('BUG-10：重新整理與重新開始都不沿用已發車 frozen stops', a
   expect(resetSessionId).toBeTruthy()
   expect(resetSessionId).not.toBe(reloadSessionId)
 
-  await page.screenshot({ path: path.join(screenshotDir, 'BUG-10-session-reset.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'BUG-10-session-reset')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])
@@ -122,7 +124,7 @@ test('BUG-11：護欄 400 的 assistant 氣泡一定顯示後端訊息', async (
     await input.press('Enter')
     await expect(page.locator('.chat-log > div').last()).toContainText(blockedMessage, { timeout: 30_000 })
   }
-  await page.screenshot({ path: path.join(screenshotDir, 'BUG-11-guardrail-message.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'BUG-11-guardrail-message')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])
@@ -161,7 +163,7 @@ test('NIT-3：最高載重、移除訂單、停駛都回覆具體內容', async 
   expect(unavailable.message || '').not.toContain('已完成確定性工具計算')
   await expect(page.locator('.chat-log > div').last()).toContainText('VEH-003', { timeout: 30_000 })
 
-  await page.screenshot({ path: path.join(screenshotDir, 'NIT-3-concrete-replies.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'NIT-3-concrete-replies')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])

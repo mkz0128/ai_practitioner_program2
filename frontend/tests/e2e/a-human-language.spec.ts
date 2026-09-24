@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+﻿import { expect, test } from '@playwright/test'
 import path from 'node:path'
 
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-relaxed.xlsx')
@@ -29,7 +29,7 @@ test('A 組五句常識題都在畫面上回白話', async ({ page }) => {
   // Choosing the file only attaches it; the panel says 「附加檔案 / 送出」 and
   // nothing is uploaded until 送出 is pressed.
   await page.getByRole('button', { name: '送出', exact: true }).click()
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 240_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 240_000 })
 
   const cases = [
     ['你是誰', /調度|配送|排班|派車/],

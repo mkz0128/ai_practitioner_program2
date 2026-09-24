@@ -48,8 +48,10 @@ button, input, textarea { font: inherit; }
 .brand-lockup p { margin: 3px 0 0; font-size: 11.5px; font-weight: 500; color: var(--muted); }
 .brand-mark { display: grid; height: 36px; width: 36px; flex: none; place-items: center; border-radius: 11px; background: var(--ink); color: white; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; }
 
-/* 數字放大到投影機看得見；「已安排」是全場最常被指著看的數字，再大一級 */
-.topbar-stats { display: flex; align-items: baseline; gap: 0; overflow-x: auto; white-space: nowrap; }
+/* 數字放大到投影機看得見；「已安排」是全場最常被指著看的數字，再大一級。
+   flex: none —— 地圖圖例搬進頂列之後會來搶寬度，統計列被壓縮就會把
+   「已安排」三個字切掉，只剩一個沒有標籤的 49/50。 */
+.topbar-stats { display: flex; flex: none; align-items: baseline; gap: 0; white-space: nowrap; }
 .topbar-stats span { display: inline-flex; align-items: baseline; gap: 5px; padding: 0 16px; color: var(--muted); font-size: 12.5px; }
 .topbar-stats span + span { border-left: 1px solid var(--hair); }
 .topbar-stats strong { color: var(--ink); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
@@ -74,25 +76,26 @@ button, input, textarea { font: inherit; }
 .map-shell { position: relative; height: 100%; overflow: hidden; border-radius: 18px; border: 1px solid var(--hair); background: #dfe5ec; box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
 .map-shell .leaflet-map { position: absolute; inset: 0; height: 100%; min-height: 0; }
 
-.map-overlay { position: absolute; z-index: 1100; top: 14px; right: 14px; display: flex; max-width: calc(100% - 28px); flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.9); background: var(--glass); backdrop-filter: blur(14px); padding: 9px 14px; font-size: 12.5px; box-shadow: var(--lift); }
+/* 統計列右邊的地圖圖例：站點數、示意路線徽章、四台車篩選。
+   窄螢幕時讓這一塊先被壓縮並內部捲動，統計列與操作鈕不動。 */
+.topbar-map { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 12px; padding-left: 18px; border-left: 1px solid var(--hair); overflow-x: auto; white-space: nowrap; }
+/* 四台車不換行，否則頂列會變成兩層，把整個舞台往下推 */
+.topbar-map .map-overlay-filters { flex-wrap: nowrap; }
 .map-overlay-lead { display: inline-flex; align-items: baseline; gap: 6px; }
 .map-overlay-count { color: var(--ink); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .map-overlay-unit { color: var(--muted); font-size: 12px; }
 .map-overlay-badge { border-radius: 7px; background: #fef3c7; padding: 3px 9px; color: #92400e; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .map-overlay-filters { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.map-overlay-attrib { width: 100%; text-align: right; color: var(--faint); font-size: 10px; }
 
-/* bottom = 進度線離底距離 + 進度線高度 + 間距，確保兩者不會擠在一起 */
-.stage-chat { position: absolute; z-index: 1200; top: 26px; bottom: calc(var(--dock-bottom) + var(--dock-height) + var(--dock-gap)); left: clamp(26px, 3.2vw, 42px); width: min(392px, calc(100% - 84px)); }
+/* 車輛進度線搬進「車輛概況」之後，舞台底部空出來了：對話框直接用到底，
+   寬度也放大到原本的 1.5 倍（392 → 588），長回覆不用再擠成細長條。 */
+.stage-chat { position: absolute; z-index: 1200; top: 26px; bottom: 26px; left: clamp(26px, 3.2vw, 42px); width: min(588px, calc(100% - 84px)); }
 /* min-height: 0 覆蓋 ChatPanel 的 min-h；讓面板服從舞台高度並在內部捲動 */
 .stage-chat > * { display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; border-radius: 16px; background: var(--glass); backdrop-filter: blur(18px); box-shadow: var(--lift-lg); }
 .stage-chat .chat-log > :only-child { min-height: 0; }
 
-.stage-dock { position: absolute; z-index: 1200; right: clamp(26px, 3.2vw, 42px); bottom: var(--dock-bottom); left: clamp(26px, 3.2vw, 42px); pointer-events: none; }
-.stage-dock > * { pointer-events: auto; }
-
-/* 提示訊息放右下角，讓開地圖右上的工具列；由下往上堆疊 */
-.stage-toasts { position: absolute; z-index: 1300; right: clamp(26px, 3.2vw, 42px); bottom: calc(var(--dock-bottom) + var(--dock-height) + var(--dock-gap)); display: flex; width: min(420px, 46%); flex-direction: column; justify-content: flex-end; gap: 8px; pointer-events: none; }
+/* 提示訊息放右下角；由下往上堆疊 */
+.stage-toasts { position: absolute; z-index: 1300; right: clamp(26px, 3.2vw, 42px); bottom: var(--dock-bottom); display: flex; width: min(420px, 46%); flex-direction: column; justify-content: flex-end; gap: 8px; pointer-events: none; }
 .stage-toasts > * { pointer-events: auto; }
 .stage-toasts .feedback { margin: 0; border-radius: 13px; box-shadow: var(--lift-lg); }
 
@@ -182,8 +185,32 @@ button, input, textarea { font: inherit; }
 .order-board-column-manual { border-color: var(--stage); box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage) 18%, transparent); }
 .order-board-manual { margin-bottom: 12px; border: 1px solid #93c5fd; border-radius: 10px; background: #eff6ff; padding: 10px 13px; color: #1e3a8a; font-size: 12px; font-weight: 700; line-height: 1.6; }
 .order-board-history { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.order-board-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); background: #f8fafc; padding: 12px 13px; color: var(--ink); font-size: 12px; }
-.order-board-heading span, .order-board-total span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* 欄頭＝那台車的儀表。載重、站數、里程、時間、責任區全部收在這裡，
+   原本另外那張「車輛概況」卡就不需要了。 */
+.order-board-heading { border-bottom: 1px solid var(--hair); background: #f8fafc; padding: 10px 12px 9px; color: var(--ink); }
+.obh-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.obh-top strong { font-size: 13.5px; font-weight: 800; }
+.obh-pct { font-size: 12px; font-weight: 800; color: #047857; font-variant-numeric: tabular-nums; }
+.obh-pct-tight { color: #b45309; }
+.obh-bar { height: 5px; border-radius: 3px; background: #e2e8f0; margin: 7px 0 6px; overflow: hidden; }
+.obh-bar i { display: block; height: 100%; border-radius: 3px; background: #059669; }
+.obh-bar i.tight { background: #d97706; }
+.obh-meta { display: flex; flex-wrap: wrap; gap: 2px 9px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.obh-zones { margin-top: 4px; color: #1d4ed8; font-size: 11px; font-weight: 600; }
+.order-board-total span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* 左側細色條＝配送時段。時段是這場 Demo 真正會出事的限制（掉出配送時段），
+   而 Stop 沒有區域欄位，用時段比用車色有意義。 */
+.obs-slot { display: block; height: 22px; width: 3px; flex: none; border-radius: 2px; background: #cbd5e1; }
+.obs-slot-morning, .obs-slot-am { background: #2563eb; }
+.obs-slot-afternoon, .obs-slot-pm { background: #d97706; }
+.obs-slot-evening { background: #7c3aed; }
+.order-board-legend { display: flex; flex: none; align-items: center; gap: 12px; }
+.order-board-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11.5px; }
+.order-board-legend .obs-slot { height: 12px; }
+.obs-id { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.obs-kg { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.obs-eta { flex: none; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .order-board-stops { display: grid; gap: 1px; padding: 5px; }
 .order-board-stop { border-radius: 8px; background: white; }
 /* 規則套用後，被改派的單先閃兩下再停在淡黃色，讓「19 張改派」看得見是哪 19 張。
@@ -232,7 +259,9 @@ button, input, textarea { font: inherit; }
 .safety-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 
 /* ============ empty state ============ */
-.empty-shell { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(1100px 520px at 50% -8%, #dbeafe 0%, transparent 62%), linear-gradient(160deg, #f8fafc, #eaeff5); }
+.empty-shell { display: grid; min-height: 100vh; place-items: center; align-content: center; gap: 18px; padding: 28px; background: radial-gradient(1100px 520px at 50% -8%, #dbeafe 0%, transparent 62%), linear-gradient(160deg, #f8fafc, #eaeff5); }
+.empty-brand { display: flex; align-items: center; gap: 12px; }
+.empty-brand h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
 .empty-chat { width: min(560px, 100%); }
 .startup-shell { display: grid; min-height: 100vh; place-items: center; padding: 28px; background: radial-gradient(1100px 520px at 50% -8%, #dbeafe 0%, transparent 62%), linear-gradient(160deg, #f8fafc, #eaeff5); }
 .startup-card { display: flex; width: min(560px, 100%); min-height: 230px; flex-direction: column; align-items: center; justify-content: center; border: 1px solid #dbeafe; border-radius: 24px; background: rgba(255,255,255,.94); padding: 44px; text-align: center; box-shadow: var(--lift-lg); }

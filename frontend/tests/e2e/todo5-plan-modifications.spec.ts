@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+﻿import { test, expect } from '@playwright/test'
 import path from 'node:path'
 
 type Evidence = { tool?: string; data?: Record<string, unknown> }
@@ -36,7 +36,7 @@ test('TODO 5 方案卡修改與對話同義句驗收', async ({ page }) => {
   await page.goto('/', { waitUntil: 'commit', timeout: 30_000 })
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
   await expect(page.getByText('已匯入 50 張訂單')).toBeVisible({ timeout: 180_000 })
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
   await expect(input).toBeEnabled({ timeout: 180_000 })
 
   const missing = await send('加一張到信義區')

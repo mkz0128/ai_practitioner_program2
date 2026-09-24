@@ -3828,11 +3828,9 @@ def preview_multiple_urgent_insert(
                 "packages",
             ],
             "message": (
-                # This branch is the multi-order tool with nothing supplied at
-                # all, so it is never one order.
-                "這幾張急單還缺少欄位：訂單編號、配送地點、座標、配送區域、"
+                "還缺少幾個欄位才能算：訂單編號、配送地點、座標、配送區域、"
                 "重量、件數、配送時段。\n"
-                "每一張都照這個順序給我，我就可以算。"
+                "每一張都照這個順序補齊給我。"
             ),
             "requires_human_confirmation": False,
         }

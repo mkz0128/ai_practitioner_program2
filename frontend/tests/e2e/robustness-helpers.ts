@@ -27,9 +27,11 @@ export async function saveStep(page: Page, name: string): Promise<void> {
 export async function waitForPlan(page: Page, expectedAssigned?: string): Promise<void> {
   // App sets the Plan object before the deterministic map/solver work finishes.
   // Waiting only for "已安排" can therefore observe the previous plan (or the
-  // new plan while it still says OR-Tools 求解中…).  The success notice is set
-  // only after the import, solve, and map load have completed.
-  await expect(page.locator('.feedback-success').filter({ hasText: '已完成' })).toBeVisible({ timeout: 240_000 })
+  // new plan while it still says OR-Tools 求解中…).  The green success notice
+  // used to mark the end of that work, but it is gone from the screen now.
+  // The top bar's map legend renders only once getMapData has resolved, which
+  // is the last step of the import, so it is the same finish line.
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 60_000 })
   if (expectedAssigned) await expect(page.locator('.topbar-stats')).toContainText(expectedAssigned, { timeout: 60_000 })
 }

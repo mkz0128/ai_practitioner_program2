@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const relaxedWorkbook = path.resolve('..', 'data', 'samples', 'demo-50-relaxed.xlsx')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
@@ -76,7 +78,7 @@ test('BUG-12：點名四台車都用 vehicle_load 並回覆畫面上的數字', 
     await expect(vehicleCard).toBeVisible()
   }
 
-  await page.screenshot({ path: path.join(screenshotDir, 'BUG-12-vehicle-load.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'BUG-12-vehicle-load')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])

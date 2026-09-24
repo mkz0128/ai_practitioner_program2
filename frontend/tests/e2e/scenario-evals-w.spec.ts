@@ -1,6 +1,8 @@
 ﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
+import { saveScreenshot } from './screenshot-helper'
+
 const samplesDir = path.resolve('..', 'data', 'samples')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
 const mappedWorkbook = path.join(samplesDir, 'demo-mapped-50.xlsx')
@@ -76,7 +78,7 @@ function evidence(body: AgentBody, tool: string): Record<string, unknown> {
 }
 
 async function mark(page: Page, id: string) {
-  await page.screenshot({ path: path.join(screenshotDir, `${id}.png`), fullPage: true })
+  await saveScreenshot(page, screenshotDir, id)
 }
 
 async function reset(page: Page) {
@@ -91,7 +93,7 @@ async function uploadPlan(page: Page, workbook: string, notice: string): Promise
   const response = await planResponse
   const body = await response.json() as PlanBody
   expect(response.ok(), JSON.stringify(body)).toBeTruthy()
-  await expect(page.getByText(notice)).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText(notice, { timeout: 180_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 30_000 })
   return body
 }
@@ -143,8 +145,8 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await page.getByRole('button', { name: '確認欄位對映' }).click()
   await mappedPlanResponse
   await step('W-05', async () => {
-    await expect(page.getByText('已完成', { exact: false })).toBeVisible({ timeout: 180_000 })
-    await expect(page.getByText('張訂單的排班', { exact: false })).toBeVisible()
+    // 排班完成的綠色提示拿掉了，上排的統計列一直都在，用它當完成訊號。
+    await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
     await expect(page.locator('.topbar-stats')).toContainText('50 張訂單')
   })
 
@@ -160,7 +162,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   })
 
   await reset(page)
-  plan = await uploadPlan(page, tightWorkbook, '已完成 49／50 張訂單的排班，方案待人工確認。')
+  plan = await uploadPlan(page, tightWorkbook, '49/50 已安排')
   await step('W-07', async () => { await expect(page.getByText('方案待人工確認。')).toBeVisible() })
   await step('W-08', async () => {
     const stats = page.locator('.topbar-stats')
@@ -169,20 +171,22 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     await expect(stats).toContainText('49/50 已安排')
   })
   await step('W-09', async () => {
-    const board = page.getByLabel('車輛概況')
-    await expect(board.locator('button')).toHaveCount(4)
-    for (const text of ['載重', '上限', '服務區域', 'km', '分鐘']) await expect(board).toContainText(text)
-    for (const vehicle of ['VEH-001', 'VEH-002', 'VEH-003', 'VEH-004']) await expect(board).toContainText(vehicle)
-    await expect(board).toContainText('%')
+    // 「車輛概況」併進訂單看板的欄頭了：四欄、四條載重、每台車的里程與時間。
+    const board = page.getByLabel('訂單看板', { exact: true })
+    await expect(board.locator('.order-board-column')).toHaveCount(4)
+    await expect(board.locator('.obh-bar')).toHaveCount(4)
+    for (const text of ['kg', 'km', '分鐘', '站', '%']) await expect(board).toContainText(text)
+    for (const vehicle of ['第一車', '第二車', '第三車', '第四車']) await expect(board).toContainText(vehicle)
   })
   await step('W-10', async () => {
     await expect(page.locator('.leaflet-tile').first()).toBeVisible({ timeout: 60_000 })
     await expect(page.getByText('示意路線', { exact: true })).toBeVisible()
-    await expect(page.locator('.map-overlay-attrib')).toHaveText('© OpenStreetMap contributors')
+    // OSM 版權只留 Leaflet 自己那一份。
+    await expect(page.locator('.map-overlay-attrib')).toHaveCount(0)
     await expect(page.locator('.leaflet-control-attribution')).toContainText('© OpenStreetMap contributors')
     expect(await page.locator('.leaflet-overlay-pane path').count()).toBeGreaterThan(4)
   })
-  await page.locator('.map-route-filter').filter({ hasText: 'VEH-001' }).click()
+  await page.locator('.map-route-filter').filter({ hasText: '第一車' }).click()
   await step('W-11', async () => {
     const opacities = await page.locator('.leaflet-overlay-pane path').evaluateAll((paths) => paths.map((path) => (path as SVGPathElement).style.opacity || path.getAttribute('stroke-opacity') || ''))
     expect(opacities.filter((opacity) => opacity === '0.18').length).toBeGreaterThanOrEqual(3)

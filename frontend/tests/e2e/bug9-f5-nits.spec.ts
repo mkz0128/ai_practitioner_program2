@@ -1,4 +1,6 @@
-import path from 'node:path'
+﻿import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 import { expect, test, type Page } from '@playwright/test'
 
@@ -33,8 +35,8 @@ async function runEarlyDeliveryCase(workbook: string, run: number, page: Page) {
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
   const expectedImportMessage = path.basename(workbook) === 'demo-50-tight.xlsx'
-    ? '已完成 49／50 張訂單的排班'
-    : '已完成 50／50 張訂單的排班'
+    ? '49/50 已安排'
+    : '50/50 已安排'
   await expect(page.getByText(expectedImportMessage)).toBeVisible({ timeout: 120_000 })
   await page.getByRole('button', { name: '開始裝車' }).click()
   await expect(page.getByText('上車後').first()).toBeVisible({ timeout: 30_000 })
@@ -99,7 +101,7 @@ test('NIT-1／NIT-2 目前方案卡 ETA 與工具回覆診斷', async ({ page })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbooks[0])
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 120_000 })
   const input = page.getByRole('textbox', { name: '輸入訊息' })
   const send = async (message: string): Promise<AgentResponse> => {
     const responsePromise = page.waitForResponse(
@@ -125,19 +127,19 @@ test('NIT-1／NIT-2 目前方案卡 ETA 與工具回覆診斷', async ({ page })
   await expect(earlyGroup).toBeVisible({ timeout: 60_000 })
   await expect(earlyGroup).not.toContainText('預估送達 —')
   await expect(earlyGroup).toContainText('預估送達 13:00')
-  await page.screenshot({ path: path.join(screenshotDir, 'NIT-1-early.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'NIT-1-early')
 
   const review = await send('今天調度狀況如何')
   expect(review.message).toContain('今天回顧：')
   expect(review.message).toContain('VEH-003')
   expect(review.message).toContain('Z5')
   expect(review.message).not.toContain('已完成確定性工具計算')
-  await page.screenshot({ path: path.join(screenshotDir, 'NIT-2-review.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'NIT-2-review')
 
   const timeChange = await send('ORD-019 改成下午送')
   expect(timeChange.message).toContain('時段')
   expect(timeChange.message).not.toContain('已完成確定性工具計算')
-  await page.screenshot({ path: path.join(screenshotDir, 'NIT-2-time-slot.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'NIT-2-time-slot')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])
@@ -149,7 +151,7 @@ test('NIT-1 移除訂單方案卡保留原預估送達', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbooks[0])
-  await expect(page.getByText('已完成 50／50 張訂單的排班')).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 120_000 })
   await page.getByRole('button', { name: '開始裝車' }).click()
   await expect(page.getByText('上車後').first()).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: '模擬出發' }).click()
@@ -170,7 +172,7 @@ test('NIT-1 移除訂單方案卡保留原預估送達', async ({ page }) => {
   const group = page.locator('[aria-label="臨時插單方案"]').last()
   await expect(group).toBeVisible({ timeout: 60_000 })
   await expect(group).not.toContainText('預估送達 —')
-  await page.screenshot({ path: path.join(screenshotDir, 'NIT-1-remove.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'NIT-1-remove')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])

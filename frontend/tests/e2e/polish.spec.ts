@@ -1,12 +1,14 @@
 ﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
+import { saveScreenshot } from './screenshot-helper'
+
 const samplesDir = path.resolve('..', 'data', 'samples')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
 const workbook = path.join(samplesDir, 'demo-50-tight.xlsx')
 
 async function screenshot(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: path.join(screenshotDir, `${name}.png`), fullPage: true })
+  await saveScreenshot(page, screenshotDir, name)
 }
 
 async function sendTyped(page: Page, message: string): Promise<string> {
@@ -41,7 +43,7 @@ async function loadPlan(page: Page): Promise<void> {
   await input.pressSequentially('請幫我排今天的班')
   await expect(input).toHaveValue('請幫我排今天的班')
   await input.press('Enter')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 60_000 })
 }
 

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -125,7 +125,7 @@ test('七段劇情逐字驗收', async ({ page }) => {
   await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
   await page.getByLabel('上傳 Excel').last().setInputFiles(path.join(samples, 'demo-50-tight.xlsx'))
   await send(page, '請幫我排今天的班')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await record(page, '1-3', '改用 demo-50-tight.xlsx 重排', '1-3-planned')
 
   // ── 2. 司機身體不舒服 ─────────────────────────────────────────

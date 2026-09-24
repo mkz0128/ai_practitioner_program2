@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-tight.xlsx')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
@@ -40,7 +42,7 @@ async function loadAndDispatch(page: Page): Promise<void> {
   await input.pressSequentially('請幫我排今天的班')
   await expect(input).toHaveValue('請幫我排今天的班')
   await input.press('Enter')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await page.getByRole('button', { name: '開始裝車', exact: true }).click()
   await expect(page.getByText('上車後', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
   await page.getByRole('button', { name: '模擬出發', exact: true }).click()
@@ -92,7 +94,7 @@ test('F5：發車後提前配送可套用且只重排未送站點', async ({ pag
   const routeBefore = await routeSignature(page)
   const reply = await sendTyped(page, `${target} 客戶說中午前一定要拿到`)
   console.log('=== 提前配送畫面完整回覆 ===\n' + reply)
-  await page.screenshot({ path: path.join(screenshotDir, 'F5-priority-before-confirm.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F5-priority-before-confirm')
 
   const card = page.locator('button.urgent-card').filter({ hasText: '先送這單' }).first()
   if (await card.count() === 0) {
@@ -100,7 +102,7 @@ test('F5：發車後提前配送可套用且只重排未送站點', async ({ pag
     await expect(unavailable).toBeVisible({ timeout: 60_000 })
     await expect(unavailable).toContainText('不能套用')
     console.log('=== 無法在中午前送達，畫面明確標為需人工處理 ===')
-    await page.screenshot({ path: path.join(screenshotDir, 'F5-priority-deadline-unmet.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'F5-priority-deadline-unmet')
     return
   }
   await expect(card).toBeVisible({ timeout: 60_000 })
@@ -123,7 +125,7 @@ test('F5：發車後提前配送可套用且只重排未送站點', async ({ pag
   expect(routeAfter).not.toBe(routeBefore)
   expect(completedAfter).toEqual(completedBefore)
   expect(afterText).not.toContain('409')
-  await page.screenshot({ path: path.join(screenshotDir, 'F5-priority-after-confirm.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F5-priority-after-confirm')
 })
 
 test('F5：可行的途中提前調整確認後重畫剩餘路線', async ({ page }) => {
@@ -141,7 +143,7 @@ test('F5：可行的途中提前調整確認後重畫剩餘路線', async ({ pag
   const routeBefore = await routeSignature(page)
   const reply = await sendTyped(page, 'ORD-011 客戶說要早點送')
   console.log('=== 可行提前配送畫面完整回覆 ===\n' + reply)
-  await page.screenshot({ path: path.join(screenshotDir, 'F5-priority-feasible-before.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F5-priority-feasible-before')
 
   const card = page.locator('button.urgent-card').filter({ hasText: '先送這單' }).first()
   await expect(card).toBeVisible({ timeout: 60_000 })
@@ -161,5 +163,5 @@ test('F5：可行的途中提前調整確認後重畫剩餘路線', async ({ pag
   console.log(`=== 證據 === routeChanged=${routeBefore !== routeAfter}; completedUnchanged=${completedBefore.join(' | ') === completedAfter.join(' | ')}`)
   expect(routeAfter).not.toBe(routeBefore)
   expect(completedAfter).toEqual(completedBefore)
-  await page.screenshot({ path: path.join(screenshotDir, 'F5-priority-feasible-after.png'), fullPage: true })
+  await saveScreenshot(page, screenshotDir, 'F5-priority-feasible-after')
 })

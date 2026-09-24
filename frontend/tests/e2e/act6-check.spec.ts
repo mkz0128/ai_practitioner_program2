@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-tight.xlsx')
@@ -36,7 +36,7 @@ test('第6幕：發車後要提前，選項是否真的提前、能不能套用'
   await input.pressSequentially('請幫我排今天的班')
   await expect(input).toHaveValue('請幫我排今天的班')
   await input.press('Enter')
-  await expect(page.locator('.feedback-success')).toContainText('已完成', { timeout: 240_000 })
+  await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 60_000 })
 
   await page.getByRole('button', { name: '開始裝車', exact: true }).click()

@@ -1,9 +1,11 @@
-import { expect, test } from '@playwright/test'
+﻿import { expect, test } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
 const workbook = path.resolve('..', 'data', 'samples', 'demo-taipei-50.xlsx')
-const PLANNED = /已完成 \d+／50 張訂單的排班/
+const PLANNED = /\d+\/50 已安排/
 
 async function loadAndPlan(page: import('@playwright/test').Page): Promise<void> {
   await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
@@ -26,18 +28,18 @@ test.describe('D／E 控制塔畫面驗收', () => {
     await expect(page.getByRole('heading', { name: '配送調度控制塔' })).toBeVisible()
     await expect(page.getByText('下載範例格式')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '示範一張急單' })).toHaveCount(0)
-    await page.screenshot({ path: path.join(screenshotDir, 'd-auto-loaded.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'd-auto-loaded')
 
     const board = page.getByRole('list', { name: '四台車訂單看板' })
     await expect(board).toBeVisible()
     await expect(board.getByRole('region')).toHaveCount(4)
-    await page.screenshot({ path: path.join(screenshotDir, 'd-order-sorted.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'd-order-sorted')
 
     const vehicleColumn = page.getByRole('region', { name: 'VEH-001 訂單欄' })
     const vehicleStops = vehicleColumn.locator('.order-board-stop')
     await vehicleStops.first().dragTo(vehicleStops.nth(2))
     await expect(page.getByRole('status', { name: '站序預覽結果' })).toBeVisible({ timeout: 30_000 })
-    await page.screenshot({ path: path.join(screenshotDir, 'd-route-preview.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'd-route-preview')
   })
 
   test('E：鍵盤送出後持續顯示真實等待階段', async ({ page }) => {
@@ -55,12 +57,12 @@ test.describe('D／E 控制塔畫面驗收', () => {
 
     const assistant = page.locator('.chat-log > div.mr-auto').last()
     await expect(assistant).toContainText(/理解你的需求|呼叫工具計算|整理結果|這題比較久|連線失敗|AI 服務/, { timeout: 5_000 })
-    await page.screenshot({ path: path.join(screenshotDir, 'e-thinking-1.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'e-thinking-1')
     await page.waitForTimeout(1_500)
     await expect(assistant).toContainText(/理解你的需求|呼叫工具計算|這題比較久，仍在計算/)
-    await page.screenshot({ path: path.join(screenshotDir, 'e-thinking-2.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'e-thinking-2')
     await page.waitForTimeout(8_000)
     await expect(assistant).toContainText(/理解你的需求|呼叫工具計算|整理結果|這題比較久，仍在計算|調度助理/)
-    await page.screenshot({ path: path.join(screenshotDir, 'e-thinking-3.png'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'e-thinking-3')
   })
 })

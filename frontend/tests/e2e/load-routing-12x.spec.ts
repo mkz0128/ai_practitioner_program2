@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -37,7 +37,7 @@ async function send(page: Page, text: string, allowPlanFallback = false): Promis
     await expect(input).toHaveValue(text)
     await input.press('Enter')
     if (allowPlanFallback) {
-      await expect(page.locator('.feedback-success:visible').filter({ hasText: '已完成' })).toBeVisible({ timeout: 240_000 })
+      await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
       return { reply: (await page.locator('.feedback-success:visible').last().innerText()).trim(), tool: 'plan_dispatch' }
     }
     await expect.poll(async () => bubbles.count(), { timeout: 240_000 }).toBeGreaterThan(before)

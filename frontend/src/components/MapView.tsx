@@ -120,35 +120,8 @@ export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }:
   return (
     <div className="map-shell" aria-label="配送地圖">
       <div ref={mapElement} className="leaflet-map" aria-label="OpenStreetMap 配送示意路線" />
-      {data && (
-        <div className="map-overlay">
-          {/* 數字與單位拆開只是為了放大數字；單位帶一個前導空格，
-              讓這個容器的文字仍然是「50 個站點」，既有版面驗收才找得到。
-              徽章必須放在外面，否則會混進同一段文字裡。 */}
-          <div className="map-overlay-lead">
-            <span className="map-overlay-count">{data.routes.reduce((sum, route) => sum + route.stops.length, 0)}</span>
-            <span className="map-overlay-unit">{' 個站點'}</span>
-          </div>
-          <span className="map-overlay-badge">{data.stage === 'DISPATCHED' ? '模擬進度' : '示意路線'}</span>
-          <div className="map-overlay-filters">
-            {data.routes.map((route) => (
-              <button
-                type="button"
-                key={route.vehicle_id}
-                className={`map-route-filter ${activeVehicle === route.vehicle_id ? 'selected' : ''}`}
-                onClick={() => onSelectVehicle(activeVehicle === route.vehicle_id ? null : route.vehicle_id)}
-              >
-                <i style={{ backgroundColor: route.color }} />
-                {route.vehicle_id}
-              </button>
-            ))}
-            {activeVehicle && (
-              <button type="button" className="map-route-clear" onClick={() => onSelectVehicle(null)}>顯示全部</button>
-            )}
-          </div>
-          <span className="map-overlay-attrib">© OpenStreetMap contributors</span>
-        </div>
-      )}
+      {/* 站點數、圖例與車輛篩選搬到頂列的統計列旁邊。OSM 版權標示不用自己再
+          畫一份：Leaflet 的 attribution 控制項本來就在地圖右下角。 */}
     </div>
   )
 }
