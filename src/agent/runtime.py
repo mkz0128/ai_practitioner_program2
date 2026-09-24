@@ -43,6 +43,11 @@ from src.services.dispatch_rules import (
 from src.services.dispatch_rules import (
     preview_dispatch_rule as preview_dispatch_rule_trial,
 )
+from src.services.display import (
+    minutes_phrase,
+    slot_label,
+    vehicle_label,
+)
 from src.services.fingerprint import dataset_hash
 from src.services.importer import validate_dataset
 from src.services.matrix import MatrixResult, SimulatedRouteProvider
@@ -342,8 +347,21 @@ class DispatchRuleInput(BaseModel):
         "ALLOWED_TIME_WINDOW",
         "LATEST_RETURN_TIME",
     ] | None = None
-    value: float | str | None = None
-    value_source: Literal["EXPLICIT", "MISSING"] = "MISSING"
+    value: float | str | None = Field(
+        default=None,
+        description=(
+            "只有使用者在本則訊息說出具體數值時才填。「比較短」「不要太重」"
+            "「早一點」「少一點」這類形容詞沒有數值，必須留空由工具反問，"
+            "不得自行換算成任何數字。"
+        ),
+    )
+    value_source: Literal["EXPLICIT", "MISSING"] = Field(
+        default="MISSING",
+        description=(
+            "使用者明確說出數值時填 EXPLICIT；只要數值是你推論、換算或預設的，"
+            "一律填 MISSING。"
+        ),
+    )
     duration: Literal["PERMANENT", "THIS_WEEK", "TODAY"] = "PERMANENT"
     additional_rule_type: Literal["LATEST_RETURN_TIME"] | None = Field(
         default=None,
@@ -426,20 +444,61 @@ def _not_found_response(
     entity_key: str,
     entity_id: str,
 ) -> str:
-    """Stop a deterministic tool before calculation when its subject is absent."""
-    operation_message = f"找不到{entity_label} {entity_id}，資料中沒有這個項目。"
+    """Stop a deterministic tool before calculation when its subject is absent.
+
+    A caller with nothing to look up passes a placeholder rather than an id.
+    Pasting that placeholder into 「找不到訂單 …」 produced
+    「找不到訂單 未提供訂單編號」, which reads as though a order named
+    「未提供訂單編號」 had been searched for. Ask which one instead.
+    """
+    if entity_id and not any(character.isdigit() for character in entity_id):
+        asks = {
+            "prioritize_order_preview": "要先送哪一張？給我訂單編號。",
+            "reassign_order_preview": "要改派哪一張？給我訂單編號。",
+            "remove_order_preview": "要把哪一張改到明天？給我訂單編號。",
+            "change_order_constraint": "要改哪一張的時段？給我訂單編號。",
+        }
+        evidence = {
+            "tool": tool_name,
+            entity_key: entity_id,
+            "status": "NOT_FOUND",
+            "message": asks.get(tool_name, f"沒有指定{entity_label}，請給我編號。")
+            + "\n原方案沒有變更。",
+            "requires_human_confirmation": False,
+        }
+        context.evidence.append(evidence)
+        _tool_finished(context, tool_name)
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    # An order that is still only an urgent draft is not in the plan yet, so
+    # every plan-change tool reports it as missing. Saying 「找不到」 alone made
+    # the dispatcher think the order they had just described was lost. The
+    # agent context cannot see the draft — that lives in the session — so the
+    # hint is offered whenever the id looks like one the user just supplied
+    # rather than one the workbook brought in.
+    draft_hint = ""
+    if entity_key == "order_id":
+        known_ids = {order.order_id for order in context.dataset.orders}
+        if entity_id not in known_ids:
+            draft_hint = (
+                f"\n如果 {entity_id} 是你剛才給我的急單，它還在草稿裡、沒有排進方案；"
+                "先按【產生插單預覽】選一張方案卡確認，之後才能改派或調順序。"
+            )
+    # 「找不到」 has to stay in every one of these. The routing matrix checks for
+    # it because the original bug answered a non-existent order with an
+    # unrelated status line ("這個站點已完成…"), and the words are the guarantee
+    # that the tool checked existence before calculating anything.
+    operation_message = f"找不到{entity_label} {entity_id}，資料中沒有這個項目。{draft_hint}"
     if tool_name == "reassign_order_preview" and entity_key == "order_id":
         operation_message = (
-            f"找不到{entity_label} {entity_id}，這次換車／改派沒有執行，原方案沒有變更。"
+            f"找不到{entity_label} {entity_id}，方案裡沒有這張單，這次換車沒有執行。{draft_hint}"
         )
     elif tool_name == "prioritize_order_preview" and entity_key == "order_id":
         operation_message = (
-            f"找不到{entity_label} {entity_id}，無法提前或先送，原方案沒有變更。"
+            f"找不到{entity_label} {entity_id}，方案裡沒有這張單，沒辦法提前。{draft_hint}"
         )
     elif tool_name == "remove_order_preview" and entity_key == "order_id":
         operation_message = (
-            f"這次要把{entity_label}改到明天或停止今天配送，但找不到{entity_label} "
-            f"{entity_id}，原方案沒有變更。"
+            f"找不到{entity_label} {entity_id}，方案裡沒有這張單，沒辦法改到明天。{draft_hint}"
         )
     evidence = {
         "tool": tool_name,
@@ -457,6 +516,7 @@ def _not_found_response(
 def assistant_help(
     ctx: RunContextWrapper[DispatchAgentContext],
     topic: Literal[
+        "IDENTITY",
         "CAPABILITIES",
         "DATA_REQUIREMENTS",
         "CAPACITY_RULES",
@@ -466,20 +526,42 @@ def assistant_help(
     """Return deterministic guidance for explicit informational questions only.
 
     Use this for identity, product purpose, capabilities, required urgent-order
-    fields, capacity calculations, or the urgent-insertion workflow. This tool
-    is intentionally not a data-missing or action router. Requests to create,
-    insert, change, or otherwise modify a delivery plan must use a structured
-    action tool. Urgent-order requests use ``begin_urgent_insertion``; the
-    deterministic state machine then reports any missing fields.
+    fields, capacity calculations, or the urgent-insertion workflow.
+
+    Pick the topic by what was actually asked. ``IDENTITY`` answers who or what
+    is speaking — who are you, what is this system, who am I talking to.
+    ``CAPABILITIES`` answers what it can do for the dispatcher — what can you
+    do, what are you able to help with, what does this handle. A question about
+    the speaker is not a question about the feature list, and the reverse is
+    also true; returning the same paragraph for both reads as canned.
+
+    This tool is intentionally not a data-missing or action router. Requests to
+    create, insert, change, or otherwise modify a delivery plan must use a
+    structured action tool. Urgent-order requests use ``begin_urgent_insertion``;
+    the deterministic state machine then reports any missing fields.
     """
     _tool_started(ctx.context, "assistant_help", {"topic": topic})
     messages = {
-        # Lead with who is answering. Without it this reads as a feature list
-        # and never actually answers 「你是誰」. Keep it free of skill labels:
-        # polish.spec.ts PL-05/PL-07 assert this reply carries no tool label.
+        # Who is answering, and what it can do, are two different questions.
+        # One shared paragraph meant 你是誰 and 你可以做什麼 came back word for
+        # word identical, which reads as a canned response. Keep both free of
+        # skill labels: polish.spec.ts PL-05/PL-07 assert no tool label here.
+        "IDENTITY": (
+            "我是配送調度助理。\n"
+            "你把今天的訂單丟給我，我排出每台車要走的路線；"
+            "路上有任何狀況，你用講的跟我說就可以調整。\n"
+            "我只做預覽和試算，真正要不要照做，由你決定。"
+        ),
         "CAPABILITIES": (
-            "我是配送調度助理。可以幫你整理訂單、檢查欄位、安排車輛、規劃路線、"
-            "解釋每張單為什麼這樣派，也可以預覽臨時插單；最終方案仍由調度人員確認。"
+            "我可以幫你做這些：\n"
+            "・讀 Excel、檢查訂單欄位有沒有缺\n"
+            "・排今天的車輛與路線\n"
+            "・司機臨時有狀況時，改限制重排\n"
+            "・臨時來的急單，算可以插在哪一站\n"
+            "・解釋每一張單為什麼派給這台車\n"
+            "・發車後要提前送，算得出代價\n"
+            "・收工後回顧今天的配送，告訴你明天該調什麼\n"
+            "所有方案都先預覽，由調度員確認了才算數。"
         ),
         "DATA_REQUIREMENTS": (
             "Excel 需要 orders、packages、vehicles、zones 四張工作表，以及訂單位置、"
@@ -602,16 +684,19 @@ def _record_missing_fields(
 
 
 def _unassigned_reason_label(reason: str | None) -> str:
+    # A dispatcher asked 為什麼 and got back a list joined by 「或」, which reads
+    # as if the system itself did not know. Where the solver did give a specific
+    # reason, say it plainly; where it genuinely could not, say that too.
     labels = {
-        "CAPACITY_LIMIT": "車輛載重上限",
-        "SERVICE_ZONE_UNAVAILABLE": "沒有符合的服務區域",
-        "TIME_OR_ROUTE_CONFLICT": "配送時段或路線限制",
-        "TIME_WINDOW_CONFLICT": "配送時段限制",
-        "VEHICLE_UNAVAILABLE": "可用車輛不足",
-        "UNASSIGNABLE": "載重、服務區域或時段限制",
-        "UNASSIGNED_BY_SOLVER": "載重、服務區域或時段限制",
+        "CAPACITY_LIMIT": "每一台車的載重餘裕都不夠裝這張單",
+        "SERVICE_ZONE_UNAVAILABLE": "沒有車負責這一區",
+        "TIME_OR_ROUTE_CONFLICT": "配送時段排不下，或是繞過去會讓別的單遲到",
+        "TIME_WINDOW_CONFLICT": "配送時段排不下",
+        "VEHICLE_UNAVAILABLE": "今天可用的車不夠",
+        "UNASSIGNABLE": "載重、責任區、配送時段三個條件湊不出可行的安排",
+        "UNASSIGNED_BY_SOLVER": "載重、責任區、配送時段三個條件湊不出可行的安排",
     }
-    return labels.get(reason or "", "目前限制未能安排")
+    return labels.get(reason or "", "目前的條件下排不進去")
 
 
 @function_tool(strict_mode=True)
@@ -669,6 +754,15 @@ def reject_unsupported_change(ctx: RunContextWrapper[DispatchAgentContext]) -> s
     An order assigned to a human driver's name, such as 老王, is an unsupported
     assignment preference: the name is not a vehicle ID, so use this tool and
     never pass the person's name as ``target_vehicle_id``.
+    Any instruction about how a person should work or drive belongs here, not
+    to ``preview_dispatch_rule``: driving faster or slower, hurrying, taking a
+    particular kind of road, skipping or taking a break, being more careful, or
+    putting in more effort. Naming a driver does not make such a request a
+    vehicle restriction. ``preview_dispatch_rule`` can only set six numeric or
+    categorical limits on a vehicle — package weight, total load, trip
+    distance, stop count, service area, delivery slot and finishing time — and
+    a person's driving behaviour is none of them, so this refusal applies even
+    though the sentence names a driver and sounds like an operating rule.
     First decide whether the current turn contains an explicit order ID paired
     with a canonical vehicle ID or an unambiguous vehicle number. If it does,
     never use this tool: ``reassign_order_preview`` has absolute priority and
@@ -709,6 +803,80 @@ def _unsupported_change_evidence(context: DispatchAgentContext) -> str:
     context.evidence.append(evidence)
     _tool_finished(context, "reject_unsupported_change")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+# One question per limit type. A single generic "how much should it be" turned
+# the delivery-slot limit into a sentence asking for a number, which is not
+# something a dispatcher would read out loud.
+_RULE_QUESTION_BY_TYPE: dict[str, str] = {
+    "MAX_ROUTE_DISTANCE": "{vehicle}的單趟總距離上限要設幾公里？",
+    "MAX_STOPS": "{vehicle}的配送站數上限要設幾站？",
+    "MAX_PACKAGE_WEIGHT": "{vehicle}的單件重量上限要設幾公斤？",
+    "LATEST_RETURN_TIME": "{vehicle}最晚幾點收工？",
+    "EXCLUDED_ZONE": "{vehicle}要排除哪一個配送區域？",
+    "ALLOWED_TIME_WINDOW": "{vehicle}只允許跑哪些時段？",
+}
+
+
+def _rule_current_value_sentence(option: dict[str, Any]) -> str:
+    """State where the vehicle stands today for the limit being asked about."""
+    detail = option.get("current_detail")
+    if detail:
+        return str(detail)
+    value = option["current_value"]
+    if isinstance(value, list):
+        if option["rule_type"] == "ALLOWED_TIME_WINDOW":
+            return "目前" + "、".join(slot_label(str(item)) for item in value) + "都跑"
+        return "目前跑 " + "、".join(str(item) for item in value)
+    # The stored unit is the solver's (km, kg). The dispatcher reads Chinese.
+    unit = {"km": "公里", "kg": "公斤"}.get(str(option["unit"]), str(option["unit"]))
+    return f"目前是 {value} {unit}".rstrip()
+
+
+def _rule_clarification_question(
+    *,
+    vehicle_id: str,
+    rule_type: str | None,
+    options: list[dict[str, Any]],
+    max_single_package_weight_kg: float,
+    orders_over_20kg: int,
+    last_eta: str,
+) -> str:
+    """Ask for the number that is actually missing.
+
+    When the dispatcher already named the kind of limit, the model fills
+    ``rule_type`` and leaves ``value`` empty. Asking the two default numbers
+    then answers a question they did not ask: 「只能開比較短的路線」 would be
+    met with a question about package weight. Only when no limit type came
+    through do the two most common numbers get asked for.
+    """
+    vehicle = vehicle_label(vehicle_id)
+    requested = next(
+        (option for option in options if option["rule_type"] == rule_type),
+        None,
+    )
+    question = _RULE_QUESTION_BY_TYPE.get(str(rule_type), "")
+    # Weight and knock-off time are asked together. An unwell driver who cannot
+    # carry much and needs to finish early is one situation with two numbers,
+    # and the model fills only one rule_type for it because no explicit time was
+    # given; asking about the weight alone would drop the half the dispatcher
+    # cares about most.
+    if rule_type in {"MAX_PACKAGE_WEIGHT", "LATEST_RETURN_TIME"}:
+        requested = None
+    if requested is not None and question:
+        return (
+            f"好，今天的限制。{question.format(vehicle=vehicle)}\n"
+            f"{_rule_current_value_sentence(requested)}。"
+        )
+    # A driver being unwell is a today problem. Asking how long it lasts made
+    # the dispatcher answer a question they had not thought about, so the rule
+    # is scoped to today and only the two numbers only they know are asked for.
+    return (
+        "好，今天的限制。我需要兩個數字：\n"
+        f"① 單件最重可以到幾公斤？{vehicle}現在最重的一件是 "
+        f"{max_single_package_weight_kg:g} kg，超過 20 kg 的有 {orders_over_20kg} 張。\n"
+        f"② 最晚幾點收工？{vehicle}目前最後一站預估 {last_eta} 送達。"
+    )
 
 
 def _driver_rule_clarification(
@@ -810,13 +978,13 @@ def _driver_rule_clarification(
         "tool": "preview_dispatch_rule",
         "status": "NEEDS_CLARIFICATION",
         "clarification_mode": "PARAMETERS",
-        "message": (
-            "好，我需要三件事：\n"
-            "① 這個限制維持多久？今天／本週／長期。\n"
-            f"② 單件重量上限幾公斤？{vehicle.vehicle_id} 目前最重 "
-            f"{max_single_package_weight_kg:g} kg，"
-            f"超過 20 kg 的有 {orders_over_20kg} 張。\n"
-            f"③ 最晚幾點收工？這台車目前最後一站預估 {last_eta}。"
+        "message": _rule_clarification_question(
+            vehicle_id=vehicle.vehicle_id,
+            rule_type=request.rule_type,
+            options=options,
+            max_single_package_weight_kg=max_single_package_weight_kg,
+            orders_over_20kg=orders_over_20kg,
+            last_eta=last_eta,
         ),
         "vehicle_id": vehicle.vehicle_id,
         "vehicle_name": vehicle.vehicle_name,
@@ -832,12 +1000,50 @@ def _driver_rule_clarification(
     }
 
 
+def _requested_return_time(
+    request: DispatchRuleInput, secondary_rule_data: dict[str, Any] | None
+) -> str | None:
+    """The HH:MM knock-off time the dispatcher asked for, if they gave one."""
+    if request.rule_type == "LATEST_RETURN_TIME" and isinstance(request.value, str):
+        return request.value.strip() or None
+    if request.additional_rule_type == "LATEST_RETURN_TIME" and request.additional_value:
+        return request.additional_value.strip() or None
+    if secondary_rule_data is not None:
+        value = secondary_rule_data.get("value")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _minutes_between(earlier: str, later: str) -> int:
+    """Minutes from one HH:MM to another; 0 when either cannot be read."""
+
+    def parse(value: str) -> int | None:
+        parts = value.strip().split(":")
+        if len(parts) != 2 or not all(part.isdigit() for part in parts):
+            return None
+        return int(parts[0]) * 60 + int(parts[1])
+
+    start, end = parse(earlier), parse(later)
+    if start is None or end is None:
+        return 0
+    return end - start
+
+
 @function_tool(strict_mode=True)
 def preview_dispatch_rule(
     ctx: RunContextWrapper[DispatchAgentContext], request: DispatchRuleInput
 ) -> str:
     """Preview one of six driver or vehicle operating restrictions.
 
+    Every restriction this tool can set is a limit on the vehicle: how heavy a
+    single package may be, how heavy the load may be, how far it may travel,
+    how many stops it may make, which areas and delivery slots it may serve,
+    and when it must finish. An instruction about how a person drives or works
+    is not one of them and must use ``reject_unsupported_change`` — driving
+    faster or slower, hurrying, choosing a kind of road, skipping or taking a
+    break, being more careful. Naming a driver does not turn such a request
+    into a vehicle restriction.
     This tool is never the route for a whole-vehicle cannot-go-out, leave,
     breakdown, or no-dispatch request; those always use
     ``change_vehicle_availability``, including for an unknown vehicle number.
@@ -864,6 +1070,9 @@ def preview_dispatch_rule(
     those requests must use ``change_vehicle_availability``.
     A request to assign a particular order to a named driver is a preference,
     not one of these restrictions; use ``reject_unsupported_change`` instead.
+    Speed is never a limit this tool can set: a faster or slower driver is not
+    a weight, load, distance, stop-count, area, slot, or finishing-time
+    restriction.
     An order's earlier arrival deadline is a priority change, not an allowed
     time-window rule; use ``prioritize_order_preview`` for that request.
     ``ALLOWED_TIME_WINDOW`` changes the vehicle's permitted delivery-slot
@@ -1078,47 +1287,80 @@ def preview_dispatch_rule(
     }
     if secondary_rule_data is not None:
         rule_data["additional_rule"] = secondary_rule_data
+    # Both branches have to read as a whole sentence now, because the message
+    # says 試算結果 followed by this text rather than pasting a bare fragment.
+    unassigned_count = len(trial.plan.unassigned_orders)
     if len(trial.affected_order_ids) > 3:
-        affected_text = (
-            f"{len(trial.affected_order_ids)} 張改派、"
-            f"{len(trial.plan.unassigned_orders)} 張排不進去"
-        )
+        affected_text = f"{len(trial.affected_order_ids)} 張要改派給別的車"
+        if unassigned_count:
+            affected_text += f"，{unassigned_count} 張排不進去"
+    elif trial.affected_order_ids:
+        affected_text = "、".join(trial.affected_order_ids) + " 要改派給別的車"
+        if unassigned_count:
+            affected_text += f"，另外 {unassigned_count} 張排不進去"
     else:
-        affected_text = (
-            "、".join(trial.affected_order_ids)
-            if trial.affected_order_ids
-            else "沒有訂單需要改派"
-        )
+        affected_text = "沒有訂單需要改派"
+    # Report the constrained vehicle's own last stop. Reporting the whole
+    # fleet's latest stop read as if the knock-off rule had failed even when
+    # that vehicle finished on time — the late stop belonged to another truck.
+    subject_routes = [
+        route
+        for route in trial.plan.routes
+        if route.vehicle_id == request.subject_id
+    ]
     last_eta_after = max(
-        (stop.eta for route in trial.plan.routes for stop in route.stops),
+        (stop.eta for route in subject_routes for stop in route.stops),
         default=None,
     )
+    # No fleet-wide fallback here. When the limit leaves this vehicle with no
+    # stops at all, borrowing another truck's latest stop printed a knock-off
+    # time for a truck that is not going out.
     last_eta_text = last_eta_after[11:16] if isinstance(last_eta_after, str) else "—"
     assigned_after = sum(len(route.order_ids) for route in trial.plan.routes)
     total_orders = len(ctx.context.dataset.orders)
-    rule_message = (
+    subject_label = vehicle_label(request.subject_id)
+    # rule_summary already opens with the vehicle name, so prefixing it here
+    # again repeated that name twice in one line.
+    rule_lines = [
         f"{rule_data['summary']}"
-        + (f"；{secondary_rule_data['summary']}" if secondary_rule_data is not None else "")
-        + (
-            f"。影響：{affected_text}；試算後最後一站預估 {last_eta_text}。"
-            if len(trial.affected_order_ids) > 3
-            else f"。影響訂單：{affected_text}；試算後最後一站預估 {last_eta_text}。"
-        )
-        + (
-            f" {assigned_after}/{total_orders} 不變。"
-            if len(trial.affected_order_ids) > 3
-            else ""
-        )
-    )
+        + (f"；{secondary_rule_data['summary']}" if secondary_rule_data is not None else ""),
+        "",
+        f"試算結果：{affected_text}。",
+        f"{subject_label}最後一站會是 {last_eta_text}。"
+        if last_eta_after is not None
+        else f"{subject_label}這樣就沒有任何一站了。",
+    ]
+    requested_return = _requested_return_time(request, secondary_rule_data)
+    if requested_return and isinstance(last_eta_after, str):
+        overshoot = _minutes_between(requested_return, last_eta_text)
+        if overshoot > 0:
+            rule_lines[-1] = (
+                f"{subject_label}最後一站會是 {last_eta_text}，"
+                f"比你要的 {requested_return} 晚 {minutes_phrase(overshoot)}"
+                " —— 這是目前做得到最好的。"
+            )
+        else:
+            rule_lines[-1] = (
+                f"{subject_label}最後一站會是 {last_eta_text}，趕得上你要的 {requested_return}。"
+            )
+    rule_lines.append(f"總數仍然是 {assigned_after}／{total_orders}。")
+    if status != "FEASIBLE":
+        rule_lines.append("")
+        if not subject_routes or not subject_routes[0].order_ids:
+            # Say which way it failed. 「造成衝突」 alone left the dispatcher
+            # guessing whether the number was slightly off or impossible.
+            rule_lines.append(
+                f"這個數字下{subject_label}一站都排不了，等於今天不讓它出車。"
+                "要破例、放寬數字，還是取消？"
+            )
+        else:
+            rule_lines.append("這條規則造成衝突，請選擇破例、放寬或取消。")
+    rule_message = "\n".join(rule_lines)
     evidence = {
         "tool": "preview_dispatch_rule",
         "status": status,
         "trial_status": status,
-        "message": (
-            rule_message
-            if status == "FEASIBLE"
-            else f"{rule_message}這條規則造成衝突，請選擇破例、放寬或取消。"
-        ),
+        "message": rule_message,
         "vehicle_id": request.subject_id,
         "rule": rule_data,
         "trial": {
@@ -1330,7 +1572,7 @@ def highest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
         "load_utilization": route.load_utilization if route else None,
         "algorithm": plan.algorithm,
         "message": (
-            f"{route.vehicle_id} 目前計畫載重 {route.planned_load_kg:g} kg，"
+            f"{vehicle_label(route.vehicle_id)}目前計畫載重 {route.planned_load_kg:g} kg，"
             f"載重上限 {route.max_load_kg:g} kg。"
             if route
             else "目前沒有可查詢的車輛載重。"
@@ -1381,7 +1623,7 @@ def lowest_load_vehicle(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
         "load_utilization": route.load_utilization if route else None,
         "algorithm": plan.algorithm,
         "message": (
-            f"{route.vehicle_id} 目前剩餘容量 "
+            f"{vehicle_label(route.vehicle_id)}目前剩餘容量 "
             f"{route.max_load_kg - route.planned_load_kg:g} kg。"
             if route
             else "目前沒有可查詢的車輛容量。"
@@ -1441,7 +1683,7 @@ def vehicle_load(
         "remaining_capacity_kg": remaining_capacity,
         "algorithm": plan.algorithm,
         "message": (
-            f"{route.vehicle_id} 目前計畫載重 {route.planned_load_kg:g} kg，"
+            f"{vehicle_label(route.vehicle_id)}目前計畫載重 {route.planned_load_kg:g} kg，"
             f"上限 {route.max_load_kg:g} kg，"
             f"使用率 {route.load_utilization * 100:g}%，"
             f"剩餘容量 {remaining_capacity:g} kg。"
@@ -1519,7 +1761,10 @@ def inspect_dispatch_deviations(
     success must use the overview tool. A follow-up to a just-presented
     deviation summary that asks what to change tomorrow always uses this tool
     with ``view=SUGGESTIONS``; do not use ``prepare_confirmation`` merely
-    because the suggestions need a human click.
+    because the suggestions need a human click. Such a follow-up asks what to
+    change for the next run, so it is never ``query_plan_version``: that tool
+    only counts changes already made to today's plan, and the word "change"
+    here is about tomorrow, not about this plan's revision history.
     In DISPATCHED, this tool has priority over load and overview tools when
     the user asks whether a vehicle is slow, late, behind, or how the delivery
     day went; do not substitute a load lookup. The first
@@ -1556,14 +1801,14 @@ def inspect_dispatch_deviations(
             for value in (assigned, total, distance_km, average_load)
         ):
             overview = (
-                f"今天 {assigned} 張全部送達，總里程 {distance_km:g} 公里，"
+                f"今天 {assigned} 張全部送達。總里程 {distance_km:g} 公里，"
                 f"平均載重 {average_load:g}%。"
                 if assigned == total
-                else f"今天 {assigned}/{total} 張送達，總里程 {distance_km:g} 公里，"
+                else f"今天送達 {assigned}／{total} 張。總里程 {distance_km:g} 公里，"
                 f"平均載重 {average_load:g}%。"
             )
         else:
-            overview = "今天回顧："
+            overview = "今天的配送回顧："
         detail_messages: list[str] = []
         vehicle_items = deviations.get("vehicle_deviations", [])
         if isinstance(vehicle_items, list):
@@ -1581,19 +1826,23 @@ def inspect_dispatch_deviations(
                 if not isinstance(item, dict) or not isinstance(item.get("message"), str):
                     continue
                 zone = item["zone_code"]
+                zone_name = item.get("zone_name") or ""
+                zone_label = f"{zone_name}（{zone}）" if zone_name else zone
                 extra = item["extra_service_minutes_per_stop"]
                 stop_count = deviations.get("hardest_zone_order_count")
                 consequence = (
-                    f"如果明天 {zone} 還是 {stop_count} 張，會多花 {extra * stop_count} 分鐘，"
-                    "最後幾站可能掉出配送時段。"
+                    f"明天{zone_label}如果還是 {stop_count} 張，"
+                    f"就會多花 {minutes_phrase(extra * stop_count)}，最後幾站會掉出配送時段。"
                     if isinstance(stop_count, int)
-                    else "明天相同負載下，後段站點可能掉出配送時段。"
+                    else f"明天{zone_label}同樣的量，後段站點會掉出配送時段。"
                 )
-                detail_messages.append(f"{item['message']} {consequence}")
+                detail_messages.append(f"{item['message']}\n{consequence}")
+        # A blank line between the day's numbers and what they imply for
+        # tomorrow. Run together they read as one long sentence nobody finishes.
         summary_message = overview + (
-            "\n" + "\n".join(detail_messages)
+            "\n\n" + "\n\n".join(detail_messages)
             if detail_messages
-            else "\n今天配送成效沒有會影響明天的明顯偏差。"
+            else "\n各區的實際停留時間都跟預估差不多，沒有需要調整的地方。"
         )
         if view == "SUGGESTIONS":
             summary_message = (
@@ -1606,7 +1855,7 @@ def inspect_dispatch_deviations(
                 )
                 + "；請選擇是否套用。"
                 if deviations.get("suggestions")
-                else "今天沒有可套用的配送參數建議。"
+                else "今天沒有需要調整的參數，各區停留時間都在預估範圍內。"
             )
         evidence = {
             "tool": "inspect_dispatch_deviations",
@@ -1710,6 +1959,35 @@ def explain_unassigned(
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
+def _assignment_because(order_id: str, evidence: Any) -> str:
+    """Answer 為什麼, not 在哪裡.
+
+    The old fallback said which vehicle held the order, which is what the
+    dispatcher was already looking at. The evidence already carries the two
+    facts that decide placement — is the order in that vehicle's zone, and does
+    it fit — so the sentence states those instead.
+    """
+    vehicle = vehicle_label(evidence.vehicle_id)
+    lines = [f"{order_id} 排給{vehicle}，因為："]
+    if evidence.zone_eligible is True:
+        lines.append(f"・這張單在{vehicle}的責任區內")
+    elif evidence.zone_eligible is False:
+        lines.append(f"・{vehicle}不負責這一區，是當備援接的")
+    weight = evidence.order_weight_kg
+    load = evidence.planned_load_kg
+    limit = evidence.max_load_kg
+    if isinstance(load, (int, float)) and isinstance(limit, (int, float)):
+        spare = limit - load
+        lines.append(
+            f"・這張單 {weight:g} kg，裝上去之後{vehicle}是 {load:g}／{limit:g} kg，"
+            f"還剩 {spare:g} kg 餘裕"
+        )
+    elif isinstance(weight, (int, float)):
+        lines.append(f"・這張單 {weight:g} kg")
+    lines.append("・站序是照路線總里程最短排的")
+    return "\n".join(lines)
+
+
 @function_tool(strict_mode=True)
 def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: str) -> str:
     """Look up where one order is assigned and why it was placed there.
@@ -1779,9 +2057,10 @@ def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
                     and evidence.order_weight_kg > float(rule.value)
                 ):
                     assignment_reason = (
-                        f"因為 {rule.subject_id} 單件重量上限是 {float(rule.value):g} kg，"
+                        f"因為{vehicle_label(rule.subject_id)}單件重量上限是 "
+                        f"{float(rule.value):g} kg，"
                         f"{order_id} 重 {evidence.order_weight_kg:g} kg，"
-                        f"所以改由 {evidence.vehicle_id} 安排。"
+                        f"所以改由{vehicle_label(evidence.vehicle_id)}安排。"
                     )
                     evidence_payload["source_utterance"] = rule.source_utterance
                     break
@@ -1796,11 +2075,11 @@ def explain_assignment(ctx: RunContextWrapper[DispatchAgentContext], order_id: s
             )
             if assignment_reason
             else (
-                f"訂單 {order_id} 目前安排在 {evidence.vehicle_id}。"
+                _assignment_because(order_id, evidence)
                 if evidence.vehicle_id is not None
                 else (
-                    f"訂單 {order_id} 目前沒有安排到車輛；"
-                    f"確定性驗證原因：{_unassigned_reason_label(plan.unassigned_reasons.get(order_id))}。"
+                    f"{order_id} 今天沒有排進任何一台車。\n"
+                    f"原因：{_unassigned_reason_label(plan.unassigned_reasons.get(order_id))}。"
                 )
             )
         )
@@ -1850,12 +2129,43 @@ def compare_strategies(
                 "validator": validation.model_dump(mode="json"),
             }
         )
+    # Naming the three strategies and telling the dispatcher to go look at the
+    # numbers is not a comparison. Put the numbers in the sentence, and say
+    # which one wins on what, so the trade-off is readable without the panel.
+    strategy_names = {
+        "FASTEST": "最快",
+        "BALANCED": "平衡",
+        "STABLE": "穩定",
+    }
+    comparison_lines = []
+    for entry in results:
+        name = strategy_names.get(str(entry["objective"]), str(entry["objective"]))
+        distance_km = float(entry["total_distance_m"]) / 1000
+        duration_min = float(entry["total_duration_s"]) / 60
+        unassigned = len(entry["unassigned_orders"])
+        comparison_lines.append(
+            f"{name}：總里程 {distance_km:.1f} 公里、總時間 {duration_min:.0f} 分鐘、"
+            f"各車載重差距 {float(entry['load_spread_kg']):g} kg"
+            + (f"、{unassigned} 張排不進去" if unassigned else "")
+        )
+    shortest = min(results, key=lambda item: float(item["total_distance_m"]), default=None)
+    evenest = min(results, key=lambda item: float(item["load_spread_kg"]), default=None)
+    verdict = ""
+    if shortest is not None and evenest is not None:
+        short_name = strategy_names.get(str(shortest["objective"]), str(shortest["objective"]))
+        even_name = strategy_names.get(str(evenest["objective"]), str(evenest["objective"]))
+        verdict = (
+            f"\n\n最省里程的是「{short_name}」，各車最平均的是「{even_name}」。"
+            if short_name != even_name
+            else f"\n\n「{short_name}」同時最省里程、各車也最平均。"
+        )
     evidence = {
         "tool": "compare_strategies",
         "selected_strategy": request.select_strategy,
         "matrix_provider_mode": ctx.context.matrix.provider_mode,
         "matrix_version": ctx.context.matrix.matrix_version,
         "strategies": results,
+        "message": "三種策略的差別：\n\n" + "\n".join(comparison_lines) + verdict,
         "tradeoffs": {
             "FASTEST": "優先降低總行駛時間與距離",
             "BALANCED": "優先縮小各車工作量差距",
@@ -1965,7 +2275,7 @@ def change_vehicle_availability(
             "tool": "change_vehicle_availability",
             **request.model_dump(mode="json"),
             "status": "VEHICLE_NOT_FOUND",
-            "message": f"找不到車輛 {request.vehicle_id}，資料中沒有這台車。",
+            "message": f"找不到 {request.vehicle_id} 這台車，資料裡沒有。",
         }
     else:
         changed = tuple(
@@ -2091,13 +2401,13 @@ def change_vehicle_availability(
                 "validator": validation.model_dump(mode="json"),
                 "conflict_summary": conflict_summary,
                 "message": (
-                    f"{request.vehicle_id} "
-                    f"{'今天停駛' if request.status == 'UNAVAILABLE' else '恢復出車'}試算完成："
-                    f"目前可安排 {assigned_order_count} 張，"
-                    f"未安排 {len(preview.unassigned_orders)} 張。"
+                    f"{vehicle_label(request.vehicle_id)}"
+                    f"{'今天停駛' if request.status == 'UNAVAILABLE' else '恢復出車'}試算完成：\n"
+                    f"可安排 {assigned_order_count} 張，"
+                    f"{len(preview.unassigned_orders)} 張排不進去。"
                     + (
-                        f"主要衝突：{conflict_summary}。"
-                        "可由人工處理：改派備援車、放寬責任區或保留未安排訂單人工處理。"
+                        f"\n\n排不進去的原因：{conflict_summary}。"
+                        "\n你可以改派備援車、放寬責任區，或是把這幾張留給人工處理。"
                         if infeasible
                         else "請檢查後再確認。"
                     )
@@ -2315,6 +2625,51 @@ def change_frozen_stops(
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
+def _reassign_message(request: Any, diff: dict[str, Any]) -> str:
+    """Say what the swap costs, not that a solver ran.
+
+    「已重新求解換車方案」 told the dispatcher nothing they could act on. The
+    numbers were already computed for the card; this puts them in the sentence
+    as well, because the sentence is what gets read aloud.
+    """
+    order_id = getattr(request, "order_id", None) or "這張單"
+    target = vehicle_label(getattr(request, "target_vehicle_id", None))
+    moved = next(
+        (
+            item
+            for item in diff.get("reassigned_orders", [])
+            if item.get("order_id") == order_id
+        ),
+        None,
+    )
+    origin = vehicle_label(moved["from_vehicle_id"]) if moved else None
+    headline = (
+        f"{order_id} 從{origin}換到{target}，可以。"
+        if origin
+        else f"{order_id} 換到{target}，可以。"
+    )
+    distance_km = float(diff.get("total_distance_delta_m", 0) or 0) / 1000
+    duration_min = float(diff.get("total_duration_delta_s", 0) or 0) / 60
+    cost = (
+        f"兩台車合計{'少' if distance_km < 0 else '多'}跑 {abs(distance_km):.1f} 公里、"
+        f"{'少' if duration_min < 0 else '多'}花 {abs(duration_min):.1f} 分鐘。"
+    )
+    load_lines = [
+        f"{vehicle_label(item['vehicle_id'])}"
+        f"{'少' if item['delta_load_kg'] < 0 else '多'} {abs(item['delta_load_kg']):g} kg"
+        for item in diff.get("vehicle_load_changes", [])
+        if abs(float(item.get("delta_load_kg", 0) or 0)) > 0.001
+    ]
+    lines = [headline, cost]
+    if load_lines:
+        lines.append("、".join(load_lines) + "。")
+    changed = len(diff.get("sequence_changes", []))
+    if changed:
+        lines.append(f"有 {changed} 站的預估時間會跟著變，下面列出來了。")
+    lines.append("還沒套用。")
+    return "\n".join(lines)
+
+
 @function_tool(strict_mode=True)
 def reassign_order_preview(
     ctx: RunContextWrapper[DispatchAgentContext], request: ReassignmentPreviewInput
@@ -2405,8 +2760,9 @@ def reassign_order_preview(
     if preview is None:
         if blocked_by_frozen_stop:
             blocked_message = (
-                f"訂單 {request.order_id} 已被凍結，不能改派到 {request.target_vehicle_id}；"
-                "已保留原方案，若要變更請由調度員人工處理。"
+                f"{request.order_id} 已經凍結，不能換到"
+                f"{vehicle_label(request.target_vehicle_id)}。\n"
+                "原方案沒有變更；真的要換請由調度員人工處理。"
             )
         else:
             order = next(
@@ -2429,17 +2785,27 @@ def reassign_order_preview(
             )
             reasons: list[str] = []
             if order.zone_code not in target_vehicle.service_zone_codes:
-                reasons.append(f"{request.target_vehicle_id} 不負責 {order.zone_code} 責任區")
+                reasons.append(
+                    f"{vehicle_label(request.target_vehicle_id)}不負責 {order.zone_code} 責任區"
+                )
             if target_route is not None and (
                 target_route.planned_load_kg + order.total_weight_kg
                 > target_vehicle.max_load_kg
             ):
-                reasons.append(f"會超過 {request.target_vehicle_id} 的載重上限")
+                over = (
+                    target_route.planned_load_kg
+                    + order.total_weight_kg
+                    - target_vehicle.max_load_kg
+                )
+                reasons.append(
+                    f"會超過{vehicle_label(request.target_vehicle_id)}的載重上限 "
+                    f"{over:g} kg"
+                )
             if not reasons:
                 reasons.append("配送時段或路線限制不允許")
             blocked_message = (
-                f"訂單 {request.order_id} 不能改派到 {request.target_vehicle_id}："
-                f"{'、'.join(reasons)}；原方案沒有變更。"
+                f"{request.order_id} 不能換到{vehicle_label(request.target_vehicle_id)}："
+                f"{'、'.join(reasons)}。\n原方案沒有變更。"
             )
         evidence = {
             "tool": "reassign_order_preview",
@@ -2466,7 +2832,7 @@ def reassign_order_preview(
             **request.model_dump(mode="json"),
             "diff": diff,
             "validator": validation.model_dump(mode="json"),
-            "message": "已重新求解換車方案，對話中的新方案卡尚未套用。"
+            "message": _reassign_message(request, diff)
             if validation.valid
             else "換車預覽未通過獨立驗證，方案沒有變更。",
             "requires_human_confirmation": True,
@@ -2512,6 +2878,58 @@ def _priority_state_snapshot(
     }
 
 
+def _priority_rationale(
+    *,
+    order_id: str,
+    before_state: dict[str, Any],
+    before_eta_text: str,
+    gain_text: str,
+    distance_delta_km: float,
+    duration_delta_minutes: float,
+    deadline_text: str,
+    valid: bool,
+    deadline_missed: bool,
+) -> str:
+    """The en-route priority explanation, in a dispatcher's words."""
+    vehicle = vehicle_label(before_state.get("vehicle_id"))
+    sequence = before_state.get("sequence") or "—"
+    done = int(before_state.get("completed_count", 0) or 0)
+    lines = [f"{order_id} 現在排在{vehicle}第 {sequence} 站，預估 {before_eta_text} 送到。", ""]
+    # Always say where the truck is. How many stops are already behind it is
+    # what decides whether anything can move, so leaving the line out when the
+    # count is zero hides the reason the answer came out the way it did.
+    if done:
+        lines.append(f"這台車目前已送 {done} 站，那幾站不能再動。")
+    else:
+        lines.append("這台車目前已送 0 站，剩下的順序都還能調。")
+    # 代價 only belongs in front of a cost that exists. Wrapping the free case
+    # in it produced 「代價是不用多繞路」, which says the opposite of itself.
+    if distance_delta_km or duration_delta_minutes:
+        cost_sentence = (
+            f"代價是{vehicle}多繞 {distance_delta_km:g} 公里、"
+            f"多花 {duration_delta_minutes:g} 分鐘。"
+        )
+    else:
+        cost_sentence = "不用多繞路，也不會多花時間。"
+    if gain_text:
+        lines.append(f"{gain_text}{cost_sentence}")
+    else:
+        lines.append(cost_sentence)
+    if deadline_text:
+        lines.append(deadline_text)
+    lines.append("")
+    if deadline_missed:
+        # Nothing broke, but the promise still cannot be kept, so the card is
+        # not something to confirm — saying 「按確認才生效」 here would offer an
+        # action that goes nowhere.
+        lines.append("沒有別的單因此掉出原本的時段，但這張卡解決不了時限，不能套用。")
+    elif valid:
+        lines.append("沒有別的單因此掉出原本的時段。還沒套用，你按確認才生效。")
+    else:
+        lines.append("有站點會掉出原本的配送時段，所以這張卡不能套用。")
+    return "\n".join(lines)
+
+
 def _priority_preview_metadata(
     context: DispatchAgentContext,
     before: PlanResult,
@@ -2547,21 +2965,24 @@ def _priority_preview_metadata(
         before_eta[11:16] if isinstance(before_eta, str) and len(before_eta) >= 16 else "—"
     )
     gain_text = (
-        f"目標可提前 {eta_gain_minutes} 分鐘；" if eta_gain_minutes else ""
+        f"可以再提前 {minutes_phrase(eta_gain_minutes)}，" if eta_gain_minutes else ""
     )
     deadline_text = ""
+    deadline_missed = False
     if requested_arrival_deadline == "BEFORE_NOON" and isinstance(after_eta, str):
         after_datetime = datetime.fromisoformat(after_eta)
         deadline = after_datetime.replace(hour=12, minute=0, second=0, microsecond=0)
         if after_datetime > deadline:
+            deadline_missed = True
             late_seconds = int((after_datetime - deadline).total_seconds())
             late_minutes = (late_seconds + 59) // 60
             deadline_text = (
-                f"最快只能到 {after_datetime.strftime('%H:%M')}，比客戶要求的中午前晚 "
-                f"{late_minutes} 分鐘。"
+                f"但最快也只能到 {after_datetime.strftime('%H:%M')}，"
+                f"比客戶要的中午前晚 {minutes_phrase(late_minutes)}"
+                " —— 這一單今天送不到，要嘛回覆客戶改時間，要嘛安排專車。"
             )
         else:
-            deadline_text = "可在客戶要求的中午前送達。"
+            deadline_text = "提前之後趕得上客戶要的中午前。"
     return {
         "current_state": before_state,
         "replanned_state": after_state,
@@ -2572,18 +2993,19 @@ def _priority_preview_metadata(
             "distance_delta_km": distance_delta_km,
             "duration_delta_min": duration_delta_minutes,
         },
-        "rationale": (
-            f"目前 {order_id} 在 {before_state.get('vehicle_id') or '未安排'} "
-            f"第 {before_state.get('sequence') or '—'} 站，原本預估 "
-            f"{before_eta_text}；該車已送完 {before_state.get('completed_count', 0)} 站。"
-            f"剩餘站點從 {before_state.get('current_position', 'DEPOT-001')} 重新規劃，"
-            f"{gain_text}多繞 {distance_delta_km:g} 公里、多花 {duration_delta_minutes:g} 分鐘。"
-            f"{deadline_text}"
-            + (
-                "沒有訂單因此掉出原本的配送時段。"
-                if valid
-                else "目前有站點不符合原本的配送時段，這張卡不能套用。"
-            )
+        # 「該車已送完 N 站」 and 「從 DEPOT-001 重新規劃」 are how the solver
+        # describes itself. A dispatcher wants: where the order is now, how much
+        # earlier it can be, what that costs, and whether it meets the promise.
+        "rationale": _priority_rationale(
+            order_id=order_id,
+            before_state=before_state,
+            before_eta_text=before_eta_text,
+            gain_text=gain_text,
+            distance_delta_km=distance_delta_km,
+            duration_delta_minutes=duration_delta_minutes,
+            deadline_text=deadline_text,
+            valid=valid,
+            deadline_missed=deadline_missed,
         ),
     }
 
@@ -2755,13 +3177,13 @@ def prioritize_order_preview(
                 if (deadline_preview or no_effect_preview) and isinstance(explanation_eta, str)
                 else "沒有合法提前安排"
             )
+            # _priority_rationale already states the outcome in its last line.
+            # Only the no-legal-option case adds anything the reader does not
+            # have yet; the deadline case would just repeat itself.
             unavailable_rationale = (
-                f"{priority_metadata['rationale']}"
-                + (
-                    "這張卡不能套用。"
-                    if deadline_preview or no_effect_preview
-                    else "目前沒有合法的提前安排。"
-                )
+                priority_metadata["rationale"]
+                if deadline_preview or no_effect_preview
+                else f"{priority_metadata['rationale']}\n目前沒有合法的提前安排。"
             )
             options = [
                 {
@@ -2855,10 +3277,9 @@ def prioritize_order_preview(
             "sacrificed_order_ids": priority_metadata["sacrificed_order_ids"],
             "cost_summary": priority_metadata["cost"],
             "validator": validation.model_dump(mode="json"),
-            "message": priority_metadata["rationale"]
-            + "對話中的新方案卡尚未套用。"
-            if validation.valid
-            else priority_metadata["rationale"],
+            # The rationale already ends with whether it can be applied, so
+            # appending another 「尚未套用」 produced two endings in a row.
+            "message": priority_metadata["rationale"],
             "requires_human_confirmation": True,
         }
         ctx.context.pending_preview_metadata = priority_metadata if validation.valid else None
@@ -3007,6 +3428,28 @@ def remove_order_preview(
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
+def _hard_window_message(base: PlanResult, preview: PlanResult) -> str:
+    """What holding every delivery window actually costs, in numbers."""
+    distance_km = (preview.total_distance_m - base.total_distance_m) / 1000
+    duration_min = (preview.total_driving_time_s - base.total_driving_time_s) / 60
+    dropped = len(preview.unassigned_orders) - len(base.unassigned_orders)
+    lines = ["已重算成每一張都守住配送時段。", ""]
+    if abs(distance_km) < 0.05 and abs(duration_min) < 0.5:
+        lines.append("不用多跑路，也不用多花時間。")
+    else:
+        lines.append(
+            f"代價是全隊{'多' if distance_km >= 0 else '少'}跑 {abs(distance_km):.1f} 公里、"
+            f"{'多' if duration_min >= 0 else '少'}花 {abs(duration_min):.0f} 分鐘。"
+        )
+    if dropped > 0:
+        lines.append(f"另外有 {dropped} 張因此排不進去。")
+    elif dropped < 0:
+        lines.append(f"而且反而多排進 {abs(dropped)} 張。")
+    lines.append("")
+    lines.append("還沒套用。")
+    return "\n".join(lines)
+
+
 @function_tool(strict_mode=True)
 def enforce_hard_time_windows(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Re-solve while retaining the deterministic hard time-window rule.
@@ -3052,9 +3495,14 @@ def enforce_hard_time_windows(ctx: RunContextWrapper[DispatchAgentContext]) -> s
         else "TIME_WINDOW_CONFLICT",
         "stage": ctx.context.stage,
         "validator": validation.model_dump(mode="json") if validation is not None else None,
-        "message": "已以硬性配送時段重新求解，對話中的新方案卡尚未套用。"
+        # 「已重新求解」 tells the dispatcher a solver ran, not what it cost
+        # them. The before/after numbers are already in hand here.
+        "message": _hard_window_message(base, preview)
         if preview is not None and validation is not None and validation.valid
-        else "目前無法在硬性配送時段內維持合法方案。",
+        else (
+            "沒辦法讓每一張都準時。\n"
+            "要全部守住時段，就得放掉一部分訂單或多調一台車，這一步我不會自己決定。"
+        ),
         "requires_human_confirmation": preview is not None
         and validation is not None
         and validation.valid,
@@ -3079,6 +3527,10 @@ def query_plan_version(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     not use ``assistant_help`` for a version or change-count question.
     A short request about the number of edits or revisions is still this
     no-argument metadata lookup; do not ask for a plan identifier first.
+    Asking what to change for tomorrow, for next time, or from now on is not a
+    change count: it asks for advice about future runs and belongs to
+    ``inspect_dispatch_deviations``. This lookup only answers how many changes
+    have already been made to today's plan.
     """
     _tool_started(ctx.context, "query_plan_version", {})
     evidence = {
@@ -3376,9 +3828,11 @@ def preview_multiple_urgent_insert(
                 "packages",
             ],
             "message": (
-                "目前還不能計算。臨時訂單還缺少這些欄位，才能算：\n"
-                "訂單編號、座標、配送區域\n"
-                "重量、件數、配送時段。請一次補齊後再繼續。"
+                # This branch is the multi-order tool with nothing supplied at
+                # all, so it is never one order.
+                "這幾張急單還缺少欄位：訂單編號、配送地點、座標、配送區域、"
+                "重量、件數、配送時段。\n"
+                "每一張都照這個順序給我，我就可以算。"
             ),
             "requires_human_confirmation": False,
         }

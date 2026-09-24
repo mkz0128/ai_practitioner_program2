@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-relaxed.xlsx')
@@ -42,7 +42,7 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   await page.screenshot({ path: path.join(screenshotDir, 'W-21.png'), fullPage: true })
 
   const complete = await send(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
-  expect(complete.message || '').toContain('我理解的臨時訂單如下')
+  expect(complete.message || '').toContain('我記下來了，確認一下')
   await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible()
   await page.screenshot({ path: path.join(screenshotDir, 'W-22.png'), fullPage: true })
 
@@ -104,12 +104,12 @@ test('BUG-8：Demo 腳本兩句原文五次都進入訂單摘要', async ({ page
     const completion = await send(page, secondSentence)
     const message = completion.message || JSON.stringify(completion)
     replies.push(message)
-    expect(message, `第 ${run} 次系統實際回覆：${message}`).toContain('我理解的臨時訂單如下')
+    expect(message, `第 ${run} 次系統實際回覆：${message}`).toContain('我記下來了，確認一下')
     const workflow = completion.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')
     expect(workflow?.data.stage, `第 ${run} 次系統實際回覆：${message}`).toBe('REVIEW_READY')
     expect(workflow?.data.orders, `第 ${run} 次系統實際回覆：${message}`).toEqual(expect.arrayContaining([expect.objectContaining({ order_id: 'ORD-101' })]))
     await page.screenshot({ path: path.join(screenshotDir, `BUG-8-${run}.png`), fullPage: true })
   }
 
-  console.log(`BUG-8 實際成功率：${replies.filter((reply) => reply.includes('我理解的臨時訂單如下')).length}/5`)
+  console.log(`BUG-8 實際成功率：${replies.filter((reply) => reply.includes('我記下來了，確認一下')).length}/5`)
 })

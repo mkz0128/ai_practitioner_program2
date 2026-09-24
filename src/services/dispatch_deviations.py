@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.domain.models import Dataset
 from src.services.dispatch_parameters import DEFAULT_SERVICE_MINUTES
+from src.services.display import vehicle_label
 from src.services.planner import PlanResult
 from src.services.solve_scope import ROUTE_BASE_TIME, route_progress
 
@@ -29,6 +30,9 @@ class ZoneDeviation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     zone_code: str
+    # Z3 is how the data is keyed, but a dispatcher says the zone's name. The
+    # review shows both, so the name travels beside the code.
+    zone_name: str = ""
     extra_service_minutes_per_stop: int = Field(ge=0)
     baseline_service_minutes: int = Field(ge=1)
     suggested_service_minutes: int = Field(ge=1)
@@ -140,7 +144,7 @@ def compute_dispatch_deviations(
                 expected_completed_count=expected["completed_count"],
                 actual_completed_count=actual["completed_count"],
                 message=(
-                    f"{vehicle_id} 今天實際比預估慢 {delay_minutes} 分鐘。"
+                    f"{vehicle_label(vehicle_id)}今天實際比預估慢 {delay_minutes} 分鐘。"
                 ),
             )
         )
@@ -155,15 +159,20 @@ def compute_dispatch_deviations(
     zone_code, extra_service_minutes = hardest_zone
     baseline_service_minutes = DEFAULT_SERVICE_MINUTES
     suggested_service_minutes = baseline_service_minutes + extra_service_minutes
+    zone_name = next(
+        (zone.zone_name for zone in dataset.zones if zone.zone_code == zone_code), ""
+    )
+    zone_label = f"{zone_name}（{zone_code}）" if zone_name else zone_code
     zone_deviation = ZoneDeviation(
         zone_code=zone_code,
+        zone_name=zone_name,
         extra_service_minutes_per_stop=extra_service_minutes,
         baseline_service_minutes=baseline_service_minutes,
         suggested_service_minutes=suggested_service_minutes,
         reason="每站平均行駛負擔最高",
         message=(
-            f"{zone_code} 區每站停留時間平均比預估多 "
-            f"{extra_service_minutes} 分鐘（每站平均行駛負擔最高）。"
+            f"{zone_label}每一站平均多停 {extra_service_minutes} 分鐘，"
+            "是今天所有區域裡最花時間的。"
         ),
     )
     recorded_at = ROUTE_BASE_TIME + timedelta(minutes=timeline_minutes)

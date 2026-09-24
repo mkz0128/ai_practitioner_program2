@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.domain.models import Dataset, Order, TimeSlot, VehicleStatus
+from src.services.display import slot_label, vehicle_label
 from src.services.matrix import MatrixResult
 from src.services.plan_diff import compute_plan_diff
 from src.services.planner import PlanResult, build_ortools, preview_reassignment
@@ -315,6 +316,31 @@ def _rule_conflicts(
                 )
             )
     return conflicts
+
+
+def _route_stop_count(plan: PlanResult, vehicle_id: str | None) -> int:
+    return next(
+        (len(route.order_ids) for route in plan.routes if route.vehicle_id == vehicle_id),
+        0,
+    )
+
+
+def _rule_empties_subject(
+    base_plan: PlanResult, candidate_plan: PlanResult, rule: DispatchRule
+) -> bool:
+    """Is the limit so tight that the vehicle keeps nothing at all?
+
+    The solver can satisfy any vehicle limit by moving every order off that
+    vehicle, so a limit no package or leg can meet came back 「可試算」 with a
+    large reassignment count instead of the three-way conflict choice. A limit
+    that leaves the vehicle with zero stops is not a limit on how it works; it
+    takes the vehicle off the road, which is ``change_vehicle_availability``.
+    That boundary needs no threshold on how many orders moved.
+    """
+    if rule.subject_type != "VEHICLE":
+        return False
+    before = _route_stop_count(base_plan, rule.subject_id)
+    return before > 0 and _route_stop_count(candidate_plan, rule.subject_id) == 0
 
 
 def _conflict_reason(rule: DispatchRule) -> str:
@@ -652,7 +678,12 @@ def preview_dispatch_rule(
     conflicts = _rule_conflicts(candidate_plan, dataset, [rule])
     baseline_unassigned = set(base_plan.unassigned_orders)
     newly_unassigned = set(candidate_plan.unassigned_orders) - baseline_unassigned
-    candidate_is_infeasible = conflicts or not validation.valid or bool(newly_unassigned)
+    candidate_is_infeasible = (
+        conflicts
+        or not validation.valid
+        or bool(newly_unassigned)
+        or _rule_empties_subject(base_plan, candidate_plan, rule)
+    )
     if candidate_is_infeasible and not conflicts:
         conflicts = _rule_conflicts(base_plan, dataset, [rule])
     diff = compute_plan_diff(base_plan, candidate_plan)
@@ -680,6 +711,10 @@ def preview_dispatch_rule(
 
 def rule_summary(rule: DispatchRule) -> str:
     value = f"{rule.value:g}" if isinstance(rule.value, (int, float)) else str(rule.value)
+    # ALLOWED_TIME_WINDOW carries the raw slot enum, which would otherwise
+    # leave MORNING sitting inside an otherwise Chinese sentence.
+    if rule.rule_type == "ALLOWED_TIME_WINDOW":
+        value = "、".join(slot_label(part) for part in value.split(","))
     labels = {
         "MAX_PACKAGE_WEIGHT": "單件重量",
         "MAX_ROUTE_DISTANCE": "單趟距離",
@@ -693,11 +728,12 @@ def rule_summary(rule: DispatchRule) -> str:
         "MAX_ROUTE_DISTANCE": " km",
         "MAX_STOPS": " 站",
     }.get(rule.rule_type, "")
+    subject = vehicle_label(rule.subject_id) if rule.subject_type == "VEHICLE" else rule.subject_id
     if rule.rule_type in {
         "MAX_PACKAGE_WEIGHT",
         "MAX_ROUTE_DISTANCE",
         "MAX_STOPS",
         "LATEST_RETURN_TIME",
     }:
-        return f"{rule.subject_id} {labels[rule.rule_type]} ≤ {value}{suffix}"
-    return f"{rule.subject_id} {labels[rule.rule_type]}：{value}"
+        return f"{subject} {labels[rule.rule_type]} ≤ {value}{suffix}"
+    return f"{subject} {labels[rule.rule_type]}：{value}"

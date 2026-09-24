@@ -85,10 +85,14 @@ def summarize_delay(
     plan: PlanResult, risks: list[dict[str, Any]], delay_minutes: int
 ) -> dict[str, Any]:
     affected = [item["order_id"] for item in risks if item["slack_minutes"] < delay_minutes]
+    # 「0 張受影響」 on its own reads like the calculation failed. The slack that
+    # absorbed the delay is the interesting number, so carry it out too.
+    slack_values = [item["slack_minutes"] for item in risks]
     return {
         "delay_minutes": delay_minutes,
         "affected_orders": affected,
         "affected_order_count": len(affected),
+        "tightest_slack_minutes": min(slack_values) if slack_values else None,
         "plan_total_duration_s": plan.total_driving_time_s,
         "risk_basis": "deterministic ETA slack against hard time-window deadline",
     }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
@@ -100,7 +100,7 @@ test('A 區塊：插單對話、缺欄契約與兩則訊息摘要', async ({ pag
   await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
 
   const complete = await send(page, '加一張急單 ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，座標 25.040 / 121.560，配送區域 Z3，1 件 15 公斤，早上時段')
-  expect(complete.message || '').toContain('我理解的臨時訂單如下')
+  expect(complete.message || '').toContain('我記下來了，確認一下')
   expect(urgentData(complete).stage).toBe('REVIEW_READY')
   await expect(page.getByRole('button', { name: '產生插單預覽' }).last()).toBeVisible()
   await page.screenshot({ path: path.join(screenshotDir, 'A-01.png'), fullPage: true })
@@ -118,7 +118,7 @@ test('A 區塊：插單對話、缺欄契約與兩則訊息摘要', async ({ pag
   await page.screenshot({ path: path.join(screenshotDir, 'A-02.png'), fullPage: true })
 
   const completion = await send(page, 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件')
-  expect(completion.message || '').toContain('我理解的臨時訂單如下')
+  expect(completion.message || '').toContain('我記下來了，確認一下')
   expect(urgentData(completion).stage).toBe('REVIEW_READY')
   await page.screenshot({ path: path.join(screenshotDir, 'A-03.png'), fullPage: true })
 
@@ -148,11 +148,11 @@ test('A-08：同一句補齊訊息五次都進入摘要', async ({ page }) => {
     await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
     const completion = await send(page, 'ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，25.040，121.560，Z3，1 件')
     replies.push(completion.message || JSON.stringify(completion))
-    expect(completion.message || '').toContain('我理解的臨時訂單如下')
+    expect(completion.message || '').toContain('我記下來了，確認一下')
     await page.getByRole('button', { name: '重新開始' }).click()
     await expect(page.getByText('下載範例格式')).toBeVisible()
   }
-  console.log(`A-08 實際成功率：${replies.filter((reply) => reply.includes('我理解的臨時訂單如下')).length}/5`)
+  console.log(`A-08 實際成功率：${replies.filter((reply) => reply.includes('我記下來了，確認一下')).length}/5`)
   await page.screenshot({ path: path.join(screenshotDir, 'A-08.png'), fullPage: true })
 })
 
@@ -161,7 +161,7 @@ test('A-09：有完整座標時不追問地點名稱', async ({ page }) => {
   installSession(page, `SCENARIO-A09-${test.info().testId}`)
   await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
   const completion = await send(page, '新增急單 ORD-A09，臺北市，行政區信義，配送區域 Z4，座標 25.033 / 121.565，1 件 15 公斤，早上時段')
-  expect(completion.message || '').toContain('我理解的臨時訂單如下')
+  expect(completion.message || '').toContain('我記下來了，確認一下')
   expect(completion.message || '').not.toContain('地點名稱')
   expect(urgentData(completion).missing_by_order || []).toEqual([])
   await page.screenshot({ path: path.join(screenshotDir, 'A-09.png'), fullPage: true })
@@ -172,7 +172,7 @@ test('B 區塊：方案卡是局部插入、可行且沒有支配候選', async 
   installSession(page, `SCENARIO-B-${test.info().testId}`)
   await upload(page, relaxedWorkbook, '已完成 50／50 張訂單的排班')
   const summary = await send(page, '加一張急單 ORD-101，大安信義交界示範配送點 Z3-51，臺北市，行政區信義，座標 25.040 / 121.560，配送區域 Z3，1 件 15 公斤，早上時段')
-  expect(summary.message || '').toContain('我理解的臨時訂單如下')
+  expect(summary.message || '').toContain('我記下來了，確認一下')
   const response = await preview(page)
   const options = optionsFrom(response).filter((option) => option.selectable)
   expect(options.length).toBeGreaterThanOrEqual(2)
@@ -200,7 +200,7 @@ test('I 區塊：tight 的排不進去與三公里以上取捨', async ({ page }
   await page.screenshot({ path: path.join(screenshotDir, 'I-01.png'), fullPage: true })
 
   const summary = await send(page, '新增急單 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
-  expect(summary.message || '').toContain('我理解的臨時訂單如下')
+  expect(summary.message || '').toContain('我記下來了，確認一下')
   const response = await preview(page)
   const options = optionsFrom(response).filter((option) => option.selectable)
   expect(options.length).toBeGreaterThanOrEqual(2)
@@ -214,7 +214,7 @@ test('I 區塊：tight 的排不進去與三公里以上取捨', async ({ page }
   await page.getByLabel('上傳 Excel').setInputFiles(tightWorkbook)
   await expect(page.getByText('已完成 49／50 張訂單的排班')).toBeVisible({ timeout: 180_000 })
   const heavy = await send(page, '新增急單 ORD-I03，配送區域 Z5，城市臺北市，行政區內湖，地點名稱內湖超重示範站，緯度 25.083，經度 121.590，包裹件數 1，每件重量 200 公斤，早上配送')
-  expect(heavy.message || '').toContain('我理解的臨時訂單如下')
+  expect(heavy.message || '').toContain('我記下來了，確認一下')
   const heavyPreview = await preview(page)
   const heavyOptions = optionsFrom(heavyPreview)
   expect(heavyOptions.some((option) => option.title === '排不進去' && !option.selectable)).toBe(true)

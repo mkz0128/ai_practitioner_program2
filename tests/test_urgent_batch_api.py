@@ -1,4 +1,4 @@
-from dataclasses import replace
+﻿from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -697,7 +697,7 @@ def test_preview_validation_keeps_urgent_context_for_followup(monkeypatch) -> No
     )
     assert corrected.status_code == 200, corrected.text
     assert corrected.json()["evidence"][0]["data"]["stage"] == "REVIEW_READY"
-    assert "我理解的臨時訂單如下" in corrected.json()["message"]
+    assert "我記下來了，確認一下" in corrected.json()["message"]
 
 
 def test_google_batch_preview_reuses_base_matrix_and_only_extends_new_nodes(monkeypatch) -> None:

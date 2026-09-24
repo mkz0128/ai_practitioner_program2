@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from src.domain.models import Dataset, Order
 from src.services.dispatch_rules import DispatchRule, _rule_conflicts
+from src.services.display import vehicle_label
 from src.services.matrix import MatrixResult
 from src.services.plan_diff import compute_plan_diff
 from src.services.planner import (
@@ -713,7 +714,8 @@ def build_urgent_options(
                 option_id=f"INSERT-{vehicle_id}-{first_stop.sequence}-{len(options) + 1}",
                 title=label,
                 rationale=(
-                    f"把 {first_order_id} 插入 {vehicle_id} 第 {first_stop.sequence} 站；"
+                    f"把 {first_order_id} 插入{vehicle_label(vehicle_id)}"
+                    f"第 {first_stop.sequence} 站；"
                     + (
                         "先局部移動少量既有訂單，再把急單放入；總改動不超過三張。"
                         if candidate in local_plans
@@ -754,9 +756,9 @@ def build_urgent_options(
             options.append(
                 UrgentOption(
                     option_id=f"REORDER-{vehicle_id}-{len(options) + 1}",
-                    title=f"只重排 {vehicle_id} 該車順序",
+                    title=f"只重排{vehicle_label(vehicle_id)}的順序",
                     rationale=(
-                        f"只重排 {vehicle_id} 的站點順序，不更換既有訂單車輛；"
+                        f"只重排{vehicle_label(vehicle_id)}的站點順序，不更換既有訂單車輛；"
                         "其他車線維持原安排。"
                     ),
                     mode="ROUTE_REORDER",

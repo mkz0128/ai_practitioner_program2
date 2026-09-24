@@ -8,8 +8,8 @@ import { VehicleBoard } from './components/VehicleBoard'
 import { TimelineBoard } from './components/TimelineBoard'
 import { FleetRail } from './components/FleetRail'
 import { DeviationBoard } from './components/DeviationBoard'
-import { formatNumber } from './lib/utils'
-import { formatValidationError } from './lib/fieldLabels'
+import { formatNumber, vehicleLabel } from './lib/utils'
+import { formatValidationReport } from './lib/fieldLabels'
 import type { ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
 
@@ -22,7 +22,7 @@ function createSessionId(): string {
 function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
     const labels: Record<string, string> = { AGENT_UNAVAILABLE: 'AI 助理目前未連線；資料匯入與確定性排班仍可使用。', AGENT_RUN_FAILED: 'AI 助理暫時無法完成這次要求，請重試。', INVALID_XLSX: '這個檔案不是可讀取的 Excel，請提供有效的 .xlsx 檔案。', INVALID_HEADERS: '工作表欄位需要先完成對映確認。', DUPLICATE_ID: '發現重複的訂單編號，請修正後再上傳。' }
-    if (error.fieldErrors.length > 0) return `${error.message} ${error.fieldErrors.map(formatValidationError).join('；')}`
+    if (error.fieldErrors.length > 0) return formatValidationReport(error.fieldErrors, error.message)
     return (labels[error.code] || error.message).trim() || '這次要求未完成，請再試一次。'
   }
   if (error instanceof NetworkRequestError || error instanceof TypeError) return NETWORK_FAILURE_MESSAGE
@@ -39,7 +39,7 @@ function mappingError(response: ColumnMappingResponse): string {
     DATASET_VALIDATION_FAILED: '工作簿驗證失敗。',
   }
   const code = response.error?.code || ''
-  return [labels[code] || response.error?.message || '工作簿驗證失敗。', ...details.map(formatValidationError)].join('；')
+  return formatValidationReport(details, labels[code] || response.error?.message || '工作簿驗證失敗。')
 }
 
 function stageLabel(stage: Plan['stage']): string {
@@ -81,6 +81,9 @@ export default function App() {
   const [showDeviationSuggestions, setShowDeviationSuggestions] = useState(false)
   const [conversationOrderId, setConversationOrderId] = useState<string | null>(null)
   const [manualAdjustTarget, setManualAdjustTarget] = useState<{ vehicleId: string | null; orderId: string | null }>({ vehicleId: null, orderId: null })
+  // Orders a just-applied rule moved to another vehicle; the board flags them
+  // so 「19 張改派」 is something the dispatcher can see rather than count.
+  const [changedOrderIds, setChangedOrderIds] = useState<readonly string[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => { getProviderStatus().then((result) => setProviders(result.providers)).catch(() => setProviders([])); getDispatchRules().then((result) => { setDispatchRules(result.rules); setActiveRuleCount(result.active_count) }).catch(() => { setDispatchRules([]); setActiveRuleCount(0) }) }, [])
@@ -96,7 +99,7 @@ export default function App() {
     abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
     try {
       const imported = await importWorkbook(file, columnMapping, mappingName, controller.signal)
-      if (!imported.validation.is_valid) { setError(imported.validation.errors.map(formatValidationError).join('；') || '資料需要人工複核，請先修正。'); return }
+      if (!imported.validation.is_valid) { setError(formatValidationReport(imported.validation.errors, '資料需要人工複核，請先修正。')); return }
       setNotice('建立距離矩陣…'); setActivity({ skill: '每日排班', phase: '建立距離矩陣…' })
       // 這裡只是讓「建立距離矩陣…」有機會畫出來再往下跑。
       // 不要用 requestAnimationFrame——分頁沒有在繪製時（視窗被蓋住、
@@ -205,8 +208,17 @@ export default function App() {
         .map((vehicle) => ({ vehicle, before: beforePlan.vehicles.find((item) => item.vehicle_id === vehicle.vehicle_id) }))
         .sort((left, right) => (right.vehicle.planned_load_kg - (right.before?.planned_load_kg || 0)) - (left.vehicle.planned_load_kg - (left.before?.planned_load_kg || 0)))[0]
       const loadBalanceMessage = subjectBefore && subjectAfter && receiver && receiver.before
-        ? `因為這條規則，${subjectBefore.vehicle_id} 少了 ${Math.max(0, subjectBefore.order_count - subjectAfter.order_count)} 張（${formatNumber(subjectBefore.load_utilization * 100, 0)}% → ${formatNumber(subjectAfter.load_utilization * 100, 0)}%），這些單主要由 ${receiver.vehicle.vehicle_id} 接手（${formatNumber(receiver.before.load_utilization * 100, 0)}% → ${formatNumber(receiver.vehicle.load_utilization * 100, 0)}%）。如果要讓載重平均一點，可以放寬重量上限或收工時間。`
+        ? `因為這條規則，${vehicleLabel(subjectBefore.vehicle_id)}少了 ${Math.max(0, subjectBefore.order_count - subjectAfter.order_count)} 張（${formatNumber(subjectBefore.load_utilization * 100, 0)}% → ${formatNumber(subjectAfter.load_utilization * 100, 0)}%），這些單主要由${vehicleLabel(receiver.vehicle.vehicle_id)}接手（${formatNumber(receiver.before.load_utilization * 100, 0)}% → ${formatNumber(receiver.vehicle.load_utilization * 100, 0)}%）。如果要讓載重平均一點，可以放寬重量上限或收工時間。`
         : ''
+      // Show the dispatcher which orders actually moved. The numbers alone made
+      // them hunt down the board for the 19 rows the rule touched; the change is
+      // deterministic, so it can just be pointed at.
+      const vehicleOf = (source: Plan) => new Map(source.vehicles.flatMap((vehicle) => vehicle.stops.map((stop) => [stop.order_id, vehicle.vehicle_id] as const)))
+      const before = vehicleOf(beforePlan)
+      const after = vehicleOf(replanned)
+      const moved = [...after.entries()].filter(([orderId, vehicleId]) => before.get(orderId) && before.get(orderId) !== vehicleId).map(([orderId]) => orderId)
+      setChangedOrderIds(moved)
+      if (moved.length > 0) window.setTimeout(() => { document.querySelector('[aria-label="訂單看板"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 120)
       setNotice(`已套用 ${ruleCountText}；已依新規則重新排班。${loadBalanceMessage}`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, refreshDispatchRules])
@@ -406,7 +418,7 @@ export default function App() {
            <DeviationBoard data={map?.deviations} busy={busy} showSuggestions={showDeviationSuggestions} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
           <VehicleBoard plan={plan} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} />
           <DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} rulesExpanded={rulesExpanded} />
-           <OrderTable plan={plan} activeOrderId={expandedOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} onSelectOrder={(orderId) => { if (!orderId) { setExpandedOrder(null); return } setExpandedOrder((current) => current === orderId ? null : orderId) }} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
+           <OrderTable plan={plan} activeOrderId={expandedOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} changedOrderIds={changedOrderIds} onSelectOrder={(orderId) => { if (!orderId) { setExpandedOrder(null); return } setExpandedOrder((current) => current === orderId ? null : orderId) }} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
           <p className="safety-note">所有數字來自後端確定性計算；方案先預覽，經人工確認後才會建立新版本。</p>
         </div>
       </section>

@@ -112,7 +112,10 @@ class UrgentOrderDraft(BaseModel):
     package_weight_kg: float | None = Field(
         default=None, gt=0, description="本則訊息明確提供的每件重量。"
     )
-    priority: Literal["NORMAL", "HIGH"] = "NORMAL"
+    priority: Literal["NORMAL", "HIGH"] | None = Field(
+        default=None,
+        description="不要填寫；訂單的優先級由應用程式依流程決定。",
+    )
     supplied_fields: list[UrgentFieldName] = Field(
         default_factory=list,
         max_length=10,
@@ -126,6 +129,16 @@ class UrgentOrderDraft(BaseModel):
         max_length=10,
         description="只由應用程式依已提供欄位與資料集確定性推導的欄位；模型不得填寫。",
     )
+
+    @staticmethod
+    def resolve_priority(supplied: str | None) -> str:
+        """Decide the priority from the workflow, not from the model's mood.
+
+        An order taken in here is a same-day urgent insert by construction, so
+        the interpreter is not asked to judge it.  Left to the model, the same
+        sentence tagged one run 急件 and the next run not.
+        """
+        return supplied or "HIGH"
 
     @classmethod
     def from_order(cls, order: Order) -> UrgentOrderDraft:
@@ -161,7 +174,6 @@ class UrgentOrderDraft(BaseModel):
         assert resolved.time_slot is not None
         assert resolved.declared_package_count is not None
         assert resolved.package_weight_kg is not None
-        assert resolved.priority is not None
         packages = tuple(
             Package(
                 package_id=f"PKG-{resolved.order_id}-{index:02d}",
@@ -180,7 +192,7 @@ class UrgentOrderDraft(BaseModel):
             longitude=resolved.longitude,
             time_slot=resolved.time_slot,
             declared_package_count=resolved.declared_package_count,
-            priority=Priority(resolved.priority),
+            priority=Priority(self.resolve_priority(resolved.priority)),
             note="由使用者提供的臨時訂單",
             packages=packages,
         )
@@ -324,13 +336,18 @@ def _merge_order(current: UrgentOrderDraft | None, update: UrgentOrderDraft) -> 
     supplied_fields = list(
         dict.fromkeys([*current.supplied_fields, *update.supplied_fields])
     )
-    derived_fields = list(
-        dict.fromkeys([*current.derived_fields, *update.derived_fields])
-    )
+    # A field the dispatcher has now stated is no longer one the application
+    # filled in, so it must drop out of derived_fields. Left in, the card kept
+    # saying 「這是我補的」 about a value they had just corrected themselves.
+    stated = set(update.supplied_fields)
+    derived_fields = [
+        name
+        for name in dict.fromkeys([*current.derived_fields, *update.derived_fields])
+        if name not in stated
+    ]
     if supplied_fields:
         update_data["supplied_fields"] = supplied_fields
-    if derived_fields:
-        update_data["derived_fields"] = derived_fields
+    update_data["derived_fields"] = derived_fields
     return current.model_copy(update=update_data)
 
 
@@ -571,7 +588,8 @@ def create_urgent_understanding_agent(
             "『有一張急單要今天早上送到，15公斤』 must produce one order with "
             "time_slot=MORNING and package_weight_kg=15. "
             "Never invent location, zone, weight, count, MORNING/AFTERNOON/EVENING, "
-            "priority, IDs or coordinates. "
+            "IDs or coordinates. Always leave priority null: the application, not "
+            "you, decides it from the workflow the order arrived through. "
             "Interpret city and district as separate fields: city is the supplied "
             "municipality or county (for example 臺北市), while district is the supplied "
             "local district (for example 信義區). A district name is not a city; never "

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
@@ -225,7 +225,8 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await step('W-17', async () => {
     expect(trialData.status).toBe('FEASIBLE')
     expect(trialData.trial).toBeTruthy()
-    await expect(page.getByText('規則試算完成')).toBeVisible({ timeout: 30_000 })
+    // 「規則試算完成」是舊的系統腔，現在直接報結果。
+    await expect(page.getByText('試算結果：')).toBeVisible({ timeout: 30_000 })
     const ruleGroup = page.getByRole('group', { name: '司機規則試算方案' }).last()
     await expect(ruleGroup).toContainText('影響')
     expect(((trialData.diff as Record<string, unknown>).reassigned_orders as unknown[]).length).toBe(3)
@@ -270,7 +271,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   })
   const urgentComplete = await keyboardTypeAndSend(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
   await step('W-22', async () => {
-    expect(urgentComplete.message || '').toContain('我理解的臨時訂單如下')
+    expect(urgentComplete.message || '').toContain('我記下來了，確認一下')
     await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible({ timeout: 30_000 })
   })
   await step('W-23', async () => {

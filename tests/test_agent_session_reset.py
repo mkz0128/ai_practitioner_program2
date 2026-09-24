@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -132,7 +132,7 @@ def test_agent_chat_clears_frozen_stops_when_dataset_changes(monkeypatch) -> Non
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["message"] == "VEH-003 目前計畫載重 101 kg，載重上限 160 kg。"
+    assert response.json()["message"] == "第三車目前計畫載重 101 kg，載重上限 160 kg。"
     assert agent_sessions[session_id].dataset_id == second_dataset_id
     assert agent_sessions[session_id].frozen_stop_ids == ()
     assert agent_sessions[session_id].frozen_stop_count == 0

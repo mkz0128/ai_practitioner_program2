@@ -100,7 +100,10 @@ def test_location_clarification_is_field_level_and_priority_is_optional() -> Non
         ],
     )
     assert completed.state.stage == "REVIEW_READY"
-    assert completed.complete_orders[0].priority == "NORMAL"
+    # The interpreter leaves priority unset; an order taken in through this
+    # workflow is urgent by construction, so the application resolves it.
+    assert completed.complete_orders[0].priority is None
+    assert UrgentOrderDraft.resolve_priority(completed.complete_orders[0].priority) == "HIGH"
 
 
 def test_coordinates_make_location_label_optional_and_generate_display_label() -> None:

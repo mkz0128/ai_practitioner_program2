@@ -1,4 +1,4 @@
-from src.api.main import _scope_chat_message
+﻿from src.api.main import _scope_chat_message
 
 
 def test_scope_reply_for_highest_load_is_human_readable() -> None:
@@ -13,7 +13,7 @@ def test_scope_reply_for_highest_load_is_human_readable() -> None:
         ],
         "已完成確定性工具計算；未驗證的數字或訂單資訊已省略。",
     )
-    assert message == "VEH-003 目前計畫載重 101 kg，載重上限 160 kg。"
+    assert message == "第三車目前計畫載重 101 kg，載重上限 160 kg。"
 
 
 def test_scope_reply_for_remove_order_names_order_and_count() -> None:
@@ -44,4 +44,4 @@ def test_scope_reply_for_vehicle_availability_names_vehicle_and_impact() -> None
         ],
         "已完成確定性工具計算；未驗證的數字或訂單資訊已省略。",
     )
-    assert message == "VEH-003 今天停駛試算完成：目前可安排 47 張，未安排 2 張；請檢查後再確認。"
+    assert message == "第三車今天停駛試算完成：目前可安排 47 張，未安排 2 張；請檢查後再確認。"

@@ -1,12 +1,14 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
 const screenshotDir = path.resolve('..', 'docs', 'screenshots')
 const workbook = path.join(samplesDir, 'demo-taipei-50.xlsx')
 
 async function screenshot(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: path.join(screenshotDir, `${name}.png`), fullPage: true })
+  await saveScreenshot(page, screenshotDir, name)
 }
 
 async function sendVisible(page: Page, message: string, name: string): Promise<string> {
@@ -79,7 +81,7 @@ test.describe('Demo v3 逐字走查', () => {
     expect(unassigned.includes('時段') || unassigned.includes('載重') || unassigned.includes('責任區')).toBe(true)
 
     const ruleQuestion = await sendVisible(page, '二號車的阿明今天身體不舒服，不能拿太重，而且要早點下班去看醫生', 'v-04-rule-question')
-    expect(ruleQuestion).toContain('好，我需要三件事')
+    expect(ruleQuestion).toContain('好，今天的限制')
     expect(ruleQuestion).toContain('今天')
     expect(ruleQuestion).toContain('kg')
     expect(ruleQuestion).toContain('最後一站')
@@ -142,8 +144,8 @@ test.describe('Demo v3 逐字走查', () => {
     await expect(urgentCards).toHaveCount(2, { timeout: 180_000 })
     for (const card of await urgentCards.all()) {
       const text = await card.innerText()
-      expect(text).toContain('VEH-')
-      expect(text).toContain('第')
+      // 卡片講「第二車 第 3 站」，車名和站序都用「第」開頭，所以分開比對。
+      expect(text).toMatch(/第[一二三四五六七八九十]車/)
       expect(text).toContain('站')
       expect(text).toContain('預估送達')
       expect(text.includes('責任區') || text.includes('跨區支援')).toBe(true)

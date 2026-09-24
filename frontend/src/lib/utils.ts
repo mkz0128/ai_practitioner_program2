@@ -36,6 +36,21 @@ export function timeSlotLabel(value: string): string {
   return labels[value] || value
 }
 
+const vehicleOrdinals = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+
+/**
+ * VEH-002 顯示成「第二車」。
+ * 車號是資料的鍵，不是調度員說話的方式；對話裡已經改口，畫面再印 VEH-002
+ * 兩邊就對不起來。認不出來的編號原樣回傳，不要假裝看懂。
+ */
+export function vehicleLabel(vehicleId: string | null | undefined): string {
+  if (!vehicleId) return '這台車'
+  const match = /^VEH-(\d+)$/.exec(vehicleId.trim().toUpperCase())
+  if (!match) return vehicleId
+  const number = Number(match[1])
+  return number >= 1 && number <= vehicleOrdinals.length ? `第${vehicleOrdinals[number - 1]}車` : vehicleId
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }

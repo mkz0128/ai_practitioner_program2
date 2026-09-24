@@ -6,6 +6,13 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+# Startup hydration used to pull every row ever written. On a machine that had
+# been running the browser suite for months that meant 13k datasets and 17k
+# plans: the process reached 8 GB of resident memory before serving a single
+# request, and solving one 50-order plan then took longer than the 180 s the
+# tests allow. Only recent versions are worth restoring after a restart.
+HYDRATION_LIMIT = 500
+
 
 def _sqlite_path(database_url: str) -> Path:
     if not database_url.startswith("sqlite:///"):
@@ -159,15 +166,28 @@ class SQLiteRepository:
             row = connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
             return int(row["count"])
 
-    def load_datasets(self) -> list[sqlite3.Row]:
+    def load_datasets(self, limit: int = HYDRATION_LIMIT) -> list[sqlite3.Row]:
+        """Return the most recent datasets, oldest first, capped at ``limit``."""
         with self._connect() as connection:
-            return list(
-                connection.execute("SELECT * FROM datasets ORDER BY created_at, dataset_id")
+            rows = list(
+                connection.execute(
+                    "SELECT * FROM datasets ORDER BY created_at DESC, dataset_id DESC LIMIT ?",
+                    (limit,),
+                )
             )
+        return sorted(rows, key=lambda row: (row["created_at"], row["dataset_id"]))
 
-    def load_plans(self) -> list[sqlite3.Row]:
+    def load_plans(self, limit: int = HYDRATION_LIMIT) -> list[sqlite3.Row]:
+        """Return the most recent plan versions, capped at ``limit``."""
         with self._connect() as connection:
-            return list(connection.execute("SELECT * FROM plans ORDER BY plan_id, version"))
+            rows = list(
+                connection.execute(
+                    "SELECT * FROM plans ORDER BY created_at DESC, plan_id DESC, version DESC "
+                    "LIMIT ?",
+                    (limit,),
+                )
+            )
+        return sorted(rows, key=lambda row: (row["plan_id"], int(row["version"])))
 
     def current_versions(self) -> dict[str, int]:
         with self._connect() as connection:

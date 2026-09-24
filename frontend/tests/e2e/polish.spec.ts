@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 import path from 'node:path'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
@@ -60,7 +60,7 @@ test.describe('前端 polish 驗收', () => {
 
     const ruleQuestion = await sendTyped(page, '三號車的老王最近腰傷，比較重的單先不要給他')
     await expect(page.getByRole('group', { name: '司機規則試算方案' })).toHaveCount(0)
-    expect(ruleQuestion).toContain('好，我需要三件事')
+    expect(ruleQuestion).toContain('好，今天的限制')
     await screenshot(page, 'PL-08-rule-clarification')
 
     const rulePreview = await sendTyped(page, '20 公斤以上就不要，永久')
@@ -73,7 +73,7 @@ test.describe('前端 polish 驗收', () => {
     await screenshot(page, 'PL-02-horizontal-button')
     expect(rulePreview).not.toContain('原句')
     await screenshot(page, 'PL-03-no-source-utterance')
-    expect(rulePreview).toContain('張改派')
+    expect(rulePreview).toContain('張要改派')
     const orderIds = ['ORD-001', 'ORD-002', 'ORD-003', 'ORD-004', 'ORD-005', 'ORD-006', 'ORD-007', 'ORD-008', 'ORD-009', 'ORD-010', 'ORD-011', 'ORD-012', 'ORD-013', 'ORD-014', 'ORD-015', 'ORD-016', 'ORD-017', 'ORD-018', 'ORD-019', 'ORD-020', 'ORD-021', 'ORD-022', 'ORD-023', 'ORD-024', 'ORD-025', 'ORD-026', 'ORD-027', 'ORD-028', 'ORD-029', 'ORD-030', 'ORD-031', 'ORD-032', 'ORD-033', 'ORD-034', 'ORD-035', 'ORD-036', 'ORD-037', 'ORD-038', 'ORD-039', 'ORD-040', 'ORD-041', 'ORD-042', 'ORD-043', 'ORD-044', 'ORD-045', 'ORD-046', 'ORD-047', 'ORD-048', 'ORD-049', 'ORD-050']
     expect(orderIds.filter((id) => rulePreview.includes(id)).length).toBeLessThan(4)
     await screenshot(page, 'PL-04-rule-summary')
@@ -112,7 +112,7 @@ test.describe('前端 polish 驗收', () => {
     await page.getByRole('button', { name: '模擬出發', exact: true }).click()
     await expect(page.getByText('已發車', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
     const review = await sendTyped(page, '今天成效如何')
-    expect(review).toContain('今天 ')
+    expect(review).toContain('今天送達')
     expect(review).toContain('總里程')
     expect(review).toContain('平均載重')
     expect(review).not.toContain('已記錄')

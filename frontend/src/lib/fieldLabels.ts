@@ -26,10 +26,46 @@ export function fieldLabel(path: string): string {
   return fieldLabels[key] || key
 }
 
+/** `orders` / `packages` are sheet names in the file, not words anyone says. */
+const sheetNouns: Record<string, string> = {
+  orders: '訂單',
+  packages: '包裹',
+  vehicles: '車輛',
+  zones: '區域',
+}
+
+/** `orders.ORD-001.location_label` → `訂單 ORD-001 缺「地點名稱」` */
 export function formatValidationError(error: ValidationError): string {
   if (error.code !== 'MISSING_REQUIRED_FIELD') return error.message
-  const separator = error.path.lastIndexOf('.')
-  const subject = separator >= 0 ? error.path.slice(0, separator) : ''
-  const prefix = subject ? `${subject} ` : ''
-  return `${prefix}缺少必填欄位 ${fieldLabel(error.path)}。`
+  const parts = error.path.split('.')
+  const noun = sheetNouns[parts[0]] || ''
+  const id = parts.length >= 3 ? parts[1] : ''
+  const subject = [noun, id].filter(Boolean).join(' ')
+  return subject ? `${subject} 缺「${fieldLabel(error.path)}」` : `缺「${fieldLabel(error.path)}」`
+}
+
+/**
+ * One readable block instead of a single line of clauses joined by 「；」.
+ *
+ * A dispatcher looking at this has to know three things: how many problems
+ * there are, which rows they are on, and that fixing the file and uploading it
+ * again is the whole remedy. The old string buried all three.
+ */
+export function formatValidationReport(errors: ValidationError[], fallback: string): string {
+  const missing = errors.filter((error) => error.code === 'MISSING_REQUIRED_FIELD')
+  if (missing.length === 0) {
+    const others = errors.map((error) => error.message)
+    return others.length ? [fallback, ...others].join('\n') : fallback
+  }
+  const rows = missing.map(formatValidationError)
+  const rest = errors.filter((error) => error.code !== 'MISSING_REQUIRED_FIELD')
+  const tail = rest.length ? ['', ...rest.map((error) => error.message)] : []
+  return [
+    `這份檔案有 ${missing.length} 個地方要補，補完再傳一次就可以排班：`,
+    '',
+    ...rows,
+    ...tail,
+    '',
+    '其他欄位都讀到了。',
+  ].join('\n')
 }

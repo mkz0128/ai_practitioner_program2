@@ -77,6 +77,7 @@ from src.services.dispatch_rules import (
 from src.services.dispatch_rules import (
     preview_dispatch_rule as preview_rule_trial,
 )
+from src.services.display import slot_sentence, vehicle_label
 from src.services.errors import ValidationReport
 from src.services.evidence import recommendation_reason
 from src.services.fingerprint import dataset_hash, matrix_hash
@@ -3237,6 +3238,8 @@ def _urgent_workflow_message(
         display_fields: list[str] = []
         if "order_id" in missing_names:
             display_fields.append("訂單編號")
+        if {"location_label", "city", "district"} & missing_names:
+            display_fields.append("配送地點")
         if {"latitude", "longitude"} & missing_names:
             display_fields.append("座標")
         if "zone_code" in missing_names:
@@ -3247,36 +3250,56 @@ def _urgent_workflow_message(
             display_fields.append("件數")
         if "time_slot" in missing_names:
             display_fields.append("配送時段")
-        if {"location_label", "city", "district"} & missing_names:
-            display_fields.append("配送地點")
-        first_line = "、".join(display_fields[:3])
-        second_line = "、".join(display_fields[3:])
-        grouped = "\n".join(line for line in (first_line, second_line) if line)
+        # One unbroken list. Wrapping it after the third item used to split a
+        # single sentence mid-way, so a line could end on a field name and the
+        # next line start with the full stop.
+        subject = "這張急單" if len(missing) <= 1 else f"這 {len(missing)} 張急單"
         return (
-            "目前還不能計算。臨時訂單還缺少這些欄位，才能算：\n"
-            f"{grouped}。請一次補齊後再繼續。"
+            f"{subject}還缺少幾個欄位：{'、'.join(display_fields)}。\n"
+            "一次補齊貼給我，我就可以算。"
         )
     if stage == "REVIEW_READY":
+        # One order per line. Run together with punctuation separators this was
+        # a wall of text a dispatcher could not scan, and it leaked the raw
+        # MORNING / AFTERNOON enum into a Chinese sentence.
         summaries = []
         for order in orders:
             count = int(order["declared_package_count"])
             unit_weight = float(order["package_weight_kg"])
+            resolved_priority = UrgentOrderDraft.resolve_priority(order.get("priority"))
+            priority = "　急件" if resolved_priority == "HIGH" else ""
             summaries.append(
-                f"{order['order_id']}：{order['location_label']}、{order['zone_code']}、"
-                f"{count} 件、每件 {unit_weight:g} 公斤、{order['time_slot']}、"
-                f"{'高' if order['priority'] == 'HIGH' else '一般'}優先"
+                f"{order['order_id']}　{order['location_label']}（{order['zone_code']}）"
+                f"　{unit_weight:g} 公斤 × {count} 件"
+                f"　{slot_sentence(order['time_slot'])}{priority}"
             )
+            # Anything the application filled in has to be on the card. A city
+            # or district the dispatcher never said is exactly what the human
+            # confirmation step exists to catch, and it cannot be caught if it
+            # is not shown.
+            derived = {str(name) for name in (order.get("derived_fields") or [])}
+            filled = "".join(
+                str(order[key])
+                for key in ("city", "district")
+                if key in derived and order.get(key)
+            )
+            if filled:
+                summaries.append(
+                    f"　（{filled} 是我依 {order['zone_code']} 區補的，不對就跟我說）"
+                )
+        count_word = "這張" if len(orders) == 1 else f"這 {len(orders)} 張"
         return (
-            "我理解的臨時訂單如下："
-            + "；".join(summaries)
-            + "。請選擇產生插單預覽、修改或取消。"
+            f"{count_word}我記下來了，確認一下：\n\n"
+            + "\n".join(summaries)
+            + "\n\n沒問題就按【產生插單預覽】。要改哪一張直接跟我說。"
         )
     if stage == "PREVIEW_READY" and preview is not None:
         assignments = []
         for item in preview.get("inserted_orders", []):
             if item.get("status") == "ASSIGNED":
                 assignments.append(
-                    f"{item['order_id']} 安排至 {item['vehicle_id']} 第 {item['sequence']} 站"
+                    f"{item['order_id']} 排進{vehicle_label(item['vehicle_id'])}"
+                    f"第 {item['sequence']} 站"
                 )
         diff = preview.get("diff", {})
         option_count = sum(
@@ -3284,21 +3307,50 @@ def _urgent_workflow_message(
             for option in preview.get("options", [])
             if option.get("option_id") != "UNASSIGNABLE" and option.get("feasible") is True
         )
-        option_message = (
-            f"目前有 {option_count} 張可行方案卡"
-            if option_count
-            else "目前沒有可行方案卡，畫面會標示需要人工處理的訂單"
+        assignment_text = "、".join(assignments) if assignments else "沒有可以安排的位置"
+        moved = int(preview.get("moved_order_count", 0) or 0)
+        # Metres and seconds are how the solver keeps score; a dispatcher thinks
+        # in kilometres and minutes, so convert before the number is shown.
+        distance_km = float(diff.get("total_distance_delta_m", 0) or 0) / 1000
+        duration_min = float(diff.get("total_duration_delta_s", 0) or 0) / 60
+        lines = [f"試算結果：{assignment_text}。"]
+        lines.append(
+            f"全隊多跑 {distance_km:+.1f} 公里、多花 {duration_min:+.1f} 分鐘；"
+            + ("既有訂單都不用換車。" if moved == 0 else f"有 {moved} 張既有訂單要換車。")
         )
-        assignment_text = "；".join(assignments) if assignments else "沒有可安排的臨時訂單"
-        return (
-            f"已完成 {len(assignments)} 張臨時訂單的同批預覽：{assignment_text}。"
-            f"{option_message}，"
-            f"既有訂單換車 {preview.get('moved_order_count', 0)} 張，"
-            f"距離變化 {diff.get('total_distance_delta_m', 0):+,.0f} 公尺，"
-            f"時間變化 {diff.get('total_duration_delta_s', 0):+,.0f} 秒。"
-            "請在對話中的方案卡選擇，這只是預覽，尚未套用。"
-        )
+        if option_count:
+            lines.append("")
+            lines.append(
+                f"下面有 {option_count} 種安排方式，選一張看細節。這只是預覽，還沒套用。"
+                if option_count > 1
+                else "下面只有一種可行的安排。這只是預覽，還沒套用。"
+            )
+        else:
+            lines.append("")
+            lines.append("沒有可行的安排，畫面會標出需要人工處理的訂單。")
+        return "\n".join(lines)
     return "已收到臨時插單要求，原方案尚未變更。"
+
+
+def _nearest_order_in_zone(
+    dataset: Dataset, zone_code: str, latitude: float, longitude: float
+) -> Order | None:
+    """Find the workbook order closest to a coordinate inside one zone.
+
+    Used to fill a missing city or district. Taking ``covered_districts[0]``
+    instead put an order in 三重 merely because that name sorts first among the
+    four districts Z4 covers, and the guess never appeared on the confirmation
+    card, so no human could catch it. An existing order at almost the same spot
+    is a value the workbook actually records for that location.
+    """
+    candidates = [order for order in dataset.orders if order.zone_code == zone_code]
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda order: (order.latitude - latitude) ** 2
+        + (order.longitude - longitude) ** 2,
+    )
 
 
 def _normalize_urgent_order_context(
@@ -3321,12 +3373,24 @@ def _normalize_urgent_order_context(
         derived_updates: dict[str, Any] = {}
         derived_fields = list(draft.derived_fields)
         if coordinate_complete and zone is not None:
-            if not draft.city and zone.covered_cities:
-                derived_updates["city"] = zone.covered_cities[0]
-                derived_fields.append("city")
-            if not draft.district and zone.covered_districts:
-                derived_updates["district"] = zone.covered_districts[0]
-                derived_fields.append("district")
+            assert draft.latitude is not None and draft.longitude is not None
+            neighbour = _nearest_order_in_zone(
+                dataset, zone.zone_code, draft.latitude, draft.longitude
+            )
+            if not draft.city:
+                city = neighbour.city if neighbour else None
+                if not city and len(zone.covered_cities) == 1:
+                    city = zone.covered_cities[0]
+                if city:
+                    derived_updates["city"] = city
+                    derived_fields.append("city")
+            if not draft.district:
+                district = neighbour.district if neighbour else None
+                if not district and len(zone.covered_districts) == 1:
+                    district = zone.covered_districts[0]
+                if district:
+                    derived_updates["district"] = district
+                    derived_fields.append("district")
             if not draft.location_label:
                 derived_updates["location_label"] = f"{zone.zone_name}配送點"
                 derived_fields.append("location_label")
@@ -3413,7 +3477,8 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
     if tool == "assistant_help":
         topic = cast(str | None, item.get("topic"))
         topics = {
-            "CAPABILITIES": "我是配送調度助理，可整理訂單、安排車輛、檢查路線並預覽方案。",
+            "IDENTITY": "我是配送調度助理。你把今天的訂單丟給我，我排出每台車要走的路線。",
+            "CAPABILITIES": "我可以整理訂單、安排車輛、檢查路線並預覽方案；方案都由你確認。",
             "DATA_REQUIREMENTS": "建立方案前需要訂單、包裹、車輛與配送區域資料。",
             "CAPACITY_RULES": (
                 "載重會依每件包裹重量加總，再和車輛上限比較；數字以方案計算結果為準。"
@@ -3478,13 +3543,13 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         limit = _message_number(item.get("max_load_kg"))
         if isinstance(vehicle_id, str) and load is not None:
             suffix = f"，載重上限 {limit} kg" if limit is not None else ""
-            return f"{vehicle_id} 目前計畫載重 {load} kg{suffix}。"
+            return f"{vehicle_label(vehicle_id)}目前計畫載重 {load} kg{suffix}。"
         return "目前沒有可查詢的車輛載重。"
     if tool == "lowest_load_vehicle":
         vehicle_id = item.get("vehicle_id")
         remaining = _message_number(item.get("remaining_capacity_kg"))
         if isinstance(vehicle_id, str) and remaining is not None:
-            return f"{vehicle_id} 目前剩餘容量 {remaining} kg。"
+            return f"{vehicle_label(vehicle_id)}目前剩餘容量 {remaining} kg。"
         return "目前沒有可查詢的車輛容量。"
     if tool == "vehicle_load":
         vehicle_id = item.get("vehicle_id")
@@ -3496,7 +3561,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
             value is not None for value in (load, limit, utilization, remaining)
         ):
             return (
-                f"{vehicle_id} 目前計畫載重 {load} kg，上限 {limit} kg，"
+                f"{vehicle_label(vehicle_id)}目前計畫載重 {load} kg，上限 {limit} kg，"
                 f"使用率 {float(item['load_utilization']) * 100:g}%，剩餘容量 {remaining} kg。"
             )
         if isinstance(vehicle_id, str):
@@ -3519,7 +3584,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                     # _message_number 回傳的已經是格式化過的字串, 再套 :g 會拋
                     # ValueError: Unknown format code 'g' for object of type 'str',
                     # 讓「現在的方案長什麼樣」「今天成效如何」這類問句全部回 502。
-                    load_summary.append(f"{vehicle_id} 載重 {load}/{limit} kg")
+                    load_summary.append(f"{vehicle_label(vehicle_id)} {load}/{limit} kg")
         if assigned is not None and total is not None:
             suffix = f"；未安排：{unassigned}" if unassigned else "；目前沒有未安排訂單"
             if load_summary:
@@ -3561,19 +3626,22 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         if item.get("status") == "ORDER_NOT_FOUND":
             return f"找不到訂單 {order_id}，資料中沒有這張訂單。"
         reason_labels = {
-            "CAPACITY_LIMIT": "車輛載重上限",
-            "SERVICE_ZONE_UNAVAILABLE": "沒有符合的服務區域",
-            "TIME_OR_ROUTE_CONFLICT": "時段或路線限制",
-            "TIME_WINDOW_CONFLICT": "配送時段限制",
-            "VEHICLE_UNAVAILABLE": "可用車輛不足",
-            "UNASSIGNABLE": "載重、服務區域或時段限制",
-            "UNASSIGNED_BY_SOLVER": "載重、服務區域或時段限制",
-            "ORDER_IS_ASSIGNED": "這張訂單其實已安排",
+            "CAPACITY_LIMIT": "每一台車的載重餘裕都不夠裝這張單",
+            "SERVICE_ZONE_UNAVAILABLE": "沒有車負責這一區",
+            "TIME_OR_ROUTE_CONFLICT": "配送時段排不下，或是繞過去會讓別的單遲到",
+            "TIME_WINDOW_CONFLICT": "配送時段排不下",
+            "VEHICLE_UNAVAILABLE": "今天可用的車不夠",
+            "UNASSIGNABLE": "載重、責任區、配送時段三個條件湊不出可行的安排",
+            "UNASSIGNED_BY_SOLVER": "載重、責任區、配送時段三個條件湊不出可行的安排",
         }
         if isinstance(order_id, str):
-            label = reason_labels.get(str(reason), str(reason) if reason else "尚未安排")
-            return f"訂單 {order_id} 的安排狀態：{label}。"
-        return "目前沒有可說明的未安排訂單。"
+            if str(reason) == "ORDER_IS_ASSIGNED":
+                return f"{order_id} 其實已經排進去了，不在未安排清單裡。"
+            label = reason_labels.get(
+                str(reason), str(reason) if reason else "目前的條件下排不進去"
+            )
+            return f"{order_id} 今天排不進去。\n原因：{label}。"
+        return "目前沒有排不進去的訂單。"
     if tool == "explain_assignment":
         order_id = item.get("order_id")
         if item.get("status") == "ORDER_NOT_FOUND":
@@ -3609,9 +3677,21 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
             minutes = _message_number(delay.get("delay_minutes"))
             affected = _message_number(delay.get("affected_order_count"))
             ids = _message_ids(delay.get("affected_orders"))
+            slack = delay.get("tightest_slack_minutes")
             if minutes is not None and affected is not None:
-                suffix = f"：{ids}" if ids else "。"
-                return f"延遲 {minutes} 分鐘試算後，可能受影響 {affected} 張訂單{suffix}"
+                if ids:
+                    return (
+                        f"全隊晚 {minutes} 分鐘的話，有 {affected} 張會掉出配送時段：\n{ids}"
+                    )
+                spare = (
+                    f"最緊的一張還有 {round(slack)} 分鐘裕度，"
+                    if isinstance(slack, (int, float))
+                    else ""
+                )
+                return (
+                    f"全隊晚 {minutes} 分鐘還撐得住，沒有訂單會掉出配送時段。\n"
+                    f"{spare}所以這個延誤吸收得掉。"
+                )
         return "已完成配送延遲風險試算，請查看受影響訂單。"
     if tool == "change_vehicle_availability":
         vehicle_id = item.get("affected_vehicle_id", item.get("vehicle_id"))
@@ -3626,7 +3706,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                     else "恢復出車"
                 )
                 return (
-                    f"{vehicle_id} {action}試算完成：目前可安排 {assigned} 張，"
+                    f"{vehicle_label(vehicle_id)}{action}試算完成：目前可安排 {assigned} 張，"
                     f"未安排 {len(unassigned_orders)} 張"
                     + (
                         f"。{item['conflict_summary']}。"
@@ -3636,7 +3716,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                     )
                     + "請檢查後再確認。"
                 )
-        return f"車輛 {vehicle_id} 的出勤狀態試算未完成，請檢查車輛編號。"
+        return f"{vehicle_label(vehicle_id)}的出勤狀態試算未完成，請檢查車輛編號。"
     if tool == "change_order_constraint":
         order_id = item.get("order_id")
         slot = item.get("time_slot")
@@ -3672,7 +3752,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
             )
         return f"找不到訂單 {order_id}，目前沒有移除方案可預覽。"
     if tool == "enforce_hard_time_windows":
-        return "已以硬性配送時段重新求解，對話中的新方案卡尚未套用。"
+        return "已重算成每一張都守住配送時段，下面的方案卡有代價。還沒套用。"
     if tool == "query_plan_version":
         plan_id = item.get("plan_id")
         version = _message_number(item.get("version"))
@@ -3686,10 +3766,23 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
     }:
         order_ids = _message_ids(item.get("order_ids"))
         if item.get("status") == "ORDER_ID_EXISTS":
-            return f"訂單 {order_ids or '指定訂單'} 已存在，不能重複插入。"
+            return (
+                f"{order_ids or '這個編號'} 今天已經有了，不能用同一個編號再插一次。\n"
+                "換一個編號再給我一次。"
+            )
         if item.get("status") == "UNASSIGNABLE":
-            return f"訂單 {order_ids or '這批臨時訂單'} 目前排不進去，已保留原方案。"
-        return f"已完成 {order_ids or '臨時訂單'} 的插入預覽，請查看方案卡。"
+            return (
+                f"{order_ids or '這批急單'} 插不進去。\n"
+                "所有車在載重、責任區或配送時段上都湊不出可行的位置，原方案沒有變更。"
+            )
+        # This path fires when the model previews straight from a complete
+        # description without the review step, so the sentence has to stand on
+        # its own rather than point at a card the reader may not have scrolled to.
+        return (
+            f"{order_ids or '這批急單'} 已經算好可以插在哪裡了。\n"
+            "下面的方案卡會列出每一張排進哪台車第幾站、多繞多少路。\n"
+            "這只是預覽，選一張確認才會套用。"
+        )
     return "這項操作已完成，請查看方案明細。"
 
 

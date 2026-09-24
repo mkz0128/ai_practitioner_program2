@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+﻿from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -55,7 +55,7 @@ def test_rule_is_saved_with_source_and_can_be_deactivated(rule_store: Path) -> N
     save_dispatch_rule(rule)
     assert rule_store.exists()
     assert list_dispatch_rules(include_inactive=False) == [rule]
-    assert rule_summary(rule) == "VEH-003 單趟距離 ≤ 30 km"
+    assert rule_summary(rule) == "第三車 單趟距離 ≤ 30 km"
 
     deactivated = deactivate_dispatch_rule(rule.rule_id)
     assert deactivated is not None

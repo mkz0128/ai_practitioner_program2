@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+﻿import { expect, test } from '@playwright/test'
 
 import {
   expectHumanReply,
@@ -27,7 +27,7 @@ for (const fixture of [
 
     const summary = await sendUi(page, boundarySummary)
     expectHumanReply(page, `${fixture.name} 急單摘要`)
-    expect(summary).toContain('我理解的臨時訂單如下')
+    expect(summary).toContain('我記下來了，確認一下')
     await saveStep(page, `cards-${fixture.name}-03-summary`)
 
     const preview = await sendUi(page, '產生插單預覽')
@@ -42,7 +42,7 @@ for (const fixture of [
     expect(new Set(cardTexts).size).toBe(cardTexts.length)
 
     const placements = cardTexts.map((text) => {
-      const vehicle = text.match(/VEH-\d{3}/)?.[0]
+      const vehicle = text.match(/第[一二三四五六七八九十]車/)?.[0]
       const stop = text.match(/第\s*\d+\s*站/)?.[0]
       expect(vehicle).toBeTruthy()
       expect(stop).toBeTruthy()
