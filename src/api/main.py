@@ -3474,6 +3474,45 @@ def _eta_clock(value: Any) -> str | None:
         return value
 
 
+def _multiple_urgent_preview_sentence(item: dict[str, Any], order_ids: str) -> str:
+    """Describe a whole-plan urgent preview in the words the numbers support.
+
+    ``preview_multiple_urgent_insert`` returns a before/after plan diff. Nothing
+    on screen renders from it — the option cards only come from the urgent
+    workflow — so this sentence is the entire result the dispatcher gets. It
+    therefore states what changed and what it cost instead of pointing at a
+    card that will never appear.
+    """
+    before = item.get("before") if isinstance(item.get("before"), dict) else {}
+    after = item.get("after") if isinstance(item.get("after"), dict) else {}
+    diff = item.get("diff") if isinstance(item.get("diff"), dict) else {}
+    inserted = _message_number(
+        (after or {}).get("assigned_order_count", 0) - (before or {}).get("assigned_order_count", 0)
+    )
+    extra_km = (after or {}).get("total_distance_m", 0) - (before or {}).get("total_distance_m", 0)
+    extra_min = (after or {}).get("total_duration_s", 0) - (before or {}).get("total_duration_s", 0)
+    reassigned = (diff or {}).get("reassigned_orders") or []
+    cost = (
+        f"全隊多跑 {extra_km / 1000:.1f} 公里、多花 {extra_min / 60:.0f} 分鐘"
+        if extra_km or extra_min
+        else "不用多繞路，也不會多花時間"
+    )
+    moved = (
+        f"有 {len(reassigned)} 張既有訂單要換車"
+        if reassigned
+        else "既有訂單都不用換車"
+    )
+    unassigned = (after or {}).get("unassigned_orders") or []
+    tail = (
+        f"\n其中 {_message_ids(unassigned)} 排不進去，要人工處理。" if unassigned else ""
+    )
+    return (
+        f"{order_ids or '這批急單'} 都排得進去，這次多排 {inserted or '0'} 站。\n"
+        f"{cost}；{moved}。{tail}\n"
+        "這只是試算，原方案還沒變更。"
+    )
+
+
 def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
     """Turn one deterministic evidence record into a Traditional-Chinese sentence."""
     if tool == "assistant_help":
@@ -3736,7 +3775,10 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         target = item.get("target_vehicle_id")
         if item.get("status") in {"NOT_FOUND", "ORDER_NOT_FOUND"}:
             return f"找不到訂單 {order_id}，這次換車／改派沒有執行，原方案沒有變更。"
-        return f"已試算訂單 {order_id} 改派至 {target} 的方案，請檢查方案卡。"
+        if item.get("status") == "MISSING_TARGET_VEHICLE":
+            # 沒有人講車的時候就問, 不要挑一台來湊。
+            return f"{order_id} 要換到哪一台車？講一台給我，現在的方案沒有變更。"
+        return f"已試算訂單 {order_id} 改派至 {vehicle_label(target)} 的方案，請檢查方案卡。"
     if tool == "prioritize_order_preview":
         order_id = item.get("order_id")
         if item.get("status") in {"NOT_FOUND", "ORDER_NOT_FOUND"}:
@@ -3777,14 +3819,28 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
                 f"{order_ids or '這批急單'} 插不進去。\n"
                 "所有車在載重、責任區或配送時段上都湊不出可行的位置，原方案沒有變更。"
             )
+        if item.get("status") == "URGENT_ORDER_INVALID":
+            # Saying 「已經算好」 over a rejected preview is the worst kind of
+            # wrong: the card never appears and the dispatcher waits for it.
+            validation = item.get("validation")
+            reasons = dict.fromkeys(
+                str(error["message"])
+                for error in (validation or {}).get("errors", [])
+                if isinstance(error, dict) and error.get("message")
+            )
+            detail = "\n".join(reasons)
+            return (
+                f"{order_ids or '這批急單'} 沒有算成，資料沒通過檢查：\n{detail}\n"
+                "原方案沒有變更。把上面這幾筆改好再給我一次。"
+                if detail
+                else f"{order_ids or '這批急單'} 的資料沒通過檢查，原方案沒有變更。"
+            )
         # This path fires when the model previews straight from a complete
-        # description without the review step, so the sentence has to stand on
-        # its own rather than point at a card the reader may not have scrolled to.
-        return (
-            f"{order_ids or '這批急單'} 已經算好可以插在哪裡了。\n"
-            "下面的方案卡會列出每一張排進哪台車第幾站、多繞多少路。\n"
-            "這只是預覽，選一張確認才會套用。"
-        )
+        # description without the review step. It produces a whole-plan diff,
+        # not the pick-one option cards, so the sentence has to carry the
+        # numbers itself; pointing at cards that never render leaves the
+        # dispatcher waiting for something that is not coming.
+        return _multiple_urgent_preview_sentence(item, order_ids)
     return "這項操作已完成，請查看方案明細。"
 
 
@@ -4286,15 +4342,35 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                 _save_agent_session(payload.session_id, session)
                 return preview_response
             preview = preview_response
-            next_state = workflow.state.model_copy(update={"stage": "PREVIEW_READY"})
+            # 只留剛剛真的算進去的那幾張。前面「加一張到信義區」留下的半張單
+            # 還掛在草稿裡時, 下一句「用 A, 但這單先送」會被讀成「跳過那張的
+            # 檢查」, 回一句「不能跳過資料檢查」——調度員問的是提前送。
+            next_state = workflow.state.model_copy(
+                update={
+                    "stage": "PREVIEW_READY",
+                    "orders": list(workflow.complete_orders),
+                }
+            )
             session.last_preview_version = int(preview["preview_version"])
-        session.urgent_workflow = next_state.model_dump(mode="json")
+        # A cancelled draft is nothing in progress. Persisting the CANCELLED
+        # stage kept the urgent tools switched off, so the very next 「再加一張
+        # 急單」 had nowhere to go: the dispatcher dropped one order and could
+        # not start another. This turn still reports CANCELLED so the reply
+        # says 「已取消這次臨時插單」; only what is carried forward resets.
+        session.urgent_workflow = (
+            UrgentWorkflowState().model_dump(mode="json")
+            if next_state.stage == "CANCELLED"
+            else next_state.model_dump(mode="json")
+        )
         session.pending_fields = tuple(
             f"{item['order_ref']}.{field}"
             for item in missing
             for field in item["missing_fields"]
         )
-        if orders and isinstance(orders[-1].get("order_id"), str):
+        if next_state.stage == "CANCELLED":
+            session.pending_fields = ()
+            session.order_id = None
+        elif orders and isinstance(orders[-1].get("order_id"), str):
             session.order_id = str(orders[-1]["order_id"])
         evidence_data: dict[str, Any] = {
             "stage": next_state.stage,
@@ -4577,6 +4653,14 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                     # already returned through finish_urgent_workflow above.
                     allow_urgent_intake=(
                         not plan_change_turn and urgent_state.stage == "IDLE"
+                    ),
+                    # Dropping the draft is the one urgent action that must stay
+                    # reachable while a draft is open. Without it the only tool
+                    # left that fits 「算了不要了」 is the refusal, which answers
+                    # a question the dispatcher did not ask. It carries no order
+                    # fields, so it cannot replay the missing-field prompt.
+                    allow_urgent_cancel=(
+                        not plan_change_turn and urgent_state.stage != "IDLE"
                     ),
                     plan_change_mode=plan_change_turn,
                 )

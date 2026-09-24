@@ -66,7 +66,10 @@ async function startPlan(page: Page) {
   await clearActiveRules(page)
   await page.reload()
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
-  await expect(page.getByText('已完成', { exact: false })).toBeVisible({ timeout: 180_000 })
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
+  // 排班完成的綠色提示拿掉了，改用上排的統計列當完成訊號。
+  await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 30_000 })
 }
 
@@ -150,11 +153,20 @@ test('Q-03 十張急單', async ({ page }) => {
   await startPlan(page)
   const orders = Array.from({ length: 10 }, (_, index) => {
     const orderId = `Q03-${String(index + 1).padStart(3, '0')}`
-    return `訂單編號 ${orderId}，配送區域 Z4，城市臺北市，行政區信義，地點標示信義示範站 ${orderId}，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送`
+    return `訂單編號 ${orderId}，配送區域 Z3，城市臺北市，行政區信義，地點標示信義示範站 ${orderId}，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送`
   }).join('；')
   const summary = await keyboardSend(page, 'Q-03', `請一次新增十張急單：${orders}。`)
+  // 張數多的時候系統會直接一次算完（preview_multiple_urgent_insert），
+  // 沒有【產生插單預覽】那一步。十張都收到、而且沒有出錯，才是這題要看的。
+  const batch = findEvidence(summary.body, 'preview_multiple_urgent_insert')
+  if (batch) {
+    expect(batch.status, `系統實際回覆：${summary.body.message}`).toBe('PREVIEWED')
+    expect((batch.order_ids as string[] | undefined)?.length).toBe(10)
+    await shot(page, 'Q-03')
+    return
+  }
   const data = findEvidence(summary.body, 'urgent_insertion_workflow')
-  expect(data).toBeTruthy()
+  expect(data, `系統實際回覆：${summary.body.message}`).toBeTruthy()
   const draftOrders = Array.isArray(data?.orders) ? data.orders : []
   expect(draftOrders.length).toBe(10)
   const preview = await clickPreview(page, 'Q-03-preview')
@@ -169,10 +181,18 @@ test('Q-03 十張急單', async ({ page }) => {
 test('Q-04 同客戶兩張同座標急單', async ({ page }) => {
   test.setTimeout(900_000)
   await startPlan(page)
-  const inputText = '請新增兩張急單：訂單編號 Q04-001，配送區域 Z4，城市臺北市，行政區信義，地點標示同客戶信義站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送；訂單編號 Q04-002，配送區域 Z4，城市臺北市，行政區信義，地點標示同客戶信義站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送。'
+  const inputText = '請新增兩張急單：訂單編號 Q04-001，配送區域 Z3，城市臺北市，行政區信義，地點標示同客戶信義站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送；訂單編號 Q04-002，配送區域 Z3，城市臺北市，行政區信義，地點標示同客戶信義站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 1 公斤，早上配送。'
   const summary = await keyboardSend(page, 'Q-04', inputText)
+  // 兩張同座標的單也可能走一次算完那條路，那條路沒有【產生插單預覽】。
+  const batch = findEvidence(summary.body, 'preview_multiple_urgent_insert')
+  if (batch) {
+    expect(batch.status, `系統實際回覆：${summary.body.message}`).toBe('PREVIEWED')
+    expect((batch.order_ids as string[] | undefined)?.length).toBe(2)
+    await shot(page, 'Q-04')
+    return
+  }
   const data = findEvidence(summary.body, 'urgent_insertion_workflow')
-  expect(data).toBeTruthy()
+  expect(data, `系統實際回覆：${summary.body.message}`).toBeTruthy()
   const draftOrders = Array.isArray(data?.orders) ? data.orders : []
   expect(draftOrders.length).toBe(2)
   const preview = await clickPreview(page, 'Q-04-preview')
@@ -218,8 +238,8 @@ test('Q-08 只講一半的急單', async ({ page }) => {
   expect(data?.stage).toBe('COLLECTING')
   const missingByOrder = Array.isArray(data?.missing_by_order) ? data.missing_by_order : []
   expect(missingByOrder.length).toBeGreaterThan(0)
-  expect(result.body.message || '').toContain('目前還不能計算')
-  await expect(page.getByText('目前還不能計算', { exact: false }).last()).toBeVisible({ timeout: 30_000 })
+  expect(result.body.message || '').toContain('還缺少幾個欄位才能算')
+  await expect(page.getByText('還缺少幾個欄位才能算', { exact: false }).last()).toBeVisible({ timeout: 30_000 })
   await shot(page, 'Q-08')
 })
 
@@ -229,7 +249,7 @@ test('Q-09 插單、改規則、插單、改時段不重整', async ({ page }) =
   let navigationCount = 0
   page.on('framenavigated', () => { navigationCount += 1 })
 
-  const firstInsert = await keyboardSend(page, 'Q-09-1', '新增急單 Q09-001，配送區域 Z4，城市臺北市，行政區信義，地點標示信義連續測試站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 2 公斤，早上配送，請先預覽。')
+  const firstInsert = await keyboardSend(page, 'Q-09-1', '新增急單 Q09-001，配送區域 Z3，城市臺北市，行政區信義，地點標示信義連續測試站，緯度 25.033，經度 121.565，包裹件數 1，每件重量 2 公斤，早上配送，請先預覽。')
   expect(findEvidence(firstInsert.body, 'urgent_insertion_workflow')).toBeTruthy()
   await clickPreview(page, 'Q-09-1-preview')
 

@@ -9,6 +9,7 @@ const PLANNED = /\d+\/50 已安排/
 
 async function loadAndPlan(page: import('@playwright/test').Page): Promise<void> {
   await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
+  // 這一支走的是「附加檔案 + 打字送出」：檔案跟訊息一起送，所以不另外按送出。
   await page.getByLabel('上傳 Excel').last().setInputFiles(workbook)
   const input = page.getByRole('textbox', { name: '輸入訊息' })
   await input.click()
@@ -16,7 +17,7 @@ async function loadAndPlan(page: import('@playwright/test').Page): Promise<void>
   await expect(input).toHaveValue('請幫我排今天的班')
   await input.press('Enter')
   await expect(page.getByText('● 正在執行：每日排班', { exact: true })).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByText(PLANNED)).toBeVisible({ timeout: 180_000 })
+  await expect(page.locator('.topbar-stats')).toContainText(PLANNED, { timeout: 180_000 })
 }
 
 test.describe('D／E 控制塔畫面驗收', () => {

@@ -53,11 +53,24 @@ async function importInUi(page: Page, workbook = relaxedWorkbook): Promise<PlanS
   await page.goto('/')
   const planResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/plans') && response.request().method() === 'POST', { timeout: 180_000 })
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   const response = await planResponse
   expect(response.ok(), await response.text()).toBeTruthy()
   const plan = await response.json() as PlanShape
   await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
   return plan
+}
+
+/** 一張資料齊全的急單講進對話，再要一次插單預覽，等方案卡出現。 */
+async function urgentPreview(page: Page, orderId: string, latitude: string, longitude: string): Promise<void> {
+  await send(
+    page,
+    `新增急單 ${orderId}，配送區域 Z3，城市臺北市，行政區信義，地點名稱信義示範配送點，`
+      + `緯度 ${latitude}，經度 ${longitude}，包裹件數 1，每件重量 8 公斤，早上配送`,
+  )
+  await send(page, '產生插單預覽')
+  await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 60_000 })
 }
 
 function stablePlanShape(plan: PlanShape) {
@@ -90,7 +103,8 @@ test('G-01～G-07 護欄與 provider 降級', async ({ page }) => {
   await saveScreenshot(page, screenshotDir, 'G-04')
 
   const missing = await send(page, '請查 ORD-999 在哪台車')
-  expect(missing.evidence?.some((item) => item.data.status === 'ORDER_NOT_FOUND')).toBe(true)
+  // 查詢類工具回 NOT_FOUND，改派／插單類回 ORDER_NOT_FOUND；後端本來就兩種都當找不到。
+  expect(missing.evidence?.some((item) => item.data.status === 'NOT_FOUND' || item.data.status === 'ORDER_NOT_FOUND')).toBe(true)
   await expect(page.locator('.chat-log > div').last()).toContainText(/找不到|不存在/, { timeout: 30_000 })
   await saveScreenshot(page, screenshotDir, 'G-05')
 
@@ -136,12 +150,11 @@ test('D-01～D-05 固定 seed 重現性、完整路徑與耗時記錄', async ({
 
   const demoStart = Date.now()
   await send(page, '三號車單趟距離上限 30 公里')
-  await page.getByRole('button', { name: '示範一張急單' }).click()
-  await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 30_000 })
+  // 「示範一張急單」那顆按鈕收掉了：急單現在一律從對話講進去，講完再要預覽。
+  await urgentPreview(page, 'ORD-D01', '25.040', '121.560')
   await page.getByRole('button', { name: '開始裝車' }).click()
   await expect(page.getByText('上車後').first()).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: '示範一張急單' }).click()
-  await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 30_000 })
+  await urgentPreview(page, 'ORD-D02', '25.041', '121.543')
   await page.getByRole('button', { name: '模擬出發' }).click()
   const timeline = page.getByRole('slider', { name: '配送時間軸' })
   await timeline.fill('80')

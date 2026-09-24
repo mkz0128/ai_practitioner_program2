@@ -64,7 +64,8 @@ test.describe('R5：異常與特殊資料', () => {
     const before = await page.locator('.chat-log > div.mr-auto').count()
     await uploadViaChatPanel(page, sample('demo-missing-fields.xlsx'))
     await expect.poll(async () => await page.locator('.chat-log > div.mr-auto').count(), { timeout: 120_000 }).toBeGreaterThan(before)
-    await expect(page.locator('body')).toContainText('缺少', { timeout: 120_000 })
+    // 報告改寫成人話了：「訂單 ORD-001 缺「地點名稱」」，不再是「缺少必填欄位」。
+    await expect(page.locator('body')).toContainText('缺', { timeout: 120_000 })
     const visible = await page.locator('.chat-log > div.mr-auto').last().innerText()
     expect(visible).toMatch(/地點名稱|配送時段|重量/)
     expect(visible).not.toMatch(/location_label|time_slot|weight_kg/)

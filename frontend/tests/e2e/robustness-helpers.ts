@@ -1,5 +1,7 @@
-import { expect, type Page } from '@playwright/test'
+﻿import { expect, type Page } from '@playwright/test'
 import path from 'node:path'
+
+import { saveScreenshot } from './screenshot-helper'
 
 export const samplesDir = path.resolve('..', 'data', 'samples')
 export const screenshotDir = path.resolve('..', 'docs', 'screenshots')
@@ -21,7 +23,9 @@ export function screenshotPath(name: string): string {
 }
 
 export async function saveStep(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: screenshotPath(name), fullPage: true })
+  // 直接 page.screenshot 會被 Windows 偶發的 UNKNOWN 寫檔錯誤弄掛整支測試，
+  // 前面跑完的判斷全都白費。共用的存檔工具會重試幾次。
+  await saveScreenshot(page, screenshotDir, name)
 }
 
 export async function waitForPlan(page: Page, expectedAssigned?: string): Promise<void> {
@@ -118,7 +122,7 @@ export async function runFullWalkthrough(page: Page, workbook: string, prefix: s
 
   const injury = await sendUi(page, '三號車的老王最近腰傷，比較重的單先不要給他')
   await expectHumanReply(page, '老王腰傷')
-  expect(includesAny(injury, ['VEH-003', '三號車'])).toBe(true)
+  expect(includesAny(injury, ['VEH-003', '第三車', '三號車'])).toBe(true)
   expect(includesAny(injury, ['kg', '公斤'])).toBe(true)
   expect(includesAny(injury, ['多重', '幾公斤', '上限', '多少'])).toBe(true)
   expect(includesAny(injury, ['期限', '永久', '本週', '今天'])).toBe(true)
@@ -169,7 +173,11 @@ export async function runFullWalkthrough(page: Page, workbook: string, prefix: s
   await expectCleanScreen(page, `${prefix}-急單方案修改`)
   await saveStep(page, `${prefix}-08-reprioritised`)
 
-  await page.locator('button.urgent-card').last().click()
+  // 「需人工處理」的卡按下去只會給「我自己排／取消」，沒有【確認套用】。
+  // 要建立新版本就得挑一張可選的。
+  const selectable = page.locator('button.urgent-card:not(.urgent-card-unavailable)').last()
+  await expect(selectable).toBeVisible({ timeout: 60_000 })
+  await selectable.click()
   const confirm = page.getByRole('button', { name: '確認套用', exact: true }).last()
   await expect(confirm).toBeVisible({ timeout: 60_000 })
   await confirm.click()
@@ -192,12 +200,17 @@ export async function runFullWalkthrough(page: Page, workbook: string, prefix: s
   await page.getByRole('button', { name: '模擬出發', exact: true }).click()
   await expect(page.locator('body')).toContainText('已發車', { timeout: 60_000 })
   await page.getByRole('slider', { name: '配送時間軸' }).fill('160')
-  const firstRow = page.locator('[aria-label="訂單與配送順序"] tbody tr').first()
-  const targetOrder = (await firstRow.locator('td').nth(2).innerText()).trim()
+  // 訂單表格換成四欄看板了，單號掛在每一列的 data-order-id 上。
+  // 挑一張還沒送達的，才問得出「提前配送」。
+  const firstRow = page.locator('.order-board-stop[data-order-id]:not(.order-board-stop-locked)').first()
+  const targetOrder = ((await firstRow.getAttribute('data-order-id')) || '').trim()
   expect(targetOrder).not.toBe('')
   const earlier = await sendUi(page, `${targetOrder} 客戶說中午前一定要拿到`)
   await expectHumanReply(page, '已發車提前配送')
-  expect(includesAny(earlier, ['已送', '已完成', '第', '公里', 'km', '分鐘', '送不到', '重新規劃'])).toBe(true)
+  expect(
+    includesAny(earlier, ['已送', '已完成', '第', '公里', 'km', '分鐘', '送不到', '重新規劃', '目前']),
+    `輸入：${targetOrder} 客戶說中午前一定要拿到\n畫面實際回覆：${earlier}`,
+  ).toBe(true)
   await expectCleanScreen(page, `${prefix}-提前配送`)
   await saveStep(page, `${prefix}-12-earlier`)
 

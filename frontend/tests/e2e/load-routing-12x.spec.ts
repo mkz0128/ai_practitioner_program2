@@ -38,7 +38,8 @@ async function send(page: Page, text: string, allowPlanFallback = false): Promis
     await input.press('Enter')
     if (allowPlanFallback) {
       await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
-      return { reply: (await page.locator('.feedback-success:visible').last().innerText()).trim(), tool: 'plan_dispatch' }
+      // 排班完成的綠色提示拿掉了，改抄上排的統計列。
+      return { reply: (await page.locator('.topbar-stats').innerText()).trim(), tool: 'plan_dispatch' }
     }
     await expect.poll(async () => bubbles.count(), { timeout: 240_000 }).toBeGreaterThan(before)
     const bubble = bubbles.last()

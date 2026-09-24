@@ -32,7 +32,10 @@ function installBrowserGuards(page: Page) {
 async function importRelaxed(page: Page) {
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
-  await expect(page.getByText('方案待人工確認。')).toBeVisible({ timeout: 180_000 })
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
+  // 排班完成的綠色提示拿掉了，改用上排統計列當完成訊號。
+  await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
 }
 
 async function send(page: Page, message: string): Promise<AgentBody> {
@@ -89,7 +92,7 @@ test('BUG-10：重新整理與重新開始都不沿用已發車 frozen stops', a
   expect(reloadSessionId).not.toBe(firstSessionId)
 
   await page.getByRole('button', { name: '重新開始' }).click()
-  await expect(page.getByText('下載範例格式')).toBeVisible()
+  await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 })
   await importRelaxed(page)
   const afterReset = await send(page, '三號車今天不能出車')
   expect(frozenOrderIds(afterReset)).toEqual([])
@@ -144,7 +147,7 @@ test('NIT-3：最高載重、移除訂單、停駛都回覆具體內容', async 
   await expect(page.locator('.chat-log > div').last()).toContainText('kg')
 
   await page.getByRole('button', { name: '重新開始' }).click()
-  await expect(page.getByText('下載範例格式')).toBeVisible()
+  await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 })
   await importRelaxed(page)
   const removed = await send(page, 'ORD-019 今天不用送了')
   const removeEvidence = removed.evidence?.find((item) => item.tool === 'remove_order_preview')
@@ -154,14 +157,16 @@ test('NIT-3：最高載重、移除訂單、停駛都回覆具體內容', async 
   await expect(page.locator('.chat-log > div').last()).toContainText('ORD-019', { timeout: 30_000 })
 
   await page.getByRole('button', { name: '重新開始' }).click()
-  await expect(page.getByText('下載範例格式')).toBeVisible()
+  await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 })
   await importRelaxed(page)
   const unavailable = await send(page, '三號車今天不能出車')
   const availabilityEvidence = unavailable.evidence?.find((item) => item.tool === 'change_vehicle_availability')
   expect(availabilityEvidence).toBeTruthy()
-  expect(unavailable.message || '').toContain('VEH-003')
+  // 回覆裡點名的是調度員講的「第三車」，不是資料庫鍵值 VEH-003；
+  // 兩種都算點名到那台車。
+  expect(unavailable.message || '').toMatch(/第三車|VEH-003/)
   expect(unavailable.message || '').not.toContain('已完成確定性工具計算')
-  await expect(page.locator('.chat-log > div').last()).toContainText('VEH-003', { timeout: 30_000 })
+  await expect(page.locator('.chat-log > div').last()).toContainText(/第三車|VEH-003/, { timeout: 30_000 })
 
   await saveScreenshot(page, screenshotDir, 'NIT-3-concrete-replies')
   expect(guards.consoleErrors).toEqual([])

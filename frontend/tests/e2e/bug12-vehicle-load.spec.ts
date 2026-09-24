@@ -57,8 +57,11 @@ test('BUG-12：點名四台車都用 vehicle_load 並回覆畫面上的數字', 
     { timeout: 180_000 },
   )
   await page.getByLabel('上傳 Excel').setInputFiles(relaxedWorkbook)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   const plan = JSON.parse(await (await planResponse).text()) as PlanBody
-  await expect(page.getByText('方案待人工確認。')).toBeVisible({ timeout: 180_000 })
+  // 排班完成的綠色提示拿掉了，改用上排統計列當完成訊號。
+  await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 180_000 })
 
   const vehicleLabels = ['一號車', '二號車', '三號車', '四號車']
   for (const [index, label] of vehicleLabels.entries()) {
@@ -74,8 +77,11 @@ test('BUG-12：點名四台車都用 vehicle_load 並回覆畫面上的數字', 
 
     const assistantBubble = page.locator('.chat-log > div').last()
     await expect(assistantBubble).toContainText(`${expected?.vehicle_id} 目前計畫載重 ${formatWeight(expected?.planned_load_kg || 0)} kg`)
-    const vehicleCard = page.locator('button').filter({ hasText: expected?.vehicle_id || '' }).filter({ hasText: `載重 ${formatWeight(expected?.planned_load_kg || 0)} kg` }).first()
-    await expect(vehicleCard).toBeVisible()
+    // 「車輛概況」那張卡收掉了，載重改在訂單看板的欄頭。助理講的數字要跟
+    // 畫面上的同一個。
+    const columnIndex = ['VEH-001', 'VEH-002', 'VEH-003', 'VEH-004'].indexOf(expected?.vehicle_id || '')
+    const column = page.locator('.order-board-column').nth(columnIndex)
+    await expect(column.locator('.obh-meta')).toContainText(`${formatWeight(expected?.planned_load_kg || 0)} kg`)
   }
 
   await saveScreenshot(page, screenshotDir, 'BUG-12-vehicle-load')

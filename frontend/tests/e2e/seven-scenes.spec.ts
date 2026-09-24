@@ -67,7 +67,14 @@ async function send(page: Page, message: string): Promise<void> {
     await expect(input).toBeEnabled({ timeout: 90_000 })
     await input.click()
     await input.fill('')
-    await input.pressSequentially(message)
+    // 對話框的 Enter 就是送出，多行要用 Shift+Enter 換行，
+    // 不然第一行就先送出去了。
+    const lines = message.split('\n')
+    await input.pressSequentially(lines[0] || '')
+    for (const line of lines.slice(1)) {
+      await input.press('Shift+Enter')
+      await input.pressSequentially(line)
+    }
     await input.press('Enter')
     await expect
       .poll(async () => assistants.count(), { timeout: 60_000 })

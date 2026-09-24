@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+﻿import { expect, test, type Page } from '@playwright/test'
 
 import {
   applyVisibleRule,
@@ -24,7 +24,7 @@ test('R3-1：交錯操作不污染脈絡', async ({ page }) => {
 
   const injury = await sendUi(page, '三號車的老王最近腰傷，比較重的單先不要給他')
   console.log(`R3-1-01 畫面回覆：${injury}`)
-  expect(includesAny(injury, ['VEH-003', '三號車'])).toBe(true)
+  expect(includesAny(injury, ['VEH-003', '第三車', '三號車'])).toBe(true)
   await saveStep(page, 'R3-1-01-injury')
 
   const rule = await sendUi(page, '20 公斤以上就不要，永久')
@@ -58,13 +58,14 @@ test('R3-1：交錯操作不污染脈絡', async ({ page }) => {
   await saveStep(page, 'R3-1-09-assignment-response')
   await expectHumanReply(page, 'R3-1-09')
   expect(assignment).toContain('ORD-101')
-  expect(includesAny(assignment, ['VEH-', '安排'])).toBe(true)
+  // 回覆講的是人話車名（第二車），不是資料庫鍵值。
+  expect(includesAny(assignment, ['VEH-', '車', '安排'])).toBe(true)
   await saveStep(page, 'R3-1-09-assignment')
   const unavailable = await sendUi(page, '三號車今天不能出車')
   console.log(`R3-1-10 畫面回覆：${unavailable}`)
   await saveStep(page, 'R3-1-10-unavailable-response')
   await expectHumanReply(page, 'R3-1-10')
-  expect(includesAny(unavailable, ['VEH-003', '三號車'])).toBe(true)
+  expect(includesAny(unavailable, ['VEH-003', '第三車', '三號車'])).toBe(true)
   expect(includesAny(unavailable, ['不能', '停駛', '請假', '重排', '安排'])).toBe(true)
   await saveStep(page, 'R3-1-10-unavailable')
   const refusal = await sendUi(page, '把所有單重新分配一遍')

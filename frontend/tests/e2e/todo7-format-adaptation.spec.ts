@@ -32,12 +32,28 @@ async function waitForPlan(page: Page) {
 
 async function resetToEmpty(page: Page) {
   const reset = page.getByRole('button', { name: '重新開始' })
-  if (await reset.isVisible()) await reset.click()
-  await expect(page.getByText('下載範例格式')).toBeVisible({ timeout: 30_000 })
+  if (await reset.count()) {
+    await reset.click()
+    await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 })
+    return
+  }
+  // 匯入失敗時根本沒有方案，上排那顆「重新開始」不存在；而對話裡已經有
+  // 訊息了，開場的「先放入今天的訂單」也就收起來。確認輸入框還能用就好。
+  await expect(page.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled({ timeout: 30_000 })
 }
 
 async function upload(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }) {
   await page.getByLabel('上傳 Excel').setInputFiles(file)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
+}
+
+/**
+ * 從對話框丟進來的檔案，讀不動或缺欄的報告就回在對話裡；右上角
+ * 「換一份資料」那條路才會走到紅色警示框。
+ */
+function importReport(page: Page) {
+  return page.locator('.chat-log > div.mr-auto').last()
 }
 
 test('TODO 7：F1-02～F1-07 欄位對映、人工確認、保存與修正後匯入', async ({ page }, testInfo) => {
@@ -91,11 +107,10 @@ test('TODO 7：F1-02～F1-07 欄位對映、人工確認、保存與修正後匯
 
   await resetToEmpty(page)
   await upload(page, missingWorkbook)
-  const missingAlert = page.getByRole('alert')
-  await expect(missingAlert).toContainText('ORD-001')
+  const missingAlert = importReport(page)
+  await expect(missingAlert).toContainText('ORD-001', { timeout: 120_000 })
   await expect(missingAlert).toContainText('ORD-002')
   await expect(missingAlert).toContainText('PKG-003-01')
-  await expect(missingAlert).toContainText('缺少必填欄位')
   await expect(missingAlert).toContainText('地點名稱')
   await expect(missingAlert).toContainText('配送時段')
   await expect(missingAlert).toContainText('重量')
@@ -124,17 +139,17 @@ test('TODO 7：F1-08～F1-10 檔案錯誤、空資料與重複訂單', async ({ 
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('this is not an xlsx workbook'),
   })
-  await expect(page.getByRole('alert')).toContainText('不是可讀取的 Excel', { timeout: 30_000 })
+  await expect(importReport(page)).toContainText('無法讀取 .xlsx 檔案', { timeout: 30_000 })
   await saveScreenshot(page, screenshotDir, 'F1-08')
 
   await resetToEmpty(page)
   await upload(page, emptyWorkbook)
-  await expect(page.getByRole('alert')).toContainText('至少提供一筆訂單', { timeout: 30_000 })
+  await expect(importReport(page)).toContainText('至少提供一筆訂單', { timeout: 30_000 })
   await saveScreenshot(page, screenshotDir, 'F1-09')
 
   await resetToEmpty(page)
   await upload(page, duplicateWorkbook)
-  const duplicateAlert = page.getByRole('alert')
+  const duplicateAlert = importReport(page)
   await expect(duplicateAlert).toContainText('ORD-001', { timeout: 30_000 })
   await expect(duplicateAlert).toContainText('重複')
   await saveScreenshot(page, screenshotDir, 'F1-10')

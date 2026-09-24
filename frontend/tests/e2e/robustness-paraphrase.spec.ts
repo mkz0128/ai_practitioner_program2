@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+﻿import { expect, test } from '@playwright/test'
 
 import {
   expectCleanScreen,
@@ -57,7 +57,7 @@ for (const [index, message] of driverRestrictions.entries()) {
     }
     await expectHumanReply(page, message)
     const asksVehicle = includesAny(reply, ['選擇要限制的車輛', '先選擇要限制的車輛'])
-    expect(includesAny(reply, ['VEH-003', '三號車']) || asksVehicle).toBe(true)
+    expect(includesAny(reply, ['VEH-003', '第三車', '三號車']) || asksVehicle).toBe(true)
     if (!asksVehicle) {
       expect(includesAny(reply, ['kg', '公斤'])).toBe(true)
       expect(includesAny(reply, ['多重', '幾公斤', '上限', '多少'])).toBe(true)
@@ -75,7 +75,7 @@ for (const [index, message] of vehicleAvailability.entries()) {
     const reply = await sendUi(page, message)
     console.log(`R2-2-${index + 1} 畫面回覆：${reply}`)
     await expectHumanReply(page, message)
-    expect(includesAny(reply, ['VEH-003', '三號車'])).toBe(true)
+    expect(includesAny(reply, ['VEH-003', '第三車', '三號車'])).toBe(true)
     expect(includesAny(reply, ['不能', '停駛', '請假', '不可', '安排', '出車', '重排'])).toBe(true)
     await expectCleanScreen(page, `R2-2-${index + 1}`)
     await saveStep(page, `R2-2-${index + 1}`)

@@ -138,7 +138,14 @@ class StructuredUrgentOrderInput(BaseModel):
 class MultipleUrgentOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    orders: list[StructuredUrgentOrderInput] = Field(default_factory=list, max_length=5)
+    # 上限原本是 5。調度員一次講十張時, 模型只塞得下五張, 剩下五張就這樣
+    # 不見了, 畫面還回「都排得進去」。少算一半比算不出來更糟, 所以上限拉到
+    # 跟臨時插單流程一樣的 20 張。
+    orders: list[StructuredUrgentOrderInput] = Field(
+        default_factory=list,
+        max_length=20,
+        description="本則訊息裡使用者講出來的每一張急單都要列進來，一張都不能省略。",
+    )
 
 
 class UrgentIntakeOrderInput(BaseModel):
@@ -205,7 +212,14 @@ class UrgentIntakeInput(BaseModel):
         "PREVIEW",
         "CANCEL",
         "BYPASS_CONFIRMATION",
-    ]
+    ] = Field(
+        description=(
+            "手上這張還沒完成的急單要放掉時填 CANCEL——「算了」「不要了」"
+            "「先不用」「這張取消」都是放掉草稿，那是這個流程自己的動作，"
+            "不是系統不支援的變更，不要改叫拒絕工具。"
+            "補或改欄位填 ADD_OR_UPDATE；要看插單預覽填 PREVIEW。"
+        ),
+    )
     orders: list[UrgentIntakeOrderInput] = Field(default_factory=list, max_length=20)
     referenced_order_ids: list[str] = Field(default_factory=list, max_length=20)
 
@@ -268,7 +282,17 @@ class ReassignmentPreviewInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     order_id: str = Field(min_length=1)
-    target_vehicle_id: str = Field(min_length=1)
+    # 這個欄位原本是必填。調度員說「幫我插 ORD-041」時沒有講車, 模型還是得
+    # 填一台, 於是回覆變成「ORD-041 不能換到第一車」——那台車從頭到尾沒有人
+    # 提過。必填逼出來的數字就是編的; 留白才講得出「你要換到哪一台」。
+    target_vehicle_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "使用者指名要換到的那一台車。整則訊息裡沒有講出任何車時留空, "
+            "工具會回頭問是哪一台; 絕對不要自己挑一台填進來。"
+        ),
+    )
     target_subject_kind: Literal["VEHICLE_ID", "DRIVER_NAME"] = "VEHICLE_ID"
 
 
@@ -329,7 +353,9 @@ class DispatchRuleInput(BaseModel):
         description=(
             "使用者點名車輛時填資料集的 canonical vehicle_id；一號車、二號車、"
             "三號車、四號車依序對應 VEH-001、VEH-002、VEH-003、VEH-004。"
-            "沒有明確車號時留空，不要從司機姓名猜車。"
+            "同一句話裡車號與司機姓名同時出現（例如「三號車的老王」）時，"
+            "車號仍然要填：姓名只是補充說明，車號已經講清楚了。"
+            "整句話裡完全沒有車號時才留空，這種情況不要從司機姓名猜車。"
         ),
     )
     subject_reference_kind: Literal["VEHICLE_ID", "DRIVER_NAME", "UNSPECIFIED"] = Field(
@@ -346,7 +372,20 @@ class DispatchRuleInput(BaseModel):
         "EXCLUDED_ZONE",
         "ALLOWED_TIME_WINDOW",
         "LATEST_RETURN_TIME",
-    ] | None = None
+    ] | None = Field(
+        default=None,
+        description=(
+            "照使用者這則訊息在限制什麼來選，不要挑相鄰的那一種："
+            "講重量、公斤、太重、搬不動 → MAX_PACKAGE_WEIGHT；"
+            "講距離、公里、路線太長、跑太遠 → MAX_ROUTE_DISTANCE；"
+            "講站數、幾站、點太多 → MAX_STOPS；"
+            "講不跑哪一區、某區不去 → EXCLUDED_ZONE；"
+            "講只跑早上／下午／晚上 → ALLOWED_TIME_WINDOW；"
+            "講幾點收工、幾點前回來、早點下班 → LATEST_RETURN_TIME。"
+            "一句話同時講了重量與收工時間時填 MAX_PACKAGE_WEIGHT，"
+            "工具會把兩個數字一起問。都聽不出是哪一種時才留空。"
+        ),
+    )
     value: float | str | None = Field(
         default=None,
         description=(
@@ -622,7 +661,13 @@ def request_missing_fields(
 def begin_urgent_insertion(
     ctx: RunContextWrapper[DispatchAgentContext], request: UrgentIntakeInput
 ) -> str:
-    """Hand a new urgent-order fact to the deterministic state machine without planning.
+    """Drive the urgent-insert flow: take a new order fact, or drop the draft.
+
+    這個工具管的是「臨時插單」這條流程的每一步, 不是只有新增。
+    手上那張還沒完成的急單要放掉時也用它, action 填 CANCEL:
+    「算了」「不要了」「先不用」「這張取消」「不插了」都是放掉草稿。
+    放掉草稿是這條流程自己的動作, 不是系統不支援的變更,
+    不要交給 ``reject_unsupported_change``。
 
     Use this as the semantic entry point whenever the user reports a new,
     newly arrived, customer-placed, omitted-from-the-run, forgotten,
@@ -661,6 +706,28 @@ def begin_urgent_insertion(
     evidence = {"tool": "begin_urgent_insertion", **payload}
     ctx.context.evidence.append(evidence)
     _tool_finished(ctx.context, "begin_urgent_insertion")
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+@function_tool(strict_mode=True)
+def cancel_urgent_draft(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
+    """Drop the half-finished urgent order the dispatcher is in the middle of.
+
+    「算了」「不要了」「先不用」「這張不插了」「這張取消」——講這些話的時候,
+    調度員是要放掉手上那張還沒送出去的急單, 不是要改今天的方案。
+    這不是系統不支援的變更, 不要用 ``reject_unsupported_change``;
+    原方案本來就沒有因為那張草稿變過, 放掉它什麼也不會動到。
+
+    只有在放掉草稿時用這個工具。要改今天已經排好的訂單, 或是要整批重排,
+    那些才是各自的方案調整工具或拒絕工具。
+    """
+    payload = {"action": "CANCEL", "orders": [], "referenced_order_ids": []}
+    _tool_started(ctx.context, "cancel_urgent_draft", payload)
+    # 交回 begin_urgent_insertion 的證據形狀, 後面那條確定性流程就不用改:
+    # HTTP 層本來就是看到這個 tool 名稱才進臨時插單狀態機。
+    evidence = {"tool": "begin_urgent_insertion", **payload}
+    ctx.context.evidence.append(evidence)
+    _tool_finished(ctx.context, "cancel_urgent_draft")
     return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
 
 
@@ -747,6 +814,10 @@ def _remember_plan_preview(
 @function_tool(strict_mode=True)
 def reject_unsupported_change(ctx: RunContextWrapper[DispatchAgentContext]) -> str:
     """Refuse a request outside the six supported plan-card modifications.
+
+    放掉手上那張還沒完成的急單, 例如「算了」「不要了」「先不用」「這張取消」,
+    不是不支援的變更, 不要用這個工具。那是臨時插單流程自己的取消動作,
+    用 ``begin_urgent_insertion`` 並把 action 填 CANCEL。
 
     A request to skip, bypass, ignore, or avoid validation or human confirmation
     before formal dispatch always uses this tool.  It must never call
@@ -929,7 +1000,7 @@ def _driver_rule_clarification(
         max((order.total_weight_kg for order in route_orders), default=0.0), 1
     )
     orders_over_20kg = sum(order.total_weight_kg > 20.0 for order in route_orders)
-    options = [
+    options: list[dict[str, Any]] = [
         {
             "rule_type": "MAX_ROUTE_DISTANCE",
             "label": "單趟總距離上限",
@@ -2676,6 +2747,12 @@ def reassign_order_preview(
 ) -> str:
     """Preview moving one existing order to a target vehicle.
 
+    這個工具要成立, 使用者必須在這則訊息裡真的講出「換到哪一台車」。
+    只講了訂單編號、沒有講車, 例如「幫我插 ORD-041」「ORD-041 處理一下」,
+    不是換車需求, 不要自己挑一台車填進 target_vehicle_id。
+    調度員從頭到尾沒提過那台車, 回覆卻說「不能換到第一車」, 那是憑空生出來的。
+    那種句子交給臨時插單或欄位澄清工具。
+
     Absolute routing boundary: whenever the current message contains an
     explicit order ID and a canonical vehicle ID or unambiguous vehicle
     number, use this tool first. That remains true for an unknown order,
@@ -2698,6 +2775,20 @@ def reassign_order_preview(
     _tool_started(ctx.context, "reassign_order_preview", request.model_dump(mode="json"))
     if not _planning_data_ready(ctx.context):
         return _dataset_required_response(ctx.context, "reassign_order_preview")
+    if request.target_vehicle_id is None:
+        evidence = {
+            "tool": "reassign_order_preview",
+            "status": "MISSING_TARGET_VEHICLE",
+            **request.model_dump(mode="json"),
+            "message": (
+                f"{request.order_id} 要換到哪一台車？講一台給我, "
+                "現在的方案沒有變更。"
+            ),
+            "requires_human_confirmation": False,
+        }
+        ctx.context.evidence.append(evidence)
+        _tool_finished(ctx.context, "reassign_order_preview")
+        return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
     if not any(
         order.order_id == request.order_id for order in ctx.context.dataset.orders
     ):
@@ -3766,16 +3857,98 @@ def preview_urgent_insert(ctx: RunContextWrapper[DispatchAgentContext], order_id
     return _preview_urgent_order(ctx.context, pending, "preview_urgent_insert")
 
 
+def _zone_consistent_place(
+    dataset: Dataset,
+    zone_code: str,
+    city: str,
+    district: str,
+    latitude: float,
+    longitude: float,
+) -> tuple[str, str]:
+    """Replace a placeholder city or district with what the workbook knows.
+
+    A dispatcher listing several urgent orders as coordinates plus a zone never
+    says the city or the district, but both fields are required here, so the
+    model puts something in them — 「未知」 — and the whole batch is rejected for
+    a value the dispatcher never typed. The workbook already knows which city
+    and district that zone covers at that spot, so the application fills them,
+    exactly as it does for a single urgent order.
+
+    A district the dispatcher really did name is left alone even when it sits in
+    another zone: that is a genuine contradiction and the validator must still
+    say so.
+    """
+    zone = next((item for item in dataset.zones if item.zone_code == zone_code), None)
+    if zone is None:
+        return city, district
+    known_cities = {name for item in dataset.zones for name in item.covered_cities}
+    known_districts = {name for item in dataset.zones for name in item.covered_districts}
+    if city in known_cities and district in known_districts:
+        return city, district
+    nearest = min(
+        (order for order in dataset.orders if order.zone_code == zone_code),
+        key=lambda order: (order.latitude - latitude) ** 2
+        + (order.longitude - longitude) ** 2,
+        default=None,
+    )
+
+    def fill(value: str, known: set[str], covered: Sequence[str], fallback: str | None) -> str:
+        if value in known:
+            return value
+        if fallback:
+            return fallback
+        return covered[0] if len(covered) == 1 else value
+
+    return (
+        fill(city, known_cities, zone.covered_cities, nearest.city if nearest else None),
+        fill(
+            district,
+            known_districts,
+            zone.covered_districts,
+            nearest.district if nearest else None,
+        ),
+    )
+
+
+def _urgent_packages(
+    order_id: str, packages: Sequence[StructuredPackageInput]
+) -> tuple[Package, ...]:
+    """Number the parcels here, not in the model.
+
+    Asked to supply a package id, the model answered ``PKG-1`` for every order
+    in the same batch, and the deterministic validator then rejected the whole
+    preview as duplicate ids. The id carries nothing the application does not
+    already know: it is the order the parcel belongs to plus its position in
+    that order. The same shape is used when an urgent draft becomes an order.
+    """
+    return tuple(
+        Package(
+            package_id=f"PKG-{order_id}-{index:02d}",
+            order_id=order_id,
+            weight_kg=package.weight_kg,
+        )
+        for index, package in enumerate(packages, start=1)
+    )
+
+
 @function_tool(strict_mode=True)
 def preview_structured_urgent_insert(
     ctx: RunContextWrapper[DispatchAgentContext], order: StructuredUrgentOrderInput
 ) -> str:
     """Convert strict structured input into the canonical Order and preview it."""
+    city, district = _zone_consistent_place(
+        ctx.context.dataset,
+        order.zone_code,
+        order.city,
+        order.district,
+        order.latitude,
+        order.longitude,
+    )
     pending = Order(
         order_id=order.order_id,
         zone_code=order.zone_code,
-        city=order.city,
-        district=order.district,
+        city=city,
+        district=district,
         location_label=order.location_label,
         latitude=order.latitude,
         longitude=order.longitude,
@@ -3783,14 +3956,7 @@ def preview_structured_urgent_insert(
         declared_package_count=order.declared_package_count,
         priority=Priority(order.priority),
         note=None,
-        packages=tuple(
-            Package(
-                package_id=package.package_id,
-                order_id=package.order_id,
-                weight_kg=package.weight_kg,
-            )
-            for package in order.packages
-        ),
+        packages=_urgent_packages(order.order_id, order.packages),
     )
     return _preview_urgent_order(ctx.context, pending, "preview_structured_urgent_insert")
 
@@ -3859,12 +4025,20 @@ def preview_multiple_urgent_insert(
         }
 
     for item in request.orders:
+        city, district = _zone_consistent_place(
+            ctx.context.dataset,
+            item.zone_code,
+            item.city,
+            item.district,
+            item.latitude,
+            item.longitude,
+        )
         converted.append(
             Order(
                 order_id=item.order_id,
                 zone_code=item.zone_code,
-                city=item.city,
-                district=item.district,
+                city=city,
+                district=district,
                 location_label=item.location_label,
                 latitude=item.latitude,
                 longitude=item.longitude,
@@ -3872,14 +4046,7 @@ def preview_multiple_urgent_insert(
                 declared_package_count=item.declared_package_count,
                 priority=Priority(item.priority),
                 note=None,
-                packages=tuple(
-                    Package(
-                        package_id=package.package_id,
-                        order_id=package.order_id,
-                        weight_kg=package.weight_kg,
-                    )
-                    for package in item.packages
-                ),
+                packages=_urgent_packages(item.order_id, item.packages),
             )
         )
     existing_ids = {order.order_id for order in ctx.context.dataset.orders}
@@ -4130,6 +4297,7 @@ def create_dispatch_agent(
     *,
     include_urgent_tools: bool = True,
     allow_urgent_intake: bool = True,
+    allow_urgent_cancel: bool = False,
     stage: Literal["PRE_LOAD", "LOADED", "DISPATCHED"] = "PRE_LOAD",
     plan_change_mode: bool = False,
 ) -> Agent[DispatchAgentContext]:
@@ -4190,6 +4358,12 @@ def create_dispatch_agent(
         ]
     if allow_urgent_intake:
         tools.insert(0, begin_urgent_insertion)
+    if allow_urgent_cancel:
+        # 草稿開著的時候, 臨時插單那組工具整組會被拿掉, 於是「算了不要了」
+        # 只剩下拒絕工具可選, 六次有六次回「這個我不能改」。放掉草稿要能講,
+        # 就得在草稿開著的時候留這一顆在桌上。它不帶任何訂單欄位,
+        # 不會把缺欄提示再演一次。
+        tools.insert(0, cancel_urgent_draft)
     # The HTTP conversation enters the deterministic urgent workflow through
     # begin_urgent_insertion. Its missing-field response is produced after the
     # semantic tool call, so the clarification helper remains compatibility-only
@@ -4667,6 +4841,7 @@ async def run_dispatch_agent(
     frozen_stop_ids: tuple[str, ...] = (),
     include_urgent_tools: bool = True,
     allow_urgent_intake: bool = True,
+    allow_urgent_cancel: bool = False,
     plan_change_mode: bool = False,
 ) -> tuple[str, DispatchAgentContext, Any]:
     context = DispatchAgentContext(
@@ -4700,6 +4875,7 @@ async def run_dispatch_agent(
         model,
         include_urgent_tools=include_urgent_tools,
         allow_urgent_intake=allow_urgent_intake,
+        allow_urgent_cancel=allow_urgent_cancel,
         stage=stage,
         plan_change_mode=plan_change_mode,
     )

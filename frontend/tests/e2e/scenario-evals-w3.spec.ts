@@ -37,10 +37,12 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
 
   const missing = await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
-  expect(missing.message || '').toContain('目前還不能計算')
+  expect(missing.message || '').toContain('還缺少幾個欄位才能算')
   await saveScreenshot(page, screenshotDir, 'W-21')
 
   const complete = await send(page, '訂單編號 ORD-101，配送區域 Z3，城市臺北市，行政區信義，地點名稱大安信義交界示範配送點 Z3-51，緯度 25.040，經度 121.560，包裹件數 1，每件重量 15 公斤，早上配送')
@@ -61,7 +63,10 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
 
   const modified = await send(page, '用 A，但這單先送')
   expect(tool(modified, 'prioritize_order_preview')).toBeTruthy()
-  await expect(page.getByText('新方案卡尚未套用')).toBeVisible({ timeout: 60_000 })
+  // 提前配送的回覆現在直接講理由與代價，句尾自己交代能不能套用，不再多加
+  // 一句「新方案卡尚未套用」。新的方案卡出現、而且沒有建立新版本才是重點。
+  await expect(page.getByRole('group', { name: '臨時插單方案' }).last()).toBeVisible({ timeout: 60_000 })
+  await expect(page.locator('body')).not.toContainText('已建立新版本')
   await saveScreenshot(page, screenshotDir, 'W-26')
 
   const refused = await send(page, '把所有單重新分配一遍')
@@ -100,6 +105,8 @@ test('BUG-8：Demo 腳本兩句原文五次都進入訂單摘要', async ({ page
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
     await page.getByLabel('上傳 Excel').setInputFiles(workbook)
+    // 選檔案只是附加，要按【送出】才會上傳排班。
+    await page.getByRole('button', { name: '送出', exact: true }).click()
     await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
 
     await send(page, firstSentence)

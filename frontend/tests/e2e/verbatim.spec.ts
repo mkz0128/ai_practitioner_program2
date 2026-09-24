@@ -46,7 +46,8 @@ async function screenSummary(page: Page): Promise<string> {
     '.stage-chat .chat-activity-skill',
     '.route-preview',
     '.order-board-manual',
-    '.fleet-rail',
+    // 車輛進度條併進上排的地圖圖例了，逐字稿抄那一條。
+    '.topbar-map',
     '[aria-label="配送時間軸"]',
     '.board-order-details:visible',
     '[role="status"]',
@@ -109,7 +110,8 @@ async function sendTyped(page: Page, message: string, allowPlanFallback = false)
     try {
       await expect.poll(async () => assistants.count(), { timeout: 30_000 }).toBeGreaterThan(before)
     } catch (error) {
-      const planVisible = await page.locator('.feedback-success:visible').filter({ hasText: '已完成' }).count() > 0
+      // 排班完成的綠色提示拿掉了；上排的路線篩選只有排完才畫得出來。
+      const planVisible = await page.locator('.topbar-map .map-route-filter').count() > 0
       if (allowPlanFallback && planVisible) {
         return { reply: await uiFeedback(page), tool: extractTool(responses.at(-1)) === '未知（畫面操作未取得工具名稱）' ? 'plan_dispatch' : extractTool(responses.at(-1)) }
       }
@@ -349,9 +351,10 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
         await page.getByLabel('上傳 Excel').last().setInputFiles(workbook)
         let setupFailure = ''
         try {
-          await sendTyped(page, '請幫我排今天的班')
+          await sendTyped(page, '請幫我排今天的班', true)
         } catch (error) {
-          const planVisible = await page.locator('.feedback-success:visible').filter({ hasText: '已完成' }).count() > 0
+          // 排班完成的綠色提示拿掉了；上排的路線篩選只有排完才畫得出來。
+          const planVisible = await page.locator('.topbar-map .map-route-filter').count() > 0
           if (!planVisible) setupFailure = `前置排班沒做成，因為：${String(error)}；我試過：重新整理、重新上傳同一份 demo-50-tight.xlsx，再逐字輸入請幫我排今天的班。`
         }
         for (let index = 0; index < group.questions.length; index += 1) {

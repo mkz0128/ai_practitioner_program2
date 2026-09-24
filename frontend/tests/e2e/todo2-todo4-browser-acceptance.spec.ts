@@ -13,8 +13,60 @@ async function importDemoPlan(page: Page, workbook = relaxedWorkbook) {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   await expect(page.locator('.topbar-stats')).toContainText('已安排', { timeout: 120_000 })
   await expect(page.getByLabel('配送地圖', { exact: true })).toBeVisible({ timeout: 30_000 })
+}
+
+/**
+ * 責任區、城市、行政區與座標必須互相對得起來，否則後端會擋
+ * ZONE_MEMBERSHIP_ERROR。這四組是資料集 zones 分頁裡真的存在的搭配。
+ */
+const ZONES = {
+  Z1: { zone: 'Z1', city: '臺北市', district: '中山', latitude: '25.085', longitude: '121.525' },
+  Z2: { zone: 'Z2', city: '臺北市', district: '內湖', latitude: '25.083', longitude: '121.590' },
+  Z3: { zone: 'Z3', city: '臺北市', district: '信義', latitude: '25.040', longitude: '121.560' },
+  Z4: { zone: 'Z4', city: '新北市', district: '板橋', latitude: '25.015', longitude: '121.462' },
+} as const
+
+/**
+ * 一張資料齊全的急單寫成一行；欄位順序照畫面上要的那份清單。
+ * 單號不要用 URG-DEMO-041／ORD-041——那兩個是後端寫死的示範樣本，
+ * 無論講什麼欄位都會被樣本蓋掉。
+ */
+function urgentLine(orderId: string, place: typeof ZONES[keyof typeof ZONES], weightKg: string): string {
+  return `${orderId}，配送區域 ${place.zone}，城市${place.city}，行政區${place.district}，`
+    + `地點名稱${place.district}示範配送點，緯度 ${place.latitude}，經度 ${place.longitude}，`
+    + `包裹件數 1，每件重量 ${weightKg} 公斤，早上配送`
+}
+
+/**
+ * 「示範一張急單／示範三張急單／示範不可安排」三顆按鈕收掉了：急單現在
+ * 一律從對話講進去，講完畫面才給【產生插單預覽】。這個流程跟上台時
+ * 調度員做的事一模一樣。
+ */
+async function urgentPreview(page: Page, sentence: string): Promise<void> {
+  const groups = page.getByRole('group', { name: '臨時插單方案' })
+  const groupsBefore = await groups.count()
+  const input = page.getByRole('textbox', { name: '輸入訊息' })
+  const summaryPromise = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
+  await input.fill(sentence)
+  await input.press('Enter')
+  const summary = await summaryPromise
+  const summaryText = await summary.text()
+  expect(summary.ok(), summaryText).toBeTruthy()
+  // 一張急單走「先確認、再按【產生插單預覽】」；一次講好幾張時系統會直接
+  // 算完把方案卡給出來，那條路上沒有那顆按鈕。兩種都要接得住。
+  const previewButton = page.getByRole('button', { name: '產生插單預覽' }).last()
+  await expect
+    .poll(async () => (await previewButton.count()) > 0 || (await groups.count()) > groupsBefore, { timeout: 180_000 })
+    .toBe(true)
+  if (await groups.count() > groupsBefore) return
+  const previewPromise = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
+  await previewButton.click()
+  const preview = await previewPromise
+  expect(preview.ok(), await preview.text()).toBeTruthy()
 }
 
 function installBrowserGuards(page: Page) {
@@ -31,11 +83,11 @@ function installBrowserGuards(page: Page) {
 }
 
 test('TODO 2：F3-01～F3-07 插入位置方案卡', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(900_000)
   const guards = installBrowserGuards(page)
   await importDemoPlan(page)
 
-  await page.getByRole('button', { name: '示範一張急單' }).click()
+  await urgentPreview(page, `新增急單 ${urgentLine('URG-F3-001', ZONES.Z3, '5')}`)
   const singleGroup = page.getByRole('group', { name: '臨時插單方案' }).last()
   await expect(singleGroup).toBeVisible({ timeout: 30_000 })
   const singleCards = singleGroup.locator('button.urgent-card')
@@ -63,17 +115,29 @@ test('TODO 2：F3-01～F3-07 插入位置方案卡', async ({ page }) => {
   await expect(singleCards).toHaveCount(3)
   await saveScreenshot(page, screenshotDir, 'F3-05')
 
-  await page.getByRole('button', { name: '示範三張急單' }).click()
+  // 每一段都重開一次：同一個對話裡連著講第二批急單，上一批的草稿還在，
+  // 方案卡會混到前一批的單號，看不出這一批到底排進去沒有。
+  await importDemoPlan(page)
+  // 照 demo 現場那樣，直接把三行資料貼進去。前面再加一句「三張急單今天要送」
+  // 會被當成「使用者在描述多張急單」而走到 preview_multiple_urgent_insert，
+  // 那條路回的是整體方案差異，不是可以挑的方案卡。
+  await urgentPreview(page, [
+    'URG-F3-011 25.036/121.567 Z3 5公斤 1件 早上',
+    'URG-F3-012 25.079/121.575 Z2 6公斤 1件 早上',
+    'URG-F3-013 25.015/121.462 Z4 4公斤 1件 早上',
+  ].join('\n'))
   const batchGroup = page.getByRole('group', { name: '臨時插單方案' }).last()
-  await expect(batchGroup).toContainText('URG-DEMO-041', { timeout: 30_000 })
-  await expect(batchGroup).toContainText('URG-DEMO-052')
-  await expect(batchGroup).toContainText('URG-DEMO-053')
+  await expect(batchGroup).toContainText('URG-F3-011', { timeout: 30_000 })
+  await expect(batchGroup).toContainText('URG-F3-012')
+  await expect(batchGroup).toContainText('URG-F3-013')
   await saveScreenshot(page, screenshotDir, 'F3-06')
 
-  await page.getByRole('button', { name: '示範不可安排' }).click()
+  await importDemoPlan(page)
+  // 200 公斤超過任何一台車的載重上限，這張一定排不進去。
+  await urgentPreview(page, `新增急單 ${urgentLine('URG-F3-021', ZONES.Z2, '200')}`)
   const unavailableGroup = page.getByRole('group', { name: '臨時插單方案' }).last()
   await expect(unavailableGroup.locator('.urgent-card-unavailable')).toHaveCount(1, { timeout: 30_000 })
-  await expect(unavailableGroup).toContainText('URG-DEMO-053')
+  await expect(unavailableGroup).toContainText('URG-F3-021')
   await expect(unavailableGroup).toContainText('需人工處理')
   await saveScreenshot(page, screenshotDir, 'F3-07')
 
@@ -100,7 +164,7 @@ test('TODO 4：F4 全部與 F5-01～F5-05 階段驗收', async ({ page }) => {
   await expect(page.getByText('上車後').first()).toBeVisible({ timeout: 30_000 })
   await saveScreenshot(page, screenshotDir, 'F4-01')
 
-  await page.getByRole('button', { name: '示範一張急單' }).click()
+  await urgentPreview(page, `新增急單 ${urgentLine('URG-F4-001', ZONES.Z3, '5')}`)
   const loadedGroup = page.getByRole('group', { name: '臨時插單方案' }).last()
   await expect(loadedGroup).toBeVisible({ timeout: 30_000 })
   await expect(loadedGroup.locator('button.urgent-card')).toHaveCount(1)
@@ -117,11 +181,13 @@ test('TODO 4：F4 全部與 F5-01～F5-05 階段驗收', async ({ page }) => {
   await expect(page.locator('.chat-log > div').last()).toContainText(/不能改|不支援|拒絕|重排/, { timeout: 60_000 })
   await saveScreenshot(page, screenshotDir, 'F4-04')
 
-  const timeChange = await send('這單改成下午送')
+  // 這兩句點名既有訂單。講「這單」的話，指的是上面那張還沒確認的急單草稿，
+  // 系統會去改草稿的時段——那是對的行為，但測不到這裡要測的既有訂單改時段。
+  const timeChange = await send('ORD-019 改成下午送')
   expect(timeChange.evidence.some((item) => item.tool === 'change_order_constraint')).toBeTruthy()
   await saveScreenshot(page, screenshotDir, 'F4-05')
 
-  const prioritize = await send('先送這單')
+  const prioritize = await send('ORD-019 要提前送')
   expect(prioritize.evidence.some((item) => item.tool === 'prioritize_order_preview')).toBeTruthy()
   await saveScreenshot(page, screenshotDir, 'F4-06')
 
@@ -166,16 +232,20 @@ test('TODO 2：tight 50 單的不可安排卡與距離代價差異', async ({ pa
   const guards = installBrowserGuards(page)
   await importDemoPlan(page, tightWorkbook)
 
-  await page.getByRole('button', { name: '示範不可安排' }).click()
+  // 200 公斤超過任何一台車的載重上限，這張一定排不進去。
+  await urgentPreview(page, `新增急單 ${urgentLine('URG-TIGHT-000', ZONES.Z2, '200')}`)
   const unavailableGroup = page.getByRole('group', { name: '臨時插單方案' }).last()
   await expect(unavailableGroup).toBeVisible({ timeout: 30_000 })
   await expect(unavailableGroup.locator('.urgent-card-unavailable')).toHaveCount(1)
   await expect(unavailableGroup).toContainText(/排不進去|需人工處理/)
   await saveScreenshot(page, screenshotDir, 'tight-unassignable')
 
+  // 重開一次再講第二張，免得上一張 200 公斤的草稿混進這一批方案卡。
+  await importDemoPlan(page, tightWorkbook)
   const input = page.getByRole('textbox', { name: '輸入訊息' })
   const responsePromise = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
-  await input.fill('新增急單 URG-TIGHT-001，配送區域 Z5，城市臺北市，行政區內湖，地點標示內湖緊急站，座標 25.083,121.590，上午配送，一件 2 公斤，高優先，請先預覽。')
+  // 內湖屬於 Z2，不是 Z5；責任區對不上後端會擋 ZONE_MEMBERSHIP_ERROR。
+  await input.fill('新增急單 URG-TIGHT-001，配送區域 Z2，城市臺北市，行政區內湖，地點標示內湖緊急站，座標 25.083,121.590，上午配送，一件 2 公斤，高優先，請先預覽。')
   await input.press('Enter')
   const summaryResponse = await responsePromise
   expect(summaryResponse.ok(), await summaryResponse.text()).toBeTruthy()

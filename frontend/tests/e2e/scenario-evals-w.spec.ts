@@ -16,7 +16,11 @@ type PlanBody = {
   version: number
   stage?: string
   unassigned_orders?: string[]
-  vehicles?: Array<{ vehicle_id: string; total_distance_m?: number; stops?: Array<{ order_id: string }> }>
+  vehicles?: Array<{
+    vehicle_id: string
+    total_distance_m?: number
+    stops?: Array<{ order_id: string; reason?: { summary?: string } }>
+  }>
 }
 
 function installBrowserGuards(page: Page) {
@@ -46,7 +50,14 @@ async function typeAndSend(page: Page, message: string): Promise<AgentBody> {
   const input = page.getByRole('textbox', { name: '輸入訊息' })
   const responsePromise = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
   await input.click()
-  await input.pressSequentially(message)
+  // 對話框的 Enter 就是送出，多行要用 Shift+Enter 換行，
+  // 不然第一行就先送出去了。
+  const lines = message.split('\n')
+  await input.pressSequentially(lines[0] || '')
+  for (const line of lines.slice(1)) {
+    await input.press('Shift+Enter')
+    await input.pressSequentially(line)
+  }
   await input.press('Enter')
   const response = await responsePromise
   const raw = await response.text()
@@ -71,6 +82,48 @@ async function keyboardTypeAndSend(page: Page, message: string): Promise<AgentBo
   return body
 }
 
+/**
+ * 責任區、城市、行政區與座標必須互相對得起來，否則後端會擋
+ * ZONE_MEMBERSHIP_ERROR。這幾組是資料集 zones 分頁裡真的存在的搭配。
+ */
+const ZONES = {
+  Z2: { zone: 'Z2', city: '臺北市', district: '內湖', latitude: '25.083', longitude: '121.590' },
+  Z3: { zone: 'Z3', city: '臺北市', district: '信義', latitude: '25.040', longitude: '121.560' },
+  Z4: { zone: 'Z4', city: '新北市', district: '板橋', latitude: '25.015', longitude: '121.462' },
+} as const
+
+/**
+ * 一張資料齊全的急單寫成一行；欄位順序照畫面上要的那份清單。
+ * 單號不要用 URG-DEMO-041／ORD-041——那兩個是後端寫死的示範樣本，
+ * 無論講什麼欄位都會被樣本蓋掉。
+ */
+function urgentLine(orderId: string, place: typeof ZONES[keyof typeof ZONES], weightKg: string): string {
+  return `${orderId}，配送區域 ${place.zone}，城市${place.city}，行政區${place.district}，`
+    + `地點名稱${place.district}示範配送點，緯度 ${place.latitude}，經度 ${place.longitude}，`
+    + `包裹件數 1，每件重量 ${weightKg} 公斤，早上配送`
+}
+
+/**
+ * 「示範三張急單／示範不可安排／示範一張急單」三顆按鈕收掉了：急單現在
+ * 一律從對話講進去，講完畫面才給【產生插單預覽】——跟上台時一樣。
+ */
+async function urgentPreview(page: Page, sentence: string): Promise<void> {
+  const groups = page.getByRole('group', { name: '臨時插單方案' })
+  const groupsBefore = await groups.count()
+  await typeAndSend(page, sentence)
+  // 一張急單走「先確認、再按【產生插單預覽】」；一次講好幾張時系統會直接
+  // 算完把方案卡給出來，那條路上沒有那顆按鈕。兩種都要接得住。
+  const previewButton = page.getByRole('button', { name: '產生插單預覽' }).last()
+  await expect
+    .poll(async () => (await previewButton.count()) > 0 || (await groups.count()) > groupsBefore, { timeout: 180_000 })
+    .toBe(true)
+  if (await groups.count() > groupsBefore) return
+  const previewResponse = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
+  await previewButton.click()
+  const response = await previewResponse
+  expect(response.ok(), await response.text()).toBeTruthy()
+}
+
 function evidence(body: AgentBody, tool: string): Record<string, unknown> {
   const item = body.evidence?.find((entry) => entry.tool === tool)
   expect(item, `找不到 evidence tool：${tool}；系統回覆：${body.message || JSON.stringify(body)}`).toBeTruthy()
@@ -83,13 +136,21 @@ async function mark(page: Page, id: string) {
 
 async function reset(page: Page) {
   const resetButton = page.getByRole('button', { name: '重新開始' })
-  if (await resetButton.count() > 0) await resetButton.click()
-  await expect(page.getByText('下載範例格式')).toBeVisible({ timeout: 30_000 })
+  if (await resetButton.count() > 0) {
+    await resetButton.click()
+    await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 })
+    return
+  }
+  // 匯入失敗時根本沒有方案, 上排那顆「重新開始」不存在; 而對話裡已經有訊息,
+  // 開場的「先放入今天的訂單」也就收起來。確認輸入框還能用就好。
+  await expect(page.getByRole('textbox', { name: '輸入訊息' })).toBeEnabled({ timeout: 30_000 })
 }
 
 async function uploadPlan(page: Page, workbook: string, notice: string): Promise<PlanBody> {
   const planResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/plans') && response.request().method() === 'POST', { timeout: 180_000 })
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
+  // 選檔案只是附加，要按【送出】才會上傳排班。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   const response = await planResponse
   const body = await response.json() as PlanBody
   expect(response.ok(), JSON.stringify(body)).toBeTruthy()
@@ -129,6 +190,8 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
 
   beginStage('W1')
   await page.getByLabel('上傳 Excel').setInputFiles(mappedWorkbook)
+  // 選檔案只是附加，要按【送出】才會送去看欄位對映。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   await step('W-03', async () => {
     await expect(page.getByRole('heading', { name: '請確認欄位對映' })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText('信心度')).toBeVisible()
@@ -152,18 +215,26 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
 
   await reset(page)
   await page.getByLabel('上傳 Excel').setInputFiles(missingWorkbook)
+  // 選檔案只是附加，要按【送出】才會驗欄位。
+  await page.getByRole('button', { name: '送出', exact: true }).click()
   await step('W-06', async () => {
-    const alert = page.getByRole('alert')
+    // 從對話框丟進來的檔案，缺欄報告就回在對話裡；紅色警示框是右上角
+    // 「換一份資料」那條路才會走到的。
+    const alert = page.locator('.chat-log > div.mr-auto').last()
     await expect(alert).toBeVisible({ timeout: 30_000 })
     await expect(alert).toContainText('ORD-001')
     await expect(alert).toContainText('ORD-002')
     await expect(alert).toContainText('PKG-003-01')
-    await expect(alert).toContainText('缺少必填欄位')
+    // 報告改寫成人話了：欄位名稱用中文，不再是 location_label 那種機器字。
+    await expect(alert).toContainText('地點名稱')
+    await expect(alert).toContainText('配送時段')
+    await expect(alert).toContainText('重量')
   })
 
   await reset(page)
   plan = await uploadPlan(page, tightWorkbook, '49/50 已安排')
-  await step('W-07', async () => { await expect(page.getByText('方案待人工確認。')).toBeVisible() })
+  // 排班完成的綠色提示拿掉了；上排統計列是同一個訊號。
+  await step('W-07', async () => { await expect(page.locator('.topbar-stats')).toContainText('已安排') })
   await step('W-08', async () => {
     const stats = page.locator('.topbar-stats')
     await expect(stats).toContainText('50 張訂單')
@@ -191,14 +262,21 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     const opacities = await page.locator('.leaflet-overlay-pane path').evaluateAll((paths) => paths.map((path) => (path as SVGPathElement).style.opacity || path.getAttribute('stroke-opacity') || ''))
     expect(opacities.filter((opacity) => opacity === '0.18').length).toBeGreaterThanOrEqual(3)
   })
-  const firstOrder = page.locator('.data-table tbody tr').filter({ hasText: 'ORD-001' }).first()
+  // 訂單表格換成四欄看板了：每一列點開才看得到明細。
+  const firstOrder = page.locator('[data-order-id="ORD-001"] .order-board-order').first()
   await firstOrder.click()
   await step('W-12', async () => {
-    await expect(page.getByText('推薦理由：')).toBeVisible()
+    await expect(page.getByText('推薦理由：', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('第 ', { exact: false }).last()).toBeVisible()
-    await expect(page.getByText('預估到達', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('預估到達', { exact: false }).first()).toBeVisible()
   })
-  const reassignedOrder = page.locator('.data-table tbody tr').filter({ hasText: 'ORD-041' }).first()
+  // 哪一張單是「為了避開載重上限才換車」由當天的解決定，不是固定 ORD-041。
+  // 直接從方案裡找出那一張，再點它。
+  const capacityOrderId = (plan.vehicles || [])
+    .flatMap((vehicle) => vehicle.stops || [])
+    .find((stop) => (stop.reason?.summary || '').includes('原本會超過'))?.order_id
+  expect(capacityOrderId, '這份方案沒有任何一張單是為了避開載重上限才改派的').toBeTruthy()
+  const reassignedOrder = page.locator(`[data-order-id="${capacityOrderId}"] .order-board-order`).first()
   await reassignedOrder.click()
   await step('W-13', async () => {
     await expect(page.getByText('原本會超過', { exact: false }).first()).toBeVisible()
@@ -206,11 +284,12 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     await expect(page.getByText('改派', { exact: false }).first()).toBeVisible()
   })
   await step('W-14', async () => {
-    const unassigned = page.locator('.data-table tbody tr').filter({ hasText: 'ORD-050' }).first()
+    // 排不進去的單收在看板下方的「未安排」區塊。
+    const unassigned = page.locator('.order-board-unassigned')
     await expect(unassigned).toBeVisible()
-    await expect(unassigned).toContainText('CAPACITY_LIMIT')
+    await expect(unassigned).toContainText('ORD-050')
   })
-  await step('W-15', async () => { await expect(page.getByText('方案待人工確認。', { exact: false }).first()).toBeVisible() })
+  await step('W-15', async () => { await expect(page.locator('.topbar-stats')).toContainText('已安排') })
   endStage('W1')
 
   beginStage('W2')
@@ -219,10 +298,14 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await step('W-16', async () => {
     expect(vagueRuleData.status).toBe('NEEDS_CLARIFICATION')
     expect(vagueRuleData.current_metrics).toBeTruthy()
-    expect((vagueRuleData.current_metrics as Record<string, unknown>).max_single_package_weight_kg).toBe(22)
-    expect((vagueRuleData.current_metrics as Record<string, unknown>).orders_over_20kg).toBe(3)
+    // 第三車身上最重的是哪一件、超過 20 kg 有幾張，是當天那個解算出來的，
+    // 不是固定的 22／3。要守住的是：問句給的是這台車真的數字，而且這一幕
+    // 演得起來（至少有一張超過 20 kg，套下去才會有單要改派）。
+    const metrics = vagueRuleData.current_metrics as Record<string, number>
+    expect(metrics.max_single_package_weight_kg).toBeGreaterThan(20)
+    expect(metrics.orders_over_20kg).toBeGreaterThan(0)
     await expect(page.getByText('單件重量上限')).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('超過 20 kg 有 3 張')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(`超過 20 kg 有 ${metrics.orders_over_20kg} 張`)).toBeVisible({ timeout: 30_000 })
   })
   const trialRule = await typeAndSend(page, '20 公斤以上就不要')
   const trialData = evidence(trialRule, 'preview_dispatch_rule')
@@ -263,7 +346,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   const urgentMissing = await keyboardTypeAndSend(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
   const urgentConversationUserCount = await page.locator('.chat-log > div').filter({ hasText: '你' }).count()
   await step('W-21', async () => {
-    expect(urgentMissing.message || '').toContain('目前還不能計算')
+    expect(urgentMissing.message || '').toContain('還缺少幾個欄位才能算')
     const missingEvidence = urgentMissing.evidence?.find((item) => item.tool === 'urgent_insertion_workflow')?.data
     expect(missingEvidence?.missing_by_order).toBeTruthy()
     expect(missingEvidence?.missing_by_order).toEqual([{
@@ -309,7 +392,9 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await step('W-26', async () => {
     expect(modified.evidence?.some((item) => item.tool === 'prioritize_order_preview')).toBeTruthy()
     await expect(page.getByRole('group', { name: '臨時插單方案' })).toHaveCount(groupsBeforeModification + 1)
-    await expect(page.getByText('新方案卡尚未套用')).toBeVisible({ timeout: 30_000 })
+    // 提前配送的回覆現在直接講理由與代價，句尾自己交代能不能套用，不再多加
+    // 一句「新方案卡尚未套用」。沒有建立新版本才是這一步要守住的事。
+    await expect(page.locator('body')).not.toContainText('已建立新版本')
   })
   const refused = await typeAndSend(page, '把所有單重新分配一遍')
   await step('W-27', async () => {
@@ -339,19 +424,27 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
 
   beginStage('W4')
   const groupsBeforeBatch = await page.getByRole('group', { name: '臨時插單方案' }).count()
-  await page.getByRole('button', { name: '示範三張急單' }).click()
+  // 照 demo 現場那樣，直接把三行資料貼進去。前面再加一句「三張急單今天要送」
+  // 會被當成「使用者在描述多張急單」而走到 preview_multiple_urgent_insert，
+  // 那條路回的是整體方案差異，不是可以挑的方案卡。
+  await urgentPreview(page, [
+    'URG-W30-001 25.036/121.567 Z3 5公斤 1件 早上',
+    'URG-W30-002 25.079/121.575 Z2 6公斤 1件 早上',
+    'URG-W30-003 25.015/121.462 Z4 4公斤 1件 早上',
+  ].join('\n'))
   await step('W-30', async () => {
     const group = page.getByRole('group', { name: '臨時插單方案' }).last()
-    await expect(group).toContainText('URG-DEMO-041', { timeout: 30_000 })
-    await expect(group).toContainText('URG-DEMO-052')
-    await expect(group).toContainText('URG-DEMO-053')
+    await expect(group).toContainText('URG-W30-001', { timeout: 30_000 })
+    await expect(group).toContainText('URG-W30-002')
+    await expect(group).toContainText('URG-W30-003')
     await expect(page.getByRole('group', { name: '臨時插單方案' })).toHaveCount(groupsBeforeBatch + 1)
   })
-  await page.getByRole('button', { name: '示範不可安排' }).click()
+  // 200 公斤超過任何一台車的載重上限，這張一定排不進去。
+  await urgentPreview(page, `再一張急單 ${urgentLine('URG-W31-001', ZONES.Z2, '200')}`)
   await step('W-31', async () => {
     const group = page.getByRole('group', { name: '臨時插單方案' }).last()
-    await expect(group.locator('.urgent-card-unavailable')).toHaveCount(1, { timeout: 30_000 })
-    await expect(group).toContainText('URG-DEMO-053')
+    await expect(group.locator('.urgent-card-unavailable').first()).toBeVisible({ timeout: 30_000 })
+    await expect(group).toContainText('URG-W31-001')
     await expect(group).toContainText('需人工處理')
   })
   endStage('W4')
@@ -359,7 +452,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   beginStage('W5')
   await page.getByRole('button', { name: '開始裝車' }).click()
   await step('W-32', async () => { await expect(page.getByText('上車後').first()).toBeVisible({ timeout: 30_000 }) })
-  await page.getByRole('button', { name: '示範一張急單' }).click()
+  await urgentPreview(page, `新增急單 ${urgentLine('URG-W33-001', ZONES.Z3, '3')}`)
   await step('W-33', async () => {
     const group = page.getByRole('group', { name: '臨時插單方案' }).last()
     await expect(group.locator('button.urgent-card')).toHaveCount(1, { timeout: 30_000 })
@@ -377,7 +470,9 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     expect(loadedReplan.evidence?.some((item) => item.tool === 'reject_unsupported_change' || (item.tool === 'plan_dispatch' && item.data.status === 'FULL_REPLAN_NOT_ALLOWED'))).toBeTruthy()
     await expect(page.getByText('不能改', { exact: false }).last()).toBeVisible({ timeout: 30_000 })
   })
-  const timeChange = await typeAndSend(page, '這單改成下午送')
+  // 這句點名既有訂單。講「這單」的話，指的是上面那張還沒確認的急單草稿，
+  // 系統會去改草稿的時段——那是對的行為，但測不到這裡要測的既有訂單改時段。
+  const timeChange = await typeAndSend(page, 'ORD-019 改成下午送')
   await step('W-36', async () => {
     expect(timeChange.evidence?.some((item) => item.tool === 'change_order_constraint')).toBeTruthy()
   })
@@ -430,12 +525,14 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await step('W-44', async () => {
     const vehicles = deviationData.vehicle_deviations as Array<{ vehicle_id: string; delay_minutes: number }>
     expect(vehicles.length).toBeGreaterThan(0)
-    await expect(page.getByText('VEH-003 今天實際比預估慢', { exact: false }).last()).toBeVisible()
+    // 偏差說明講的是人話車名（第三車），不是資料庫鍵值。
+    await expect(page.getByText('今天實際比預估慢', { exact: false }).last()).toBeVisible()
   })
   await step('W-45', async () => {
     const zones = deviationData.zone_deviations as Array<{ zone_code: string; extra_service_minutes_per_stop: number }>
     expect(zones.length).toBeGreaterThan(0)
-    await expect(page.getByText('Z5 區每站停留時間', { exact: false }).last()).toBeVisible()
+    // 區域偏差改成人話了：「南區（Z5）每一站平均多停 N 分鐘」。
+    await expect(page.getByText('每一站平均多停', { exact: false }).last()).toBeVisible()
   })
   await step('W-46', async () => {
     const suggestions = deviationData.suggestions as Array<{ from_service_minutes: number; to_service_minutes: number }>
@@ -461,7 +558,7 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
 
   beginStage('W8')
   await page.getByRole('button', { name: '重新開始' }).click()
-  await step('W-49', async () => { await expect(page.getByText('下載範例格式')).toBeVisible({ timeout: 30_000 }) })
+  await step('W-49', async () => { await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 30_000 }) })
   await step('W-50', async () => {
     expect(guards.dispatchRequests).toEqual([])
     expect(guards.googleRequests).toEqual([])

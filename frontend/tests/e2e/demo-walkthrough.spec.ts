@@ -7,6 +7,8 @@
  * 這支是驗收閘門，不是回歸測試。它一開始就會失敗，失敗的地方就是還沒做完的地方。
  */
 import { expect, test, type Page } from '@playwright/test'
+
+import { saveScreenshot } from './screenshot-helper'
 import path from 'node:path'
 
 const samplesDir = path.resolve('..', 'data', 'samples')
@@ -20,7 +22,6 @@ const screenshotDir = path.resolve('..', 'docs', 'screenshots')
  * 而且 tight 的 49/50 自帶「有一張排不進去」的橋段。
  */
 const workbook = path.join(samplesDir, 'demo-50-tight.xlsx')
-const PLANNED = /\d+\/50 已安排/
 
 type Evidence = { tool: string; data?: Record<string, unknown> }
 type AgentBody = { message?: string; evidence?: Evidence[] }
@@ -94,14 +95,16 @@ test.describe('上台 demo 全流程模擬', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
 
-    // 改版後先自動載入 relaxed 作為開場；本場主線仍要明確換成 tight，
+    // 開場是空白控制塔，不再自動載入任何資料；本場主線自己丟 tight 進去，
     // 確保「老王腰傷」與「一張排不進去」兩幕使用正確資料。
-    await expect(page.getByText(PLANNED)).toBeVisible({ timeout: 240_000 })
+    await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
     const uploader = page.locator('input[type="file"][aria-label="上傳 Excel"]').first()
     await expect(uploader).toBeAttached()
     await uploader.setInputFiles(workbook)
+    // 選檔案只是附加，要按【送出】才會上傳排班。
+    await page.getByRole('button', { name: '送出', exact: true }).click()
     await expect(page.locator('.topbar-stats')).toContainText('49/50 已安排', { timeout: 240_000 })
-    await page.screenshot({ path: shot('00-loaded'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-00-loaded')
 
     const afterImport = await planState(page)
     expect(afterImport.assignedText, '匯入後下面沒有顯示已安排張數').toMatch(/\/\s*50/)
@@ -114,14 +117,15 @@ test.describe('上台 demo 全流程模擬', () => {
     const canDo = await send(page, '你可以做什麼')
     expectHumanReply(canDo, '你可以做什麼')
     expect(canDo.message || '').toMatch(/訂單|排班|配送|插單/)
-    await page.screenshot({ path: shot('01-who'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-01-who')
 
     // ── 第 2 幕 老王腰傷 ─────────────────────────────────────────
     const injury = await send(page, '三號車的老王最近腰傷，比較重的單先不要給他')
     expectHumanReply(injury, '老王腰傷')
     expect(usedTool(injury, 'preview_dispatch_rule'), '老王腰傷沒有走司機規則流程').toBeTruthy()
     // 必須反問，而且要把現況給人看：點名是哪一台車，並附上目前的重量現況。
-    expect(injury.message || '', '沒有點名是哪一台車').toMatch(/VEH-003|三號車/)
+    // 回覆裡點名的是調度員講的「第三車」，不是資料庫鍵值 VEH-003。
+    expect(injury.message || '', '沒有點名是哪一台車').toMatch(/VEH-003|第三車|三號車/)
     expect(injury.message || '', '沒有反問上限').toMatch(/多重|幾公斤|上限|多少/)
     expect(injury.message || '', '沒有把 VEH-003 目前的重量現況給人看').toMatch(/\d+(\.\d+)?\s*(kg|公斤)/)
     expect(injury.message || '', '沒有順便問規則期限').toMatch(/永久|本週|今天|期限/)
@@ -133,14 +137,14 @@ test.describe('上台 demo 全流程模擬', () => {
       Number(overLimit?.[2] ?? 0),
       '這份資料的 VEH-003 沒有任何超過 20 kg 的單——套了規則也不會有訂單改派，第 2 幕等於沒演',
     ).toBeGreaterThan(0)
-    await page.screenshot({ path: shot('02-injury-ask'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-02-injury-ask')
 
     const limit = await send(page, '20 公斤以上就不要')
     expectHumanReply(limit, '20 公斤以上就不要')
     expect(limit.message || '', '沒有講出這條規則是什麼').toMatch(/20/)
     // 試算必須看得到「哪幾張會被改派」，不是只說規則建立了
     expect(limit.message || '', '沒有講出這條規則會影響哪些訂單').toMatch(/ORD-\d+|\d+\s*張|改派|重新指派/)
-    await page.screenshot({ path: shot('03-rule-preview'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-03-rule-preview')
 
     // 規則必須先預覽再由人確認，確認之後下面要真的變。
     const applyRule = page.getByRole('button', { name: /套用|確認/ }).last()
@@ -149,7 +153,7 @@ test.describe('上台 demo 全流程模擬', () => {
     await expect
       .poll(async () => (await planState(page)).ruleCount, { timeout: 120_000 })
       .toBeGreaterThan(0)
-    await page.screenshot({ path: shot('04-rule-applied'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-04-rule-applied')
 
     // ── 第 3 幕 上車前插單 ───────────────────────────────────────
     const urgent = await send(page, '客戶剛剛打電話來，有一張急單要今天早上送到，15公斤')
@@ -157,7 +161,7 @@ test.describe('上台 demo 全流程模擬', () => {
     expect(urgent.message || '', '沒有一次列出缺的欄位').toMatch(/缺少|還需要|補齊/)
     // 已經講過的不可以再問
     expect(urgent.message || '', '15 公斤已經講過還再問重量').not.toMatch(/每件重量/)
-    await page.screenshot({ path: shot('05-urgent-missing'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-05-urgent-missing')
 
     const filled = await send(
       page,
@@ -165,7 +169,7 @@ test.describe('上台 demo 全流程模擬', () => {
     )
     expectHumanReply(filled, '急單補齊')
     expect(filled.message || '', '補齊之後沒有進入訂單摘要').toMatch(/我理解的臨時訂單|摘要|確認/)
-    await page.screenshot({ path: shot('06-urgent-summary'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-06-urgent-summary')
 
     // 產生插單預覽：用打字，不用示範按鈕
     const preview = await send(page, '產生插單預覽')
@@ -178,32 +182,36 @@ test.describe('上台 demo 全流程模擬', () => {
     // 每張卡都要有：插哪台車第幾站、預估送達、代價
     const cardTexts = await cards.allInnerTexts()
     for (const [index, textContent] of cardTexts.entries()) {
-      expect(textContent, `第 ${index + 1} 張卡沒寫插到哪台車`).toMatch(/VEH-\d{3}/)
+      // 卡片上寫的是人話車名（第一車…），不是 VEH-001。
+      expect(textContent, `第 ${index + 1} 張卡沒寫插到哪台車`).toMatch(/VEH-\d{3}|第[一二三四五六七八九十]車/)
       expect(textContent, `第 ${index + 1} 張卡沒寫第幾站`).toMatch(/第\s*\d+\s*站/)
       expect(textContent, `第 ${index + 1} 張卡沒寫預估送達`).toMatch(/\d{1,2}:\d{2}/)
       expect(textContent, `第 ${index + 1} 張卡沒寫代價`).toMatch(/km|公里|分/)
     }
     // 卡片之間必須實質不同，不能兩張同車同站
     expect(new Set(cardTexts).size, '方案卡內容重複，等於沒得選').toBe(cardTexts.length)
-    await page.screenshot({ path: shot('07-cards'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-07-cards')
 
     // 對話修改：要重新求解出新的一組卡
     const groupsBefore = await page.locator('[aria-label="臨時插單方案"]').count()
     const modified = await send(page, '用 A，但這單先送')
     expectHumanReply(modified, '用 A，但這單先送')
     await expect(page.locator('[aria-label="臨時插單方案"]')).toHaveCount(groupsBefore + 1, { timeout: 180_000 })
-    await page.screenshot({ path: shot('08-reprioritised'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-08-reprioritised')
 
-    // 選一張卡確認 → 下面要真的變（版本 +1、訂單數 +1）
-    const beforeConfirm = await planState(page)
-    await page.locator('button.urgent-card').last().click()
+    // 選一張卡確認 → 下面要真的變。急單進來之後今天就是 51 張，
+    // 上排的「51 張訂單」就是最直接的證據。
+    // （planState 的 x/50 比對在插單之後本來就對不上，不能拿來當訊號。）
+    // 「需人工處理」的卡按下去沒有確認按鈕，挑一張真的可以選的。
+    await page.locator('button.urgent-card:not(.urgent-card-unavailable)').last().click()
     const confirmCard = page.getByRole('button', { name: /確認/ }).last()
     await expect(confirmCard, '選了卡片但沒有確認按鈕').toBeVisible({ timeout: 30_000 })
     await confirmCard.click()
-    await expect
-      .poll(async () => (await planState(page)).assignedText, { timeout: 180_000 })
-      .not.toBe(beforeConfirm.assignedText)
-    await page.screenshot({ path: shot('09-card-confirmed'), fullPage: true })
+    await expect(page.locator('.topbar-stats'), '確認之後訂單總數沒有變成 51 張').toContainText(
+      '51 張訂單',
+      { timeout: 180_000 },
+    )
+    await saveScreenshot(page, screenshotDir, 'demo-09-card-confirmed')
 
     // ── 第 4 幕 上車後 ───────────────────────────────────────────
     await page.getByRole('button', { name: '開始裝車' }).click()
@@ -211,12 +219,12 @@ test.describe('上台 demo 全流程模擬', () => {
 
     const urgent2 = await send(page, '又來一張急單，內湖，8公斤')
     expectHumanReply(urgent2, '上車後急單')
-    await page.screenshot({ path: shot('10-loaded-urgent'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-10-loaded-urgent')
 
     const reassign = await send(page, '這單改派給三號車')
     expectHumanReply(reassign, '上車後改派')
     expect(reassign.message || '', '上車後改派沒有被擋下來').toMatch(/不行|不能|無法|已經裝車|人工/)
-    await page.screenshot({ path: shot('11-reassign-refused'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-11-reassign-refused')
 
     // ── 第 5 幕 已發車 ───────────────────────────────────────────
     await page.getByRole('button', { name: '模擬出發' }).click()
@@ -233,18 +241,18 @@ test.describe('上台 demo 全流程模擬', () => {
     expect(earlier.message || '', '沒有交代目前進度或改動代價，也沒有誠實說送不到').toMatch(
       /已送|已完成|第\s*\d+\s*站|公里|km|分鐘|送不到/,
     )
-    await page.screenshot({ path: shot('12-earlier'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-12-earlier')
 
     // ── 第 6 幕 今日回顧 ─────────────────────────────────────────
     const review = await send(page, '今天調度狀況如何')
     expectHumanReply(review, '今天調度狀況如何')
     expect(review.message || '', '沒有點名是哪一台車或哪一區').toMatch(/VEH-\d{3}|Z\d|區/)
     expect(review.message || '', '沒有給出可量化的偏差').toMatch(/\d+\s*分鐘|\d+\s*分/)
-    await page.screenshot({ path: shot('13-review'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-13-review')
 
     // ── 護欄 ──────────────────────────────────────────────────────
     const refused = await send(page, '把所有單重新分配一遍')
     expect(refused.message || '', '越權要求沒有被拒絕').toContain('這個我不能改')
-    await page.screenshot({ path: shot('14-guardrail'), fullPage: true })
+    await saveScreenshot(page, screenshotDir, 'demo-14-guardrail')
   })
 })
