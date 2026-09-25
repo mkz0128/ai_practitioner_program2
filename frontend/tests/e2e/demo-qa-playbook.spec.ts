@@ -253,6 +253,11 @@ test('Q-09 插單、改規則、插單、改時段不重整', async ({ page }) =
   expect(findEvidence(firstInsert.body, 'urgent_insertion_workflow')).toBeTruthy()
   await clickPreview(page, 'Q-09-1-preview')
 
+  // 放掉第一張的草稿再往下走。草稿留著的話，第二張會被讀成「又多了幾張」而
+  // 走到批次求解那條路——那條路一次算完，沒有【產生插單預覽】可以按，
+  // 也就測不到這一題要測的「驗證失敗之後草稿還在、可以改一個欄位」。
+  await keyboardSend(page, 'Q-09-1-cancel', '算了不要了')
+
   const rule = await keyboardSend(page, 'Q-09-2', '三號車單趟距離上限 30 公里')
   expect(findEvidence(rule.body, 'preview_dispatch_rule')).toBeTruthy()
 

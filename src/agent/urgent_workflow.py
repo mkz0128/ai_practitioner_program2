@@ -204,7 +204,17 @@ class UrgentUnderstanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_urgent_insertion: bool
-    action: UrgentAction = "NONE"
+    action: UrgentAction = Field(
+        default="NONE",
+        description=(
+            "BYPASS_CONFIRMATION 只給「不用檢查了」「直接派車」「跳過預覽」這種"
+            "明確要略過人工確認的要求。"
+            "「用 A，但這單先送」「照 B，可是先送那一張」是在挑一個方案再要求調整，"
+            "不是跳過確認：這種句子填 NONE，交給主流程重新試算。"
+            "CANCEL 是放掉手上的草稿，ADD_OR_UPDATE 是補或改欄位，"
+            "PREVIEW 是要看插單預覽。"
+        ),
+    )
     preview_requested: bool = Field(
         default=False,
         description=(
