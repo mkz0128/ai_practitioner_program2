@@ -25,6 +25,7 @@ export const fieldLabels: Record<string, string> = {
  * 等於沒講。這裡的字跟後端 `_unassigned_reason_label` 一致。
  */
 const unassignedReasons: Record<string, string> = {
+  OVER_VEHICLE_CAPACITY: '這張單比最大的那台車還重，空車也裝不下',
   CAPACITY_LIMIT: '每一台車的載重餘裕都不夠裝這張單',
   SERVICE_ZONE_UNAVAILABLE: '沒有車負責這一區',
   TIME_OR_ROUTE_CONFLICT: '配送時段排不下，或是繞過去會讓別的單遲到',

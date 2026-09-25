@@ -23,9 +23,13 @@ test('從對話框上傳：排完班交代結果，排不進去的那張講原�
   await expect(log).toContainText('讀好了：50 張訂單、4 台車。', { timeout: 60_000 })
   await expect(log).toContainText('排進去 49 張，有 1 張排不進去')
   // 講出是哪一張、為什麼，而不是叫人自己去找，更不能把代碼直接印出來。
+  // ORD-050 是 170 公斤，最大的車上限 160 公斤——空車也裝不下，
+  // 這跟「今天車子比較滿」不是同一件事，不能混講。
   await expect(log).toContainText('ORD-050')
-  await expect(log).toContainText('每一台車的載重餘裕都不夠裝這張單')
+  await expect(log).toContainText('比最大的那台車還重，空車也裝不下')
+  await expect(log).not.toContainText('每一台車的載重餘裕都不夠')
   await expect(page.locator('body')).not.toContainText('CAPACITY_LIMIT')
+  await expect(page.locator('body')).not.toContainText('OVER_VEHICLE_CAPACITY')
   // 最後要把球丟回給調度員。
   await expect(log).toContainText('還是這幾張先留給人工處理？')
 })

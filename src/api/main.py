@@ -1166,6 +1166,12 @@ def _readable_unassigned_reasons(
         if not eligible:
             reasons[order_id] = "SERVICE_ZONE_UNAVAILABLE"
             continue
+        # 「每一台車的餘裕都不夠」跟「這張單比最大的那台車還重」是兩件事。
+        # ORD-050 是 170 公斤, 最大的車上限 160 公斤, 空車也裝不下; 講成前者
+        # 會讓人去看車子還很空, 然後覺得系統在亂講。
+        if all(order.total_weight_kg > vehicle.max_load_kg for vehicle in eligible):
+            reasons[order_id] = "OVER_VEHICLE_CAPACITY"
+            continue
         over_capacity = True
         for vehicle in eligible:
             route = routes.get(vehicle.vehicle_id)
@@ -3667,6 +3673,7 @@ def _operator_tool_template(tool: Any, item: dict[str, Any]) -> str:
         if item.get("status") == "ORDER_NOT_FOUND":
             return f"找不到訂單 {order_id}，資料中沒有這張訂單。"
         reason_labels = {
+            "OVER_VEHICLE_CAPACITY": "這張單比最大的那台車還重，空車也裝不下",
             "CAPACITY_LIMIT": "每一台車的載重餘裕都不夠裝這張單",
             "SERVICE_ZONE_UNAVAILABLE": "沒有車負責這一區",
             "TIME_OR_ROUTE_CONFLICT": "配送時段排不下，或是繞過去會讓別的單遲到",
