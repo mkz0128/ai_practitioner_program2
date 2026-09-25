@@ -41,6 +41,10 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   await page.getByRole('button', { name: '送出', exact: true }).click()
   await expect(page.locator('.topbar-stats')).toContainText('50/50 已安排', { timeout: 180_000 })
 
+  // 上傳那一次也會留下一則使用者訊息，要從急單對話開始的地方起算。
+  const userMessages = page.locator('.chat-log > div').filter({ hasText: '你' })
+  const userMessagesBeforeUrgent = await userMessages.count()
+
   const missing = await send(page, '客戶剛剛打電話來，信義區有一張急單要今天早上送到，15公斤')
   expect(missing.message || '').toContain('還缺少幾個欄位才能算')
   await saveScreenshot(page, screenshotDir, 'W-21')
@@ -50,8 +54,8 @@ test('W3：鍵盤輸入急單、方案修改、拒絕全域重排與確認', asy
   await expect(page.getByRole('button', { name: '產生插單預覽' })).toBeVisible()
   await saveScreenshot(page, screenshotDir, 'W-22')
 
-  const userMessages = page.locator('.chat-log > div').filter({ hasText: '你' })
-  expect(await userMessages.count()).toBe(2)
+  // 補齊一張急單只能多花兩次對話：講一次、補一次。
+  expect((await userMessages.count()) - userMessagesBeforeUrgent).toBe(2)
 
   const previewPromise = page.waitForResponse((response) => response.url().includes('/api/v1/agent/chat') && response.request().method() === 'POST', { timeout: 180_000 })
   await page.getByRole('button', { name: '產生插單預覽' }).click()

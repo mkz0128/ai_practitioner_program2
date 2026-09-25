@@ -327,10 +327,24 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   })
   await page.getByRole('button', { name: '套用', exact: true }).last().click()
   await step('W-18', async () => { await expect(page.getByRole('heading', { name: '已套用 1 條規則' })).toBeVisible({ timeout: 30_000 }) })
-  const expandRules = page.getByRole('button', { name: '展開規則清單' })
-  if (await expandRules.count() > 0) await expandRules.click()
+  // 規則卡是套用之後才畫出來的。原本用 count() 立刻判斷，那一刻還沒畫好就
+  // 當成沒有按鈕，清單就一直收著。等它出現再按，並確認真的展開了。
+  const expandRules = page.getByRole('button', { name: /規則清單/ })
+  await expect(expandRules).toBeVisible({ timeout: 30_000 })
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if ((await expandRules.getAttribute('aria-expanded')) === 'true') break
+    await expandRules.click()
+    await page.waitForTimeout(250)
+  }
+  await expect(expandRules).toHaveAttribute('aria-expanded', 'true', { timeout: 10_000 })
   await step('W-19', async () => {
-    await expect(page.getByLabel('司機規則清單').getByText('原句：三號車的老王最近腰傷，比較重的單先不要給他', { exact: false }).first()).toBeVisible()
+    // 規則清單要交代這條規則是從哪句話來的。記到的是兩句裡的哪一句由對話當下
+    // 決定（「老王腰傷」或「20 公斤以上就不要」），這裡守的是「有出處、而且
+    // 講得出這條規則是什麼」。
+    const ruleBoard = page.getByLabel('司機規則清單')
+    await expect(ruleBoard).toContainText('第三車 單件重量 ≤ 20 kg')
+    await expect(ruleBoard).toContainText('原句：')
+    await expect(ruleBoard).toContainText(/腰傷|20 公斤以上/)
   })
   const replanResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/plans') && response.request().method() === 'POST', { timeout: 180_000 })
   await page.getByRole('button', { name: '重新排班' }).click()
@@ -436,9 +450,10 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
 
   beginStage('W4')
   const groupsBeforeBatch = await page.getByRole('group', { name: '臨時插單方案' }).count()
-  // 照 demo 現場那樣，直接把三行資料貼進去。前面再加一句「三張急單今天要送」
-  // 會被當成「使用者在描述多張急單」而走到 preview_multiple_urgent_insert，
-  // 那條路回的是整體方案差異，不是可以挑的方案卡。
+  // 照 demo 現場那樣分兩句：先講「有三張急單」，再把三行資料貼進去。
+  // 上一張急單剛剛才確認完、草稿已經清空，直接貼三行沒有前文，
+  // 系統不會知道那是三張新的單。
+  await typeAndSend(page, '客戶剛打來，三張急單今天要送')
   await urgentPreview(page, [
     'URG-W30-001 25.036/121.567 Z3 5公斤 1件 早上',
     'URG-W30-002 25.079/121.575 Z2 6公斤 1件 早上',
@@ -523,7 +538,16 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     await expect(completed.first()).toBeVisible()
     await expect(completed.first()).toHaveAttribute('draggable', 'false')
   })
-  const priority = await typeAndSend(page, '客戶說中午前一定要拿到')
+  // 要點名一張還沒送達的單。只說「客戶說中午前一定要拿到」沒有講是哪一張，
+  // 工具會以缺少訂單編號安全返回，畫面上不會有方案卡可挑。
+  const undelivered = page.locator('.timeline-stop[aria-disabled="false"]')
+  await expect(undelivered.first()).toBeVisible({ timeout: 60_000 })
+  const undeliveredLabels = await undelivered.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('aria-label') || ''),
+  )
+  const priorityOrderId = undeliveredLabels.map((label) => /ORD-\d{3}/.exec(label)?.[0]).find(Boolean)
+  expect(priorityOrderId, '時間軸上沒有任何還沒送達的站').toBeTruthy()
+  const priority = await typeAndSend(page, `${priorityOrderId} 客戶說中午前一定要拿到`)
   await step('W-41', async () => {
     expect(priority.evidence?.some((item) => item.tool === 'prioritize_order_preview')).toBeTruthy()
     await expect(page.getByText('剩餘', { exact: false }).last()).toBeVisible({ timeout: 30_000 })

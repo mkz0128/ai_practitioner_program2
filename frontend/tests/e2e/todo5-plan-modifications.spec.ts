@@ -119,6 +119,9 @@ test('TODO 5 方案卡修改與對話同義句驗收', async ({ page }) => {
     for (const invented of ['第一車', '第二車', '第三車', '第四車']) {
       expect(body.message ?? '', `輸入：${message}：回覆點了沒人提過的車`).not.toContain(invented)
     }
+    // 每一種說法都要從乾淨的狀態測。不放掉草稿的話，第一句就把草稿開著，
+    // 後面七句全部撞在同一張還沒填完的單上。
+    await send('算了不要了')
   }
   await page.screenshot({ path: path.join(screenshotDir, 'R-04.png') })
 
