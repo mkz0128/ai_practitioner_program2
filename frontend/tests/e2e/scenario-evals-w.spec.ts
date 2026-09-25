@@ -555,7 +555,12 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
   await step('W-42', async () => {
     const group = page.getByRole('group', { name: '臨時插單方案' }).last()
     await expect(group).toBeVisible({ timeout: 30_000 })
-    await expect(group.locator('.urgent-card').first()).toContainText('提高')
+    // 時間軸已經拉到下午，剩下的站沒有一個趕得上中午前，所以卡片會是誠實的
+    // 「最快只能到 幾點」而不是「優先度提高」。兩種都要點名那張單、給出時刻，
+    // 不能只說做不到。
+    const card = group.locator('.urgent-card').first()
+    await expect(card).toContainText(priorityOrderId as string)
+    await expect(card).toContainText(/提高|最快只能到 \d{1,2}:\d{2}/)
   })
   await step('W-43', async () => {
     await expect(page.getByText('維持原順序', { exact: false }).last()).toBeVisible()
@@ -583,13 +588,18 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     expect(suggestions.length).toBeGreaterThan(0)
     await expect(page.getByText('服務時間', { exact: false }).last()).toBeVisible()
   })
+  // 「今天調度狀況如何」給的是回顧；要拿到可以按的參數建議，得再問一句
+  // 「那明天要怎麼改」——這是 demo 第七幕本來就有的兩句。
+  await typeAndSend(page, '那明天要怎麼改')
   const beforeParameters = await page.request.get('/api/v1/dispatch-parameters')
   const beforeParameterBody = await beforeParameters.json() as { service_minutes_by_zone: Record<string, number> }
+  // 建議調哪一區、調到幾分鐘是當天的偏差算出來的，不是固定的 Z5 7 分鐘；
+  // 畫面上那顆按鈕自己就帶著區碼與分鐘，直接照畫面抓。
+  const suggestionButton = page.getByRole('button', { name: /^確認套用 Z\d+ \d+ 分鐘$/ }).last()
   await step('W-47', async () => {
     expect(beforeParameterBody.service_minutes_by_zone).toEqual({})
-    await expect(page.getByRole('button', { name: '確認套用 Z5 7 分鐘', exact: true })).toBeVisible()
+    await expect(suggestionButton).toBeVisible()
   })
-  const suggestionButton = page.getByRole('button', { name: '確認套用 Z5 7 分鐘', exact: true })
   await suggestionButton.click()
   await step('W-48', async () => {
     await expect(page.getByRole('button', { name: '用新參數重排' })).toBeVisible({ timeout: 30_000 })
