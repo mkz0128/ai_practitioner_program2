@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, chat, confirmCrossVehicleRouteOrder, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getPlanVersions, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewCrossVehicleRouteOrder, previewRouteOrder, resetRuntimeState, restorePlan, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
-import { ChatPanel } from './components/ChatPanel'
+import { ChatPanel, type ChatMessage } from './components/ChatPanel'
 import { MapView } from './components/MapView'
 import { OrderTable } from './components/OrderTable'
 import { Badge, Button, Card, CardContent } from './components/ui'
@@ -62,6 +62,9 @@ function DispatchRuleBoard({ rules, activeCount, expanded, busy, onToggle, onDea
 
 export default function App() {
   const [sessionId, setSessionId] = useState(createSessionId)
+  /* 排班一完成就從空白殼換成正式版面，那是兩棵不同的子樹，對話面板會被拆掉
+     重裝。紀錄放在這裡，換版面才不會把剛剛講過的話清掉。 */
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [plan, setPlan] = useState<Plan | null>(null)
   const [map, setMap] = useState<MapData | null>(null)
   const [providers, setProviders] = useState<ProviderStatus[]>([])
@@ -360,12 +363,12 @@ export default function App() {
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, timelineMinutes])
 
-  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setPlan(null); setMap(null); setActiveVehicle(null); setExpandedOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
+  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setChatMessages([]); setPlan(null); setMap(null); setActiveVehicle(null); setExpandedOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
   const google = providers.find((item) => item.name === 'google_routes')
 
   {/* 開場畫面原本只有一張對話卡，連產品名都沒有。Demo 一開始就是這一頁，
       標題要在上面。 */}
-  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
+  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} initialMessages={chatMessages} onMessagesChange={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
 
   return (
     <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
@@ -428,7 +431,7 @@ export default function App() {
         </div>
 
         <div className="stage-chat">
-          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} />
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} initialMessages={chatMessages} onMessagesChange={setChatMessages} />
         </div>
 
         <div className="stage-toasts">
