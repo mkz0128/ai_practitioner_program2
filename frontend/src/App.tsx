@@ -7,7 +7,7 @@ import { Badge, Button, Card, CardContent } from './components/ui'
 import { TimelineBoard } from './components/TimelineBoard'
 import { DeviationBoard } from './components/DeviationBoard'
 import { formatNumber, vehicleLabel } from './lib/utils'
-import { formatValidationReport } from './lib/fieldLabels'
+import { formatValidationReport, unassignedReasonLabel } from './lib/fieldLabels'
 import type { ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
 
@@ -38,6 +38,24 @@ function mappingError(response: ColumnMappingResponse): string {
   }
   const code = response.error?.code || ''
   return formatValidationReport(details, labels[code] || response.error?.message || '工作簿驗證失敗。')
+}
+
+/** 匯入完成後對話框裡那一句：讀到什麼、排了多少、沒排到的那幾張怎麼辦。 */
+function importSummary(plan: Plan): string {
+  const total = plan.completeness.total_order_count
+  const assigned = plan.completeness.assigned_order_count
+  const head = `讀好了：${formatNumber(total)} 張訂單、${formatNumber(plan.vehicles.length)} 台車。`
+  if (plan.unassigned_orders.length === 0) {
+    return `${head}\n${formatNumber(assigned)} 張全部排進去了。要調整就直接跟我說。`
+  }
+  const rows = plan.unassigned_orders.map(
+    (orderId) => `${orderId}：${unassignedReasonLabel(plan.unassigned_reasons[orderId])}。`,
+  )
+  return [
+    `${head}排進去 ${formatNumber(assigned)} 張，有 ${formatNumber(plan.unassigned_orders.length)} 張排不進去：`,
+    ...rows,
+    '要放寬哪個條件再排一次，還是這幾張先留給人工處理？',
+  ].join('\n')
 }
 
 function stageLabel(stage: Plan['stage']): string {
@@ -117,6 +135,10 @@ export default function App() {
       // 排完班不再彈綠色提示。同樣的數字上排的「49/50 已安排」一直都在，
       // 浮在右下角只是擋住對話框，而對話框現在要用到底。
       setNotice(null)
+      // 排完班一定要在對話框留一句話。上排的「49/50 已安排」是數字，
+      // 沒有講「那一張為什麼排不進去、你要怎麼處理」——調度員丟完檔案抬頭
+      // 看到的是一個空的對話框，還得自己去看板最下面找那張單。
+      setChatMessages((items) => [...items, { role: 'assistant', text: importSummary(created) }])
     } catch (requestError) { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(friendlyError(requestError)) } finally { setBusy(false); setActivity(null) }
   }, [refreshDispatchRules])
 
@@ -368,7 +390,7 @@ export default function App() {
 
   {/* 開場畫面原本只有一張對話卡，連產品名都沒有。Demo 一開始就是這一頁，
       標題要在上面。 */}
-  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} initialMessages={chatMessages} onMessagesChange={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
+  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} messages={chatMessages} setMessages={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
 
   return (
     <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
@@ -431,7 +453,7 @@ export default function App() {
         </div>
 
         <div className="stage-chat">
-          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} initialMessages={chatMessages} onMessagesChange={setChatMessages} />
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} messages={chatMessages} setMessages={setChatMessages} />
         </div>
 
         <div className="stage-toasts">

@@ -30,6 +30,12 @@ test('排班完成換版面之後，對話紀錄不會被清掉', async ({ page 
   await expect(bubbles.first()).toBeVisible()
   await expect(page.locator('.chat-log')).toContainText('demo-50-relaxed.xlsx')
 
+  // 排完班要在對話框交代結果，不能只有上排那串數字。
+  await expect(page.locator('.chat-log')).toContainText('讀好了：50 張訂單、4 台車。', { timeout: 60_000 })
+  await expect(page.locator('.chat-log')).toContainText('50 張全部排進去了')
+  // 進度那句不能把結果蓋掉。
+  await expect(page.locator('.chat-log')).toContainText('已送出檔案，正在進行資料驗證與排班。')
+
   // 之後再講話，接在同一段對話後面，不是從頭開始。
   const before = await bubbles.count()
   const input = page.getByRole('textbox', { name: '輸入訊息' })

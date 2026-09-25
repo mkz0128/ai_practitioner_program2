@@ -20,6 +20,25 @@ export const fieldLabels: Record<string, string> = {
   current_load_kg: '目前載重',
 }
 
+/**
+ * 排不進去的原因，後端給的是代碼。畫面上印 `ORD-050：CAPACITY_LIMIT`
+ * 等於沒講。這裡的字跟後端 `_unassigned_reason_label` 一致。
+ */
+const unassignedReasons: Record<string, string> = {
+  CAPACITY_LIMIT: '每一台車的載重餘裕都不夠裝這張單',
+  SERVICE_ZONE_UNAVAILABLE: '沒有車負責這一區',
+  TIME_OR_ROUTE_CONFLICT: '配送時段排不下，或是繞過去會讓別的單遲到',
+  TIME_WINDOW_CONFLICT: '配送時段排不下',
+  VEHICLE_UNAVAILABLE: '今天可用的車不夠',
+  UNASSIGNABLE: '載重、責任區、配送時段三個條件湊不出可行的安排',
+  UNASSIGNED_BY_SOLVER: '載重、責任區、配送時段三個條件湊不出可行的安排',
+}
+
+export function unassignedReasonLabel(reason: string | undefined | null): string {
+  if (!reason) return '目前的條件下排不進去'
+  return unassignedReasons[reason] || reason
+}
+
 export function fieldLabel(path: string): string {
   const separator = path.lastIndexOf('.')
   const key = separator >= 0 ? path.slice(separator + 1) : path
