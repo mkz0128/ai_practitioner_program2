@@ -6,7 +6,12 @@ export interface ValidationError { path: string; code: string; message: string; 
 export interface ValidationPayload { is_valid: boolean; error_count: number; warning_count: number; requires_manual_review: boolean; errors: ValidationError[]; warnings: ValidationError[] }
 export interface DatasetImportResponse { dataset_id: string; status: string; counts: { orders: number; packages: number; vehicles: number; zones: number }; total_weight_kg: number; validation: ValidationPayload; mapping?: ColumnMappingResponse | null }
 export interface ColumnMappingEntry { sheet: string; source: string; target: string | null; confidence: number; sample_values: string[]; required: boolean }
-export interface ColumnMappingResponse { status: 'CANONICAL' | 'NEEDS_CONFIRMATION' | 'AUTO_APPLIED' | 'INVALID'; source_name: string; requires_confirmation: boolean; entries: ColumnMappingEntry[]; missing_fields: string[]; mapping: Record<string, Record<string, string>>; mapping_id?: string | null; error?: { code: string; message: string; field_errors?: ValidationError[] } }
+export interface ColumnMappingResponse { status: 'CANONICAL' | 'NEEDS_CONFIRMATION' | 'AUTO_APPLIED' | 'INVALID'; source_name: string; requires_confirmation: boolean; entries: ColumnMappingEntry[]; missing_fields: string[]; mapping: Record<string, Record<string, string>>; mapping_id?: string | null; repair_token?: string; error?: { code: string; message: string; field_errors?: ValidationError[] } }
+
+/** 一個檔案留白、但調度員可以直接講出來補上的必填格。 */
+export interface BlankCell { path: string; sheet: string; record_id: string; field: string; field_label: string }
+export interface FilledCell { path: string; record_id: string; field: string; field_label: string; value: string }
+export interface DatasetRepairResponse { status: 'VALIDATED' | 'STILL_BLANK' | 'NOTHING_SUPPLIED'; repair_token?: string; filled: FilledCell[]; still_blank?: BlankCell[]; dataset_id?: string; counts?: { orders: number; packages: number; vehicles: number; zones: number }; total_weight_kg?: number }
 
 export interface AssignmentReason { summary: string; evidence: Record<string, unknown> }
 export type StopProgressStatus = 'COMPLETED' | 'CURRENT' | 'UPCOMING'

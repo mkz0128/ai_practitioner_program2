@@ -48,6 +48,8 @@ export function importWorkbook(file: File, columnMapping?: Record<string, Record
   return request<DatasetImportResponse>('/api/v1/datasets/import-excel', { method: 'POST', body: form, signal })
 }
 export function inspectWorkbook(file: File, signal?: AbortSignal): Promise<ColumnMappingResponse> { const form = new FormData(); form.append('file', file); return request<ColumnMappingResponse>('/api/v1/datasets/inspect-excel', { method: 'POST', body: form, headers: { 'X-Dispatch-UI': 'true' }, signal }) }
+/** 把調度員講出來的值填進上傳檔案留白的必填格；檔案本身不會被改寫。 */
+export function repairDataset(repairToken: string, message: string, signal?: AbortSignal): Promise<DatasetRepairResponse> { return request<DatasetRepairResponse>('/api/v1/datasets/repair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repair_token: repairToken, message }), signal }) }
 export function getValidation(datasetId: string): Promise<{ dataset_id: string; validation: ValidationPayload }> { return request(`/api/v1/datasets/${encodeURIComponent(datasetId)}/validation`) }
 export function createPlan(datasetId: string, objective: 'FASTEST' | 'BALANCED' | 'STABLE' = 'BALANCED', signal?: AbortSignal): Promise<Plan> { return request<Plan>('/api/v1/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataset_id: datasetId, algorithm: 'ORTOOLS', objective, route_provider_preference: 'SIMULATED', traffic_mode: 'SIMULATED' }), signal }) }
 export function getPlan(planId: string, version?: number): Promise<Plan> { const query = version ? `?version=${version}` : ''; return request<Plan>(`/api/v1/plans/${encodeURIComponent(planId)}${query}`) }

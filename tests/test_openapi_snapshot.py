@@ -10,6 +10,7 @@ EXPECTED_PATHS = {
     "/ready",
     "/api/v1/datasets/inspect-excel",
     "/api/v1/datasets/import-excel",
+    "/api/v1/datasets/repair",
     "/api/v1/datasets/{dataset_id}",
     "/api/v1/datasets/{dataset_id}/validation",
     "/api/v1/dispatch-rules",

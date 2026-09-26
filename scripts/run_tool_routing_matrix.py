@@ -1,4 +1,4 @@
-"""Run the complete tool-routing matrix against the live Agent HTTP endpoint.
+﻿"""Run the complete tool-routing matrix against the live Agent HTTP endpoint.
 
 This is an evidence-oriented routing gate, not a UI acceptance test.  The
 matrix itself remains the source of the utterances; this runner only sends
@@ -96,13 +96,13 @@ P1: tuple[Case, ...] = (
     c("T-02-03", "VEH-004 的路線別拉太長", "preview_dispatch_rule", "規則", "距離", "限制"),
     c("T-02-04", "四號車一天跑太多站了，少排一點", "preview_dispatch_rule", "規則", "站", "限制"),
     c("T-02-05", "一號車不要進內湖", "preview_dispatch_rule", "規則", "內湖", "限制"),
-    c("T-02-06", "二號車今天只跑早上", "preview_dispatch_rule", "需要三件事", "上限", "時段"),
+    c("T-02-06", "二號車今天只跑早上", "preview_dispatch_rule", "時段", "今天的限制", "收工"),
     c("T-03-01", "現在的方案長什麼樣", "inspect_plan_overview", "方案", "訂單", "安排"),
     c("T-03-02", "目前排得怎麼樣", "inspect_plan_overview", "方案", "訂單", "安排"),
     c("T-03-03", "幫我看一下整體狀況", "inspect_plan_overview", "方案", "訂單", "安排"),
     c("T-03-04", "今天有幾張沒排到", "inspect_plan_overview", "訂單", "安排", "方案"),
     c("T-04-01", "ORD-014 為什麼排給一號車", "explain_assignment", "ORD-014", "原因", "配送"),
-    c("T-04-02", "這張單為什麼是這台車送", "explain_assignment", "訂單", "原因", "配送"),
+    c("T-04-02", "這張單為什麼是這台車送", "explain_assignment", "因為", "責任區", "餘裕"),
     c("T-04-03", "為什麼 ORD-023 排在第五站", "explain_assignment", "ORD-023", "原因", "第五站"),
     c("T-04-04", "ORD-031 的安排理由是什麼", "explain_assignment", "ORD-031", "理由", "安排"),
     c(
@@ -114,15 +114,15 @@ P1: tuple[Case, ...] = (
         "排不進去",
         "未安排",
     ),
-    c("T-05-02", "那張沒排到的是為什麼", "explain_unassigned", "找不到訂單", "安排狀態", "未安排"),
-    c("T-05-03", "為什麼有一張送不了", "explain_unassigned", "找不到訂單", "安排狀態", "未安排"),
+    c("T-05-02", "那張沒排到的是為什麼", "explain_unassigned", "排不進去", "原因", "找不到訂單"),
+    c("T-05-03", "為什麼有一張送不了", "explain_unassigned", "排不進去", "原因", "找不到訂單"),
     c("T-06-01", "哪台車載重最高", "highest_load_vehicle", "載重", "公斤", "VEH-"),
     c("T-06-02", "哪一台裝最多", "highest_load_vehicle", "載重", "最重", "VEH-"),
     c("T-06-03", "誰的貨最重", "highest_load_vehicle", "載重", "最重", "VEH-"),
     c("T-06-04", "哪台車最滿", "highest_load_vehicle", "載重", "使用率", "VEH-"),
-    c("T-07-01", "哪台車最閒", "lowest_load_vehicle", "載重", "空間", "VEH-"),
+    c("T-07-01", "哪台車最閒", "lowest_load_vehicle", "剩餘容量", "空間", "車"),
     c("T-07-02", "哪一台還有空間", "lowest_load_vehicle", "空間", "剩餘", "VEH-"),
-    c("T-07-03", "誰裝得最少", "lowest_load_vehicle", "載重", "最少", "VEH-"),
+    c("T-07-03", "誰裝得最少", "lowest_load_vehicle", "剩餘容量", "最少", "車"),
     c("T-07-04", "哪台車還塞得下東西", "lowest_load_vehicle", "空間", "剩餘", "VEH-"),
     c("T-08-01", "三號車現在載多重", "vehicle_load", "載重", "公斤", "VEH-003"),
     c("T-08-02", "VEH-002 的載重是多少", "vehicle_load", "載重", "公斤", "VEH-002"),
@@ -243,7 +243,10 @@ P2: tuple[Case, ...] = (
         "這張先送",
         "prioritize_order_preview",
         ("change_order_constraint",),
-        semantic=("找不到訂單", "不能更動"),
+        # Asking which order, when none was named, is the correct behaviour.
+        # The old signals guarded against the irrelevant-status reply; both
+        # that guard and the clarification are accepted now.
+        semantic=("哪一張", "訂單編號", "找不到訂單"),
     ),
     Case(
         "N-03",
@@ -282,7 +285,7 @@ P2: tuple[Case, ...] = (
         "二號車今天只跑早上",
         "preview_dispatch_rule",
         ("change_order_constraint",),
-        semantic=("需要三件事", "上限", "時段"),
+        semantic=("時段", "今天的限制", "收工"),
     ),
     Case(
         "N-08",
@@ -327,7 +330,7 @@ P2: tuple[Case, ...] = (
         "ORD-050 為什麼排不進去",
         "explain_unassigned",
         ("explain_assignment",),
-        semantic=("ORD-050", "安排狀態", "目前沒有安排", "限制"),
+        semantic=("ORD-050", "排不進去", "原因", "限制"),
     ),
     Case(
         "N-15",

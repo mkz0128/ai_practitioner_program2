@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 
@@ -163,11 +164,46 @@ def _rows(
     return result
 
 
+NUMERIC_REQUIRED_FIELDS = frozenset({"weight_kg"})
+
+
+def _coerced_override(field: str, supplied: Any) -> Any:
+    """Shape a typed-in value like the cell the workbook would have held.
+
+    The domain models are strict, so a weight has to arrive as a number rather
+    than as the text "5". A value that cannot be read as the field needs is
+    dropped, which leaves the cell blank and asks the dispatcher again instead
+    of failing with a type error they cannot act on.
+    """
+    if supplied is None:
+        return None
+    text = str(supplied).strip()
+    if not text:
+        return None
+    if field not in NUMERIC_REQUIRED_FIELDS:
+        return text
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def parse_workbook(
     source: str | Path | BinaryIO,
     source_filename: str = "workbook.xlsx",
     column_mapping: ColumnMapping | None = None,
+    field_overrides: Mapping[str, Any] | None = None,
 ) -> tuple[Dataset | None, ValidationReport]:
+    """Read a workbook into a dataset.
+
+    ``field_overrides`` fills individual cells the workbook left blank, keyed by
+    the same path a MISSING_REQUIRED_FIELD error reports, for example
+    ``orders.ORD-001.location_label``. A dispatcher who is told which cells are
+    blank can then supply those values instead of editing the file and uploading
+    it again. An override only ever fills a cell; it never replaces a value the
+    workbook already carries.
+    """
+    overrides = dict(field_overrides or {})
     errors: list[FieldError] = []
     try:
         workbook = load_workbook(source, read_only=True, data_only=True)
@@ -221,14 +257,21 @@ def parse_workbook(
                 "orders": ("location_label", "time_slot"),
                 "packages": ("weight_kg",),
             }.get(sheet_name, ())
+            identifier_field = "order_id" if sheet_name == "orders" else "package_id"
+            identifier = record.get(identifier_field) or f"row-{row_number}"
+            for field in required_fields:
+                if record.get(field) is not None and str(record.get(field)).strip():
+                    continue
+                override = overrides.get(f"{sheet_name}.{identifier}.{field}")
+                supplied = _coerced_override(field, override)
+                if supplied is not None:
+                    record[field] = supplied
             missing_fields = [
                 field
                 for field in required_fields
                 if record.get(field) is None or not str(record.get(field)).strip()
             ]
             if missing_fields:
-                identifier_field = "order_id" if sheet_name == "orders" else "package_id"
-                identifier = record.get(identifier_field) or f"row-{row_number}"
                 for field in missing_fields:
                     errors.append(
                         FieldError(

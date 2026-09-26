@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -92,6 +93,75 @@ def test_loaded_scope_freezes_assignments_and_reduces_urgent_options() -> None:
     assert len(body["options"]) == 1
     assert body["options"][0]["cost"]["vehicle_change_count"] == 0
     assert body["options"][0]["diff"]["reassigned_orders"] == []
+
+    # 上車後又來一張急單是這套系統本來就要處理的事,方案卡也給了【確認套用】。
+    # 這顆按鈕按下去必須真的建立新版本,不能回 409——不然畫面在騙人。
+    option = body["options"][0]
+    confirmed = client.post(
+        f"/api/v1/plans/{plan_id}/confirm",
+        json={
+            "version": option["preview_version"],
+            "confirmation": "CONFIRM_PLAN",
+            "dispatcher_reference": "test",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    confirmed_body = confirmed.json()
+    # 還在上車後,不能被降回 PROPOSED/CONFIRMED,不然接不下去模擬出發。
+    assert confirmed_body["state"] == "LOADED"
+    assert confirmed_body["stage"] == "LOADED"
+    assigned = {
+        order_id
+        for route in confirmed_body["vehicles"]
+        for order_id in [stop["order_id"] for stop in route["stops"]]
+    }
+    assert "URG-SCOPE-01" in assigned
+    departed = client.post(
+        f"/api/v1/plans/{plan_id}/simulate-departure",
+        json={
+            "version": confirmed_body["version"],
+            "confirmation": "START_SIMULATED_DEPARTURE",
+        },
+    )
+    assert departed.status_code == 200, departed.text
+
+
+def test_loaded_stage_refuses_a_preview_that_moves_goods_off_a_loaded_vehicle() -> None:
+    plan_id, _, _, _ = _create_plan()
+    loaded = client.post(
+        f"/api/v1/plans/{plan_id}/load",
+        json={"version": 1, "confirmation": "START_LOADING", "dispatcher_reference": "test"},
+    )
+    assert loaded.status_code == 200, loaded.text
+    current = store.get_plan(plan_id)
+    assert current is not None
+
+    # 偽造一個把某台車第一站搬走的版本:貨已經在車上,這種版本不能確認。
+    moved = current.plan.model_copy(
+        update={
+            "routes": [
+                route.model_copy(
+                    update={"stops": route.stops[1:], "order_ids": route.order_ids[1:]}
+                )
+                if index == 0
+                else route
+                for index, route in enumerate(current.plan.routes)
+            ]
+        }
+    )
+    tampered = replace(current, version=current.version + 1, plan=moved)
+    store.add_plan(tampered, make_current=False)
+
+    refused = client.post(
+        f"/api/v1/plans/{plan_id}/confirm",
+        json={
+            "version": tampered.version,
+            "confirmation": "CONFIRM_PLAN",
+            "dispatcher_reference": "test",
+        },
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "PLAN_NOT_CONFIRMABLE"
 
 
 def test_dispatched_scope_exposes_deterministic_progress_and_remaining_reorder() -> None:

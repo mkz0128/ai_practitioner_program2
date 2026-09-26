@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, chat, confirmCrossVehicleRouteOrder, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getPlanVersions, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewCrossVehicleRouteOrder, previewRouteOrder, resetRuntimeState, restorePlan, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
+import { ApiError, chat, confirmCrossVehicleRouteOrder, confirmDispatchParameter, confirmDispatchRule, confirmPlan, confirmRouteOrder, createPlan, deactivateDispatchRule, getDispatchRules, getMapData, getPlanVersions, getProviderStatus, importWorkbook, inspectWorkbook, NetworkRequestError, previewCrossVehicleRouteOrder, previewRouteOrder, repairDataset, resetRuntimeState, restorePlan, simulateDeparture, startLoading, NETWORK_FAILURE_MESSAGE } from './api'
 import { ChatPanel, type ChatMessage } from './components/ChatPanel'
 import { MapView } from './components/MapView'
 import { OrderTable } from './components/OrderTable'
@@ -7,7 +7,7 @@ import { Badge, Button, Card, CardContent } from './components/ui'
 import { TimelineBoard } from './components/TimelineBoard'
 import { DeviationBoard } from './components/DeviationBoard'
 import { formatNumber, vehicleLabel } from './lib/utils'
-import { formatValidationReport, unassignedReasonLabel } from './lib/fieldLabels'
+import { formatValidationReport, timeSlotLabel, unassignedReasonLabel } from './lib/fieldLabels'
 import type { ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
 
@@ -113,6 +113,24 @@ export default function App() {
     setActiveRuleCount(result.active_count)
   }, [])
 
+  /** 資料集就緒之後的下半段：建矩陣、求解、畫地圖。兩條路都要走這一段——
+   *  上傳一份完整的檔案，或是把檔案留白的格子用講的補完。 */
+  const planDataset = useCallback(async (datasetId: string, controller: AbortController): Promise<Plan> => {
+    setNotice('建立距離矩陣…'); setActivity({ skill: '每日排班', phase: '建立距離矩陣…' })
+    // 這裡只是讓「建立距離矩陣…」有機會畫出來再往下跑。
+    // 不要用 requestAnimationFrame——分頁沒有在繪製時（視窗被蓋住、
+    // 投影切換、瀏覽器面板隱藏）rAF 永遠不會觸發，整個開場就卡死在這一行。
+    // 2026-09-14 實測：Playwright 有在繪製所以看不出來，真的開瀏覽器就中。
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+    setNotice('OR-Tools 求解中…'); setActivity({ skill: '每日排班', phase: 'OR-Tools 求解中…' })
+    const created = await createPlan(datasetId, 'BALANCED', controller.signal)
+    setActivity({ skill: '每日排班', phase: '獨立驗證中…' }); setPlan(created); setConversationOrderId(created.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null); setMap(await getMapData(created.plan_id, created.version, controller.signal)); await refreshDispatchRules()
+    // 排完班不再彈綠色提示。同樣的數字上排的「49/50 已安排」一直都在，
+    // 浮在右下角只是擋住對話框，而對話框現在要用到底。
+    setNotice(null)
+    return created
+  }, [refreshDispatchRules])
+
   const loadFile = useCallback(async (file: File, columnMapping?: Record<string, Record<string, string>>, mappingName?: string) => {
     setBusy(true); setError(null); setNotice('讀取今日訂單…'); setActivity({ skill: '每日排班', phase: '讀取訂單…' })
     abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
@@ -123,24 +141,38 @@ export default function App() {
       await resetRuntimeState()
       const imported = await importWorkbook(file, columnMapping, mappingName, controller.signal)
       if (!imported.validation.is_valid) { setError(formatValidationReport(imported.validation.errors, '資料需要人工複核，請先修正。')); return }
-      setNotice('建立距離矩陣…'); setActivity({ skill: '每日排班', phase: '建立距離矩陣…' })
-      // 這裡只是讓「建立距離矩陣…」有機會畫出來再往下跑。
-      // 不要用 requestAnimationFrame——分頁沒有在繪製時（視窗被蓋住、
-      // 投影切換、瀏覽器面板隱藏）rAF 永遠不會觸發，整個開場就卡死在這一行。
-      // 2026-09-14 實測：Playwright 有在繪製所以看不出來，真的開瀏覽器就中。
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-      setNotice('OR-Tools 求解中…'); setActivity({ skill: '每日排班', phase: 'OR-Tools 求解中…' })
-      const created = await createPlan(imported.dataset_id, 'BALANCED', controller.signal)
-      setActivity({ skill: '每日排班', phase: '獨立驗證中…' }); setPlan(created); setConversationOrderId(created.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null); setMap(await getMapData(created.plan_id, created.version, controller.signal)); await refreshDispatchRules()
-      // 排完班不再彈綠色提示。同樣的數字上排的「49/50 已安排」一直都在，
-      // 浮在右下角只是擋住對話框，而對話框現在要用到底。
-      setNotice(null)
+      const created = await planDataset(imported.dataset_id, controller)
       // 排完班一定要在對話框留一句話。上排的「49/50 已安排」是數字，
       // 沒有講「那一張為什麼排不進去、你要怎麼處理」——調度員丟完檔案抬頭
       // 看到的是一個空的對話框，還得自己去看板最下面找那張單。
       setChatMessages((items) => [...items, { role: 'assistant', text: importSummary(created) }])
     } catch (requestError) { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(friendlyError(requestError)) } finally { setBusy(false); setActivity(null) }
-  }, [refreshDispatchRules])
+  }, [planDataset])
+
+  /** 調度員把留白的格子用講的補上。回傳的字直接就是對話框要顯示的那一則。 */
+  const repairFile = useCallback(async (repairToken: string, message: string): Promise<{ text: string; done: boolean }> => {
+    setBusy(true); setError(null); setNotice('補上缺的欄位…'); setActivity({ skill: '每日排班', phase: '補上缺的欄位…' })
+    abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller
+    try {
+      const result = await repairDataset(repairToken, message, controller.signal)
+      const filled = result.filled.map((item) => `${item.record_id} 的${item.field_label}：${timeSlotLabel(item.value)}`)
+      if (result.status === 'NOTHING_SUPPLIED') {
+        const blanks = (result.still_blank || []).map((item) => `${item.record_id} 的${item.field_label}`)
+        return { text: `我沒聽出你要補哪一格。還缺這 ${blanks.length} 個：\n${blanks.join('\n')}\n直接講值就可以，例如「ORD-001 是信義示範配送點」。`, done: false }
+      }
+      if (result.status === 'STILL_BLANK') {
+        const blanks = (result.still_blank || []).map((item) => `${item.record_id} 的${item.field_label}`)
+        return { text: `記下來了：\n${filled.join('\n')}\n\n還差 ${blanks.length} 個：\n${blanks.join('\n')}`, done: false }
+      }
+      // 一份新的訂單表就是新的一天，跟上傳那條路一樣要先清掉舊規則。
+      await resetRuntimeState()
+      const created = await planDataset(result.dataset_id as string, controller)
+      return { text: `補好了：\n${filled.join('\n')}\n\n${importSummary(created)}`, done: true }
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return { text: '這次補欄位中斷了，再講一次就好。', done: false }
+      return { text: friendlyError(requestError), done: false }
+    } finally { setBusy(false); setActivity(null); setNotice(null) }
+  }, [planDataset])
 
   const inspectFile = useCallback(async (file: File): Promise<ColumnMappingResponse | null> => {
     setBusy(true); setError(null); setNotice(null); setActivity({ skill: '每日排班', phase: '讀取訂單…' })
@@ -390,7 +422,7 @@ export default function App() {
 
   {/* 開場畫面原本只有一張對話卡，連產品名都沒有。Demo 一開始就是這一頁，
       標題要在上面。 */}
-  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} messages={chatMessages} setMessages={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
+  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} messages={chatMessages} setMessages={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
 
   return (
     <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
@@ -453,7 +485,7 @@ export default function App() {
         </div>
 
         <div className="stage-chat">
-          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} messages={chatMessages} setMessages={setChatMessages} />
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} messages={chatMessages} setMessages={setChatMessages} />
         </div>
 
         <div className="stage-toasts">

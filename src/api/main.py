@@ -5,6 +5,7 @@ import hmac
 import inspect
 import json
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from io import BytesIO
@@ -31,6 +32,7 @@ from openai import (
 from openpyxl import load_workbook  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.agent.dataset_repair import FIELD_LABELS, blank_cells_from_paths, propose_dataset_fills
 from src.agent.mapping import positional_mapping, propose_mapping
 from src.agent.runtime import run_dispatch_agent
 from src.agent.urgent_workflow import (
@@ -471,6 +473,26 @@ def _dataset_matrix_coordinates(dataset: Dataset) -> list[tuple[float, float]]:
 store = InMemoryStore()
 agent_sessions: dict[str, AgentSession] = {}
 saved_mapping_profiles: dict[str, ColumnMapping] = {}
+
+
+@dataclass
+class PendingRepair:
+    """A workbook held back because required cells were blank.
+
+    Keeping the bytes lets the dispatcher supply the missing values in the chat
+    instead of editing the file and uploading it again.
+    """
+
+    content: bytes
+    filename: str
+    column_mapping: ColumnMapping | None
+    fills: dict[str, str] = field(default_factory=dict)
+
+
+# A handful is plenty: only the workbook currently being repaired matters, and
+# holding many megabytes of rejected uploads is not worth it.
+PENDING_REPAIR_LIMIT = 8
+pending_repairs: OrderedDict[str, PendingRepair] = OrderedDict()
 app = FastAPI(title="AI Delivery Dispatch Agent", version="0.1.0")
 settings = get_settings()
 provider_runtime_state: dict[str, str] = {
@@ -1434,10 +1456,11 @@ def _inspection_error(
     code: str,
     message: str,
     field_errors: list[dict[str, Any]] | None = None,
+    repair_token: str | None = None,
 ) -> Any:
     """Keep browser preflight failures in-band while preserving REST error codes."""
     if request.headers.get("X-Dispatch-UI") == "true":
-        return {
+        payload: dict[str, Any] = {
             "status": "INVALID",
             "source_name": source_name,
             "requires_confirmation": False,
@@ -1451,12 +1474,17 @@ def _inspection_error(
             },
             "request_id": _request_id(request),
         }
+        if repair_token:
+            payload["repair_token"] = repair_token
+        return payload
+    extra = {"repair_token": repair_token} if repair_token else {}
     return _error(
         request,
         status_code,
         code,
         message,
         field_errors=field_errors,
+        **extra,
     )
 
 
@@ -1590,6 +1618,22 @@ async def inspect_excel(request: Request, file: Annotated[UploadFile, File(...)]
             BytesIO(content), source_filename=file.filename, column_mapping=saved
         )
         if not report.is_valid:
+            # Blank required cells are the one failure the dispatcher can clear by
+            # telling us the values, so this is where the repair session starts.
+            # Anything else broken about the workbook has to be fixed in the file.
+            token = (
+                _remember_repair(
+                    PendingRepair(content=content, filename=file.filename, column_mapping=saved)
+                )
+                if blank_cells_from_paths(
+                    [
+                        error.path
+                        for error in report.errors
+                        if error.code == "MISSING_REQUIRED_FIELD"
+                    ]
+                )
+                else None
+            )
             return _inspection_error(
                 request,
                 file.filename,
@@ -1597,6 +1641,7 @@ async def inspect_excel(request: Request, file: Annotated[UploadFile, File(...)]
                 "DATASET_VALIDATION_FAILED",
                 "工作簿驗證失敗。",
                 field_errors=[error.model_dump() for error in report.errors],
+                repair_token=token,
             )
     payload["request_id"] = _request_id(request)
     return payload
@@ -1632,14 +1677,43 @@ async def import_excel(
         BytesIO(content), source_filename=file.filename, column_mapping=selected_mapping
     )
     if dataset is None or not report.is_valid:
+        details: dict[str, Any] = {"requires_manual_review": report.requires_manual_review}
+        # Only blank required cells can be supplied by typing. A workbook that is
+        # broken some other way has nothing to fill in, so it gets no token and
+        # the dispatcher is not invited to try.
+        if blank_cells_from_paths(
+            [error.path for error in report.errors if error.code == "MISSING_REQUIRED_FIELD"]
+        ):
+            details["repair_token"] = _remember_repair(
+                PendingRepair(
+                    content=content,
+                    filename=file.filename,
+                    column_mapping=selected_mapping,
+                )
+            )
         return _error(
             request,
             422,
             "DATASET_VALIDATION_FAILED",
             "工作簿驗證失敗。",
             field_errors=[error.model_dump() for error in report.errors],
-            requires_manual_review=report.requires_manual_review,
+            **details,
         )
+    if mapping and mapping_name:
+        saved_mapping_profiles[file.filename] = selected_mapping or {}
+        saved_mapping_profiles[mapping_name] = selected_mapping or {}
+    return _store_dataset_payload(request, dataset, report)
+
+
+def _remember_repair(pending: PendingRepair) -> str:
+    token = f"RP-{uuid4().hex[:12].upper()}"
+    pending_repairs[token] = pending
+    while len(pending_repairs) > PENDING_REPAIR_LIMIT:
+        pending_repairs.popitem(last=False)
+    return token
+
+
+def _store_dataset_payload(request: Request, dataset: Any, report: Any) -> dict[str, Any]:
     dataset_id = f"DS-{uuid4().hex[:12].upper()}"
     record = DatasetRecord(
         dataset_id=dataset_id,
@@ -1650,9 +1724,6 @@ async def import_excel(
     )
     store.add_dataset(record)
     repository.save_dataset(dataset_id, dataset, report, record.matrix, record.created_at)
-    if mapping and mapping_name:
-        saved_mapping_profiles[file.filename] = selected_mapping or {}
-        saved_mapping_profiles[mapping_name] = selected_mapping or {}
     return {
         "dataset_id": dataset_id,
         "status": "VALIDATED",
@@ -1666,6 +1737,100 @@ async def import_excel(
         "validation": _validation_payload(report),
         "request_id": _request_id(request),
     }
+
+
+class DatasetRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repair_token: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=2000)
+
+
+def _blank_cell_payload(report: Any) -> list[dict[str, str]]:
+    cells = blank_cells_from_paths(
+        [error.path for error in report.errors if error.code == "MISSING_REQUIRED_FIELD"]
+    )
+    return [
+        {
+            "path": cell.path,
+            "sheet": cell.sheet,
+            "record_id": cell.record_id,
+            "field": cell.field,
+            "field_label": cell.label,
+        }
+        for cell in cells
+    ]
+
+
+@app.post("/api/v1/datasets/repair")
+async def repair_dataset(payload: DatasetRepairRequest, request: Request) -> Any:
+    """Fill the workbook's blank required cells from what the dispatcher typed.
+
+    The workbook itself is never rewritten; the supplied values are applied on
+    top of it each time it is re-read, so a wrong answer can simply be said again.
+    """
+    pending = pending_repairs.get(payload.repair_token)
+    if pending is None:
+        return _error(
+            request,
+            404,
+            "REPAIR_SESSION_NOT_FOUND",
+            "這份檔案的補填流程已經結束了，請重新上傳檔案。",
+        )
+    _, before = parse_workbook(
+        BytesIO(pending.content),
+        source_filename=pending.filename,
+        column_mapping=pending.column_mapping,
+        field_overrides=pending.fills,
+    )
+    outstanding = blank_cells_from_paths(
+        [error.path for error in before.errors if error.code == "MISSING_REQUIRED_FIELD"]
+    )
+    try:
+        supplied = await propose_dataset_fills(outstanding, payload.message)
+    except Exception:
+        return _error(
+            request,
+            503,
+            "REPAIR_UNDERSTANDING_UNAVAILABLE",
+            "現在讀不到語意服務，沒辦法把你講的值填進去。",
+        )
+    if not supplied:
+        return {
+            "status": "NOTHING_SUPPLIED",
+            "repair_token": payload.repair_token,
+            "filled": [],
+            "still_blank": _blank_cell_payload(before),
+            "request_id": _request_id(request),
+        }
+    pending.fills.update(supplied)
+    dataset, report = parse_workbook(
+        BytesIO(pending.content),
+        source_filename=pending.filename,
+        column_mapping=pending.column_mapping,
+        field_overrides=pending.fills,
+    )
+    filled = [
+        {
+            "path": path,
+            "record_id": path.split(".")[1] if len(path.split(".")) > 2 else path,
+            "field": path.split(".")[-1],
+            "field_label": FIELD_LABELS.get(path.split(".")[-1], path.split(".")[-1]),
+            "value": value,
+        }
+        for path, value in supplied.items()
+    ]
+    if dataset is None or not report.is_valid:
+        return {
+            "status": "STILL_BLANK",
+            "repair_token": payload.repair_token,
+            "filled": filled,
+            "still_blank": _blank_cell_payload(report),
+            "field_errors": [error.model_dump() for error in report.errors],
+            "request_id": _request_id(request),
+        }
+    pending_repairs.pop(payload.repair_token, None)
+    return _store_dataset_payload(request, dataset, report) | {"filled": filled}
 
 
 @app.get("/api/v1/datasets/{dataset_id}")
@@ -3022,6 +3187,36 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
                 )
         else:
             return _error(request, 409, "PLAN_ALREADY_DISPATCHED", "已出發的規劃不可再次確認。")
+    # 開始裝車之後又來一張急單是這套系統本來就要處理的事,方案卡也照樣給
+    # 【確認套用】。少了這一段,按下去只會拿到 409,畫面上那顆按鈕等於騙人。
+    # 貨已經在車上,所以條件是:既有訂單一張都不能換車,新的可以加進來。
+    loaded_scope_preview = False
+    if record.state == "LOADED":
+        current = store.get_plan(plan_id)
+        # 插一張急單本來就會產生新的資料集,所以這裡不能比對 dataset_id;
+        # 守住的是「車上已經有的貨不會被搬走」,那才是裝車後真正的限制。
+        if (
+            current is not None
+            and current.state == "LOADED"
+            and record.version > current.version
+            and record.plan.algorithm == "ORTOOLS"
+            and record.validation.valid
+        ):
+            current_vehicle_by_order = {
+                order_id: route.vehicle_id
+                for route in current.plan.routes
+                for order_id in route.order_ids
+            }
+            candidate_vehicle_by_order = {
+                order_id: route.vehicle_id
+                for route in record.plan.routes
+                for order_id in route.order_ids
+            }
+            loaded_scope_preview = all(
+                candidate_vehicle_by_order.get(order_id) == vehicle_id
+                for order_id, vehicle_id in current_vehicle_by_order.items()
+            )
+    stage_scope_preview = dispatched_scope_preview or loaded_scope_preview
     known_unassigned = set(record.plan.unassigned_orders)
     preserves_existing_unassigned = False
     if known_unassigned:
@@ -3031,14 +3226,14 @@ def confirm_plan(plan_id: str, payload: ConfirmRequest, request: Request) -> Any
             and known_unassigned.issubset(set(previous.plan.unassigned_orders))
             for version, previous in previous_versions.items()
         )
-    if not dispatched_scope_preview and (
+    if not stage_scope_preview and (
         record.state != "PROPOSED"
         or record.plan.algorithm != "ORTOOLS"
         or not record.validation.valid
         or (not record.plan.complete and not preserves_existing_unassigned)
     ):
         return _error(request, 409, "PLAN_NOT_CONFIRMABLE", "規劃尚未通過驗證或狀態不允許確認。")
-    if not dispatched_scope_preview:
+    if not stage_scope_preview:
         record.state = "CONFIRMED"
     # A confirmed version becomes the current read/continuation pointer. Preview
     # versions remain immutable and never become current before this checkpoint.

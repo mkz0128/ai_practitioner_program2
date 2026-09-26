@@ -9,7 +9,7 @@ type ChatSubmitResult = { response: ChatResponse | null; error?: string }
 export interface ChatMessage { role: 'user' | 'assistant'; text: string; attachment?: string; response?: ChatResponse; options?: UrgentPlanOption[]; ruleOptions?: DispatchRuleOption[]; ruleEvidence?: DispatchRuleEvidence; deviationSuggestions?: DispatchDeviationSuggestion[] }
 interface ActivityState { skill: string; phase: string }
 export interface PendingMapping { file: File; response: ColumnMappingResponse }
-interface ChatPanelProps { onChat: (message: string, action?: ChatAction) => Promise<ChatSubmitResult>; onInspectFile: (file: File) => Promise<ColumnMappingResponse | null>; onImportFile: (file: File, mapping?: Record<string, Record<string, string>>, mappingName?: string) => Promise<void>; onConfirmOption?: (option: UrgentPlanOption) => Promise<void>; onConfirmRule?: (option: DispatchRuleOption) => Promise<void>; onConfirmDeviation?: (suggestion: DispatchDeviationSuggestion) => Promise<void>; onManualAdjust?: (option: UrgentPlanOption) => void; busy: boolean; onStop: () => void; plan: boolean; activity?: ActivityState | null; messages?: ChatMessage[]; setMessages?: Dispatch<SetStateAction<ChatMessage[]>> }
+interface ChatPanelProps { onChat: (message: string, action?: ChatAction) => Promise<ChatSubmitResult>; onInspectFile: (file: File) => Promise<ColumnMappingResponse | null>; onImportFile: (file: File, mapping?: Record<string, Record<string, string>>, mappingName?: string) => Promise<void>; onRepairFile?: (repairToken: string, message: string) => Promise<{ text: string; done: boolean }>; onConfirmOption?: (option: UrgentPlanOption) => Promise<void>; onConfirmRule?: (option: DispatchRuleOption) => Promise<void>; onConfirmDeviation?: (suggestion: DispatchDeviationSuggestion) => Promise<void>; onManualAdjust?: (option: UrgentPlanOption) => void; busy: boolean; onStop: () => void; plan: boolean; activity?: ActivityState | null; messages?: ChatMessage[]; setMessages?: Dispatch<SetStateAction<ChatMessage[]>> }
 
 const canonicalFields: Record<string, string[]> = {
   orders: ['order_id', 'zone_code', 'city', 'district', 'location_label', 'latitude', 'longitude', 'time_slot', 'declared_package_count', 'priority', 'note'],
@@ -182,7 +182,7 @@ export function MappingReview({ pending, value, onChange, name, onNameChange, on
   return <div className="mapping-review" aria-label="欄位對映確認"><div className="flex items-start justify-between gap-3"><div><h3 className="text-base font-bold text-slate-900">請確認欄位對映</h3><p className="mt-1 text-xs leading-5 text-slate-500">只對映欄位名稱；儲存格資料不會由 AI 填補。</p></div><Badge tone={blockers.length ? 'warning' : 'info'}>{blockers.length ? `需修正 ${blockers.length} 項` : '可確認'}</Badge></div><div className="mapping-table-wrap"><table className="mapping-table"><thead><tr><th>工作表</th><th>來源欄位</th><th>對映到</th><th>信心度</th><th>樣本</th></tr></thead><tbody>{pending.response.entries.map((entry) => <tr key={`${entry.sheet}-${entry.source}`}><td>{entry.sheet}</td><td className="font-semibold">{entry.source || '未命名欄位'}</td><td><select aria-label={`欄位 ${entry.sheet} ${entry.source}`} value={value[entry.sheet]?.[entry.source] || ''} onChange={(event) => onChange(entry.sheet, entry.source, event.target.value)}><option value="">不對映</option>{canonicalFields[entry.sheet]?.map((field) => <option key={field} value={field}>{fieldLabels[field] || field}</option>)}</select></td><td>{Math.round(entry.confidence * 100)}%</td><td className="text-slate-500">{entry.sample_values.join('、') || '沒有樣本'}</td></tr>)}</tbody></table></div>{blockers.length > 0 && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{missing.length > 0 && <div><strong>請補齊必要欄位：</strong>{missing.map((field) => fieldLabel(field) || field).join('、')}</div>}{duplicates.length > 0 && <div><strong>請移除重複對映：</strong>{duplicates.map((field) => fieldLabels[field.split('.').at(-1) || field] || field).join('、')}</div>}</div>}<div className="mt-4 flex flex-wrap items-end gap-2"><label className="min-w-[220px] flex-1 text-xs font-semibold text-slate-600">保存名稱（選填）<input value={name} onChange={(event) => onNameChange(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal outline-none focus:border-blue-500" placeholder="例如：供應商 A" /></label><Button type="button" variant="secondary" disabled={busy || blockers.length > 0} onClick={onConfirm}>確認欄位對映</Button><Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>取消</Button></div></div>
 }
 
-export function ChatPanel({ onChat, onInspectFile, onImportFile, onConfirmOption, onConfirmRule, onConfirmDeviation, onManualAdjust, busy, onStop, plan, activity, messages: controlledMessages, setMessages: controlledSetMessages }: ChatPanelProps) {
+export function ChatPanel({ onChat, onInspectFile, onImportFile, onRepairFile, onConfirmOption, onConfirmRule, onConfirmDeviation, onManualAdjust, busy, onStop, plan, activity, messages: controlledMessages, setMessages: controlledSetMessages }: ChatPanelProps) {
   /* 對話紀錄由上層持有。排班一完成，App 就從空白殼換成正式版面，那是兩棵不同
      的子樹，React 會把這個面板拆掉再裝一個新的——紀錄放在這裡就會跟著沒了，
      調度員剛丟完檔案抬頭一看是空的對話框。上層也才有辦法在匯入完成之後補一句
@@ -193,6 +193,9 @@ export function ChatPanel({ onChat, onInspectFile, onImportFile, onConfirmOption
   const [text, setText] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [pendingMapping, setPendingMapping] = useState<PendingMapping | null>(null)
+  /* 檔案留白的必填格。後端把這份檔案留著，調度員接下來講的話就是那幾格的值，
+     所以這一則不進 agent，直接拿去填。填滿就排班，這個狀態也就結束了。 */
+  const [repairToken, setRepairToken] = useState<string | null>(null)
   const [mappingDraft, setMappingDraft] = useState<Record<string, Record<string, string>>>({})
   const [mappingName, setMappingName] = useState('')
   const [thinkingPhase, setThinkingPhase] = useState('正在理解你的需求…')
@@ -212,10 +215,15 @@ export function ChatPanel({ onChat, onInspectFile, onImportFile, onConfirmOption
     try {
       if (selectedFile) {
         try {
+          setRepairToken(null)
           const mapping = await onInspectFile(selectedFile)
           if (mapping?.status === 'INVALID') {
             const details = mapping.error?.field_errors || []
-            throw new Error(formatValidationReport(details, mapping.error?.message || '工作簿驗證失敗。'))
+            // 後端留著這份檔案時才收得到 token。收到就代表接下來講的值填得進去，
+            // 訊息的最後一句也要改成「講給我」而不是「改檔案再傳一次」。
+            const canTypeIn = Boolean(mapping.repair_token) && Boolean(onRepairFile)
+            if (canTypeIn) setRepairToken(mapping.repair_token as string)
+            throw new Error(formatValidationReport(details, mapping.error?.message || '工作簿驗證失敗。', canTypeIn))
           }
           if (mapping?.requires_confirmation) {
             setPendingMapping({ file: selectedFile, response: mapping }); setMappingDraft(mapping.mapping); setMappingName('')
@@ -228,6 +236,15 @@ export function ChatPanel({ onChat, onInspectFile, onImportFile, onConfirmOption
             await onImportFile(selectedFile, mapping?.mapping)
           }
         } catch (error) { setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, text: error instanceof Error ? error.message : '檔案處理失敗。' } : item)) }
+        return
+      }
+      /* 檔案還有格子留白時，這一則講的就是那幾格的值——這不是在猜語意，
+         是應用程式自己知道現在正等著誰把哪幾格補起來。填滿就自動排班。 */
+      if (repairToken && onRepairFile) {
+        setThinkingPhase('正在補上缺的欄位…')
+        const outcome = await onRepairFile(repairToken, value)
+        if (outcome.done) setRepairToken(null)
+        setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, text: outcome.text } : item))
         return
       }
       // 只是讓「理解你的需求…」有機會畫出來再送出。

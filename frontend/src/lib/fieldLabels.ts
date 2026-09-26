@@ -40,6 +40,17 @@ export function unassignedReasonLabel(reason: string | undefined | null): string
   return unassignedReasons[reason] || reason
 }
 
+/** 後端存的是 MORNING/AFTERNOON/EVENING，唸出來要是人話。 */
+const timeSlotWords: Record<string, string> = {
+  MORNING: '早上',
+  AFTERNOON: '下午',
+  EVENING: '晚上',
+}
+
+export function timeSlotLabel(value: string): string {
+  return timeSlotWords[value] || value
+}
+
 export function fieldLabel(path: string): string {
   const separator = path.lastIndexOf('.')
   const key = separator >= 0 ? path.slice(separator + 1) : path
@@ -68,10 +79,14 @@ export function formatValidationError(error: ValidationError): string {
  * One readable block instead of a single line of clauses joined by 「；」.
  *
  * A dispatcher looking at this has to know three things: how many problems
- * there are, which rows they are on, and that fixing the file and uploading it
- * again is the whole remedy. The old string buried all three.
+ * there are, which rows they are on, and what clears them. The old string
+ * buried all three.
+ *
+ * ``canTypeIn`` is set when the backend kept the file and will accept the
+ * values spoken into the chat. Then the remedy is to say them, not to edit the
+ * spreadsheet and upload it again, and the last line has to say so.
  */
-export function formatValidationReport(errors: ValidationError[], fallback: string): string {
+export function formatValidationReport(errors: ValidationError[], fallback: string, canTypeIn = false): string {
   const missing = errors.filter((error) => error.code === 'MISSING_REQUIRED_FIELD')
   if (missing.length === 0) {
     const others = errors.map((error) => error.message)
@@ -80,12 +95,11 @@ export function formatValidationReport(errors: ValidationError[], fallback: stri
   const rows = missing.map(formatValidationError)
   const rest = errors.filter((error) => error.code !== 'MISSING_REQUIRED_FIELD')
   const tail = rest.length ? ['', ...rest.map((error) => error.message)] : []
-  return [
-    `這份檔案有 ${missing.length} 個地方要補，補完再傳一次就可以排班：`,
-    '',
-    ...rows,
-    ...tail,
-    '',
-    '其他欄位都讀到了。',
-  ].join('\n')
+  const head = canTypeIn
+    ? `這份檔案有 ${missing.length} 個地方要補，直接跟我講就可以，不用改檔案：`
+    : `這份檔案有 ${missing.length} 個地方要補，補完再傳一次就可以排班：`
+  const foot = canTypeIn
+    ? ['', '其他欄位都讀到了。值講給我，我就填進去排班。']
+    : ['', '其他欄位都讀到了。']
+  return [head, '', ...rows, ...tail, ...foot].join('\n')
 }
