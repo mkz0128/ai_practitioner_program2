@@ -1,4 +1,4 @@
-import type { ApiErrorBody, ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DatasetImportResponse, DelayPreview, DispatchRuleDuration, DispatchRuleOption, DispatchRuleRecord, DispatchRuleType, DispatchRulesResponse, MapData, Plan, PlanVersionSummary, ProviderStatus, ReassignmentPreview, RouteOrderPreview, StrategyComparison, UrgentOrderBundlePayload, UrgentOrderPayload, UrgentPackagePayload, UrgentPreview, ValidationError, ValidationPayload } from './types'
+import type { ApiErrorBody, ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DatasetImportResponse, DatasetRepairResponse, DelayPreview, DispatchRuleDuration, DispatchRuleOption, DispatchRuleRecord, DispatchRuleType, DispatchRulesResponse, MapData, Plan, PlanVersionSummary, ProviderStatus, ReassignmentPreview, RouteOrderPreview, StrategyComparison, UrgentOrderBundlePayload, UrgentOrderPayload, UrgentPackagePayload, UrgentPreview, ValidationError, ValidationPayload } from './types'
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 const baseUrl = configuredBaseUrl.endsWith('/') ? configuredBaseUrl.slice(0, -1) : configuredBaseUrl
