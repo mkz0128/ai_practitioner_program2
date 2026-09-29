@@ -19,7 +19,7 @@ type DetailView = 'orders' | 'rules' | 'timeline' | 'review'
 function Brand({ compact = false }: { compact?: boolean }) {
   return <div className={`boxellent-brand ${compact ? 'boxellent-brand-compact' : ''}`}>
     <span className="boxellent-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M7 12.5 20 6l13 6.5v15L20 34 7 27.5v-15Z" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round"/><path d="m7.5 12.5 12.5 7 12.5-7M20 19.5V33M13.5 9.3l13 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-    <span className="boxellent-wordmark"><span>box</span>ellent</span>
+    <span className="boxellent-wordmark"><span>Box</span>cellent</span>
   </div>
 }
 

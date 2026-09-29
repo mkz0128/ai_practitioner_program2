@@ -4,7 +4,21 @@ import path from 'node:path'
 const workbook = path.resolve('..', 'data', 'samples', 'demo-50-tight.xlsx')
 const shots = path.resolve('..', 'docs', 'screenshots')
 
-test('boxellent 工作區：地圖常駐，明細按需展開，發車後時間軸在明細內', async ({ page }) => {
+test('產品名稱與簡報一致', async ({ page }) => {
+  const consoleErrors: string[] = []
+  const forbiddenRequests: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
+  page.on('request', (request) => { const url = request.url(); if (url.includes('googleapis') || url.endsWith('/dispatch')) forbiddenRequests.push(url) })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await expect(page).toHaveTitle('Boxcellent｜配送調度')
+  await expect(page.getByText('Boxcellent', { exact: true })).toBeVisible()
+  await page.screenshot({ path: path.join(shots, 'BRAND-01.png') })
+  expect(consoleErrors).toEqual([])
+  expect(forbiddenRequests).toEqual([])
+})
+
+test('Boxcellent 工作區：地圖常駐，明細按需展開，發車後時間軸在明細內', async ({ page }) => {
   test.setTimeout(300_000)
   const consoleErrors: string[] = []
   const forbiddenRequests: string[] = []
@@ -12,7 +26,7 @@ test('boxellent 工作區：地圖常駐，明細按需展開，發車後時間�
   page.on('request', (request) => { const url = request.url(); if (url.includes('googleapis') || url.endsWith('/dispatch')) forbiddenRequests.push(url) })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  await expect(page.getByText('boxellent', { exact: true })).toBeVisible()
+  await expect(page.getByText('Boxcellent', { exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(shots, 'BOX-01-empty.png') })
 
   await page.getByLabel('上傳 Excel').setInputFiles(workbook)
