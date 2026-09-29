@@ -3,7 +3,7 @@ import L from 'leaflet'
 import type { MapData } from '../types'
 import 'leaflet/dist/leaflet.css'
 
-interface MapViewProps { data: MapData | null; activeVehicle: string | null; onSelectVehicle: (vehicleId: string | null) => void; onSelectOrder: (orderId: string) => void }
+interface MapViewProps { data: MapData | null; activeVehicle: string | null; highlightedOrderIds?: readonly string[]; chatOverlay?: boolean; onSelectVehicle: (vehicleId: string | null) => void; onSelectOrder: (orderId: string) => void }
 
 /**
  * 線條強度分三級，避免四條路線同時全亮變成毛線球：
@@ -24,14 +24,17 @@ const LINE = {
   dimmed: { weight: 1.5, opacity: 0.18, casing: 0 },
 }
 
-export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }: MapViewProps) {
+const NO_HIGHLIGHTED_ORDERS: readonly string[] = []
+
+export function MapView({ data, activeVehicle, highlightedOrderIds = NO_HIGHLIGHTED_ORDERS, chatOverlay = false, onSelectVehicle, onSelectOrder }: MapViewProps) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layersRef = useRef<L.LayerGroup | null>(null)
 
   useEffect(() => {
     if (!mapElement.current || mapRef.current) return
-    const map = L.map(mapElement.current, { zoomControl: true, attributionControl: true, minZoom: 9, maxZoom: 16 }).setView([25.04, 121.53], 11)
+    const map = L.map(mapElement.current, { zoomControl: false, attributionControl: true, minZoom: 9, maxZoom: 16 }).setView([25.04, 121.53], 11)
+    L.control.zoom({ position: 'topright' }).addTo(map)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }).addTo(map)
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }
@@ -69,8 +72,9 @@ export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }:
       }
 
       route.stops.forEach((stop) => {
+        const changed = highlightedOrderIds.includes(stop.order_id)
         if (dispatched && stop.status === 'CURRENT') {
-          L.marker([stop.latitude, stop.longitude], { icon: L.divIcon({ className: 'map-vehicle-marker', html: '<span class="map-vehicle-marker-core"></span>', iconSize: [18, 18], iconAnchor: [9, 9] }) })
+          L.marker([stop.latitude, stop.longitude], { icon: L.divIcon({ className: `map-vehicle-marker${changed ? ' map-stop-changed' : ''}`, html: '<span class="map-vehicle-marker-core"></span>', iconSize: [18, 18], iconAnchor: [9, 9] }) })
             .bindTooltip(`${route.vehicle_id} · 模擬車輛目前位置 · ${stop.order_id} · ${stop.eta}`)
             .on('click', () => { onSelectVehicle(route.vehicle_id); onSelectOrder(stop.order_id) })
             .addTo(group)
@@ -82,7 +86,7 @@ export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }:
           // 不然使用者只看得到一串圓點，說不出車子先去哪再去哪。
           L.marker([stop.latitude, stop.longitude], {
             icon: L.divIcon({
-              className: 'map-seq-marker',
+              className: `map-seq-marker${changed ? ' map-stop-changed' : ''}`,
               html: `<span class="map-seq-core${completed ? ' map-seq-done' : ''}" style="--seq:${route.color}">${stop.sequence}</span>`,
               iconSize: [22, 22],
               iconAnchor: [11, 11],
@@ -93,10 +97,11 @@ export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }:
             .addTo(group)
           return
         }
-        const faded = activeVehicle !== null
+        const faded = activeVehicle !== null && !changed
         // 概覽時放大配送點並加白框，讓 49 個點在降飽和的底圖上清楚成形
         L.circleMarker([stop.latitude, stop.longitude], {
-          radius: faded ? 3 : 6,
+          className: changed ? 'map-stop-changed' : undefined,
+          radius: changed ? 8 : faded ? 3 : 6,
           color: faded ? route.color : '#ffffff',
           fillColor: route.color,
           fillOpacity: faded ? 0.18 : dispatched && !completed ? 0.25 : 0.95,
@@ -114,8 +119,10 @@ export function MapView({ data, activeVehicle, onSelectVehicle, onSelectOrder }:
       zIndexOffset: 500,
     }).bindTooltip('DEPOT-001 · 配送中心').addTo(group)
 
-    if (bounds.length > 1) map.fitBounds(bounds, { padding: [34, 34], maxZoom: 12 })
-  }, [activeVehicle, data, onSelectOrder, onSelectVehicle])
+    map.invalidateSize()
+    const leftPadding = chatOverlay && map.getSize().x > 1000 ? Math.min(590, Math.round(map.getSize().x * 0.42)) : 34
+    if (bounds.length > 1) map.fitBounds(bounds, { paddingTopLeft: [leftPadding, 34], paddingBottomRight: [34, 34], maxZoom: 12 })
+  }, [activeVehicle, chatOverlay, data, highlightedOrderIds, onSelectOrder, onSelectVehicle])
 
   return (
     <div className="map-shell" aria-label="配送地圖">

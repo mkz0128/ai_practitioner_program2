@@ -1,0 +1,91 @@
+/* 保留原版的地圖、浮動對話與圓角卡片；只補 Demo 需要的操作回饋。 */
+.stage { height: auto; min-height: calc(100dvh - 105px); padding-bottom: 18px; }
+.stage-workspace { display: flex; min-width: 0; flex-direction: column; }
+.stage-map { position: relative; inset: auto; height: calc(100dvh - 133px); min-height: 590px; scroll-margin-top: 112px; }
+.stage-map .map-shell { height: 100%; }
+.stage-chat { top: 26px; bottom: auto; height: min(745px, calc(100dvh - 170px)); min-height: 500px; }
+.stage-chat > [aria-label="AI 調度助理"] { height: 100%; min-height: 0; }
+.stage-chat .chat-log { padding: 2px 4px 4px 0; }
+.stage-toasts { position: fixed; bottom: 22px; }
+.detail-drawer { max-height: none; overflow: visible; border-top: 0; }
+.detail-inner { display: grid; }
+.detail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--hair); padding: 14px clamp(14px, 2.4vw, 28px); background: #fff; }
+.detail-toolbar > div { display: flex; min-width: 0; align-items: baseline; gap: 12px; }
+.detail-toolbar strong { flex: none; font-size: 14px; }
+.detail-toolbar span { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.detail-expand { flex: none; border: 1px solid var(--hair); border-radius: 9px; background: #fff; padding: 7px 11px; color: var(--body); font-size: 12px; font-weight: 700; }
+.detail-expand:hover { border-color: #93c5fd; background: #eff6ff; }
+
+/* 對話回到原版氣泡，不讓新的語意 class 變成直角紀錄表。 */
+.chat-entry { max-width: 100%; margin-bottom: 12px; }
+.chat-entry-user { max-width: 92%; }
+.chat-entry-assistant { max-width: 95%; }
+.chat-bubble { border-radius: 16px; padding: 14px 16px; font-size: 13px; line-height: 1.7; }
+.chat-bubble-user { background: #0f172a; color: #fff; }
+.chat-bubble-assistant { border: 1px solid #e2e8f0; background: #fff; color: var(--ink); }
+.chat-author { margin-bottom: 7px; color: #64748b; font-size: 11px; font-weight: 800; }
+.chat-bubble-user .chat-author { color: #cbd5e1; }
+.simulation-disclosure { margin: 4px 0 9px; border-radius: 8px; background: #ecfdf5; padding: 8px 10px; color: #065f46; font-size: 12px; font-weight: 700; }
+
+/* 原版頂列的圓角狀態和地圖篩選保持不變。 */
+.stat-exception, .stat-exception strong { color: #b45309; }
+.day-complete-pill { flex: none; border: 1px solid #6ee7b7; border-radius: 999px; background: #d1fae5; padding: 4px 11px; color: #065f46; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.map-preview-note, .map-change-summary { position: absolute; z-index: 1000; right: 16px; max-width: min(420px, calc(100% - 32px)); border: 1px solid #bfdbfe; border-radius: 12px; background: rgba(255,255,255,.97); padding: 10px 13px; color: #1e3a8a; font-size: 12px; line-height: 1.5; box-shadow: var(--lift); }
+.map-preview-note { top: 16px; }
+.map-change-summary { top: 16px; display: flex; align-items: center; gap: 12px; border-color: #f0cb6b; background: #fffbeb; color: #78350f; }
+.map-preview-note + .map-change-summary { top: 72px; }
+.map-change-summary button { flex: none; border-radius: 7px; background: #92400e; padding: 6px 9px; color: #fff; font-size: 12px; font-weight: 800; }
+.map-change-summary button:hover { background: #78350f; }
+.map-stop-changed.map-seq-marker .map-seq-core, .map-stop-changed.map-vehicle-marker .map-vehicle-marker-core { box-shadow: 0 0 0 4px #fff, 0 0 0 8px #d97706; animation: map-change-flash 1.1s ease-out 2; }
+/* 已送站點退到背景，讓調度員一眼看出仍可調整的站點。 */
+.timeline-stop.timeline-stop-completed { border-color: #94a3b8; background: #94a3b8; }
+path.map-stop-changed { stroke: #b45309; stroke-width: 5px; filter: drop-shadow(0 0 4px #fff); animation: map-point-flash 1.1s ease-out 2; }
+@keyframes map-change-flash { 50% { box-shadow: 0 0 0 5px #fff, 0 0 0 12px #f59e0b; } }
+@keyframes map-point-flash { 50% { stroke-width: 9px; filter: drop-shadow(0 0 9px #f59e0b); } }
+
+/* 時間軸走到最右端時，清楚顯示模擬完成及下一個操作。 */
+.timeline-end { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 18px; border: 1px solid #6ee7b7; border-radius: 14px; background: #ecfdf5; padding: 16px 18px; color: #064e3b; }
+.timeline-end strong { display: block; margin-bottom: 5px; font-size: 18px; }
+.timeline-end p { margin: 0; font-size: 13px; line-height: 1.6; }
+.timeline-end button { flex: none; }
+.review-focus { outline: 3px solid #10b981; outline-offset: 4px; border-radius: 16px; }
+.review-empty { border: 1px solid var(--hair); border-radius: 13px; background: #fff; padding: 13px 15px; color: var(--muted); font-size: 13px; }
+
+/* 看板放大時仍能同時看到對話與訂單；平常維持原版大地圖。 */
+.stage.board-expanded { display: grid; grid-template-columns: minmax(390px, 500px) minmax(0, 1fr); align-items: start; gap: 14px; }
+.board-expanded .stage-chat { position: sticky; top: 120px; grid-column: 1; grid-row: 1; width: auto; height: calc(100dvh - 145px); min-height: 540px; }
+.board-expanded .stage-workspace { grid-column: 2; grid-row: 1; }
+.board-expanded .stage-map { height: 220px; min-height: 220px; }
+.board-expanded .detail-drawer { margin-top: 14px; }
+.board-expanded .order-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* 開場恢復原版置中的上傳對話卡。 */
+.empty-chat > [aria-label="AI 調度助理"] { height: min(620px, calc(100dvh - 175px)); min-height: 560px; }
+.empty-shell > .feedback { position: fixed; right: 20px; bottom: 16px; width: min(420px, calc(100% - 40px)); }
+
+@media (max-width: 1000px) {
+  .topbar-inner { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; }
+  .topbar-stats { max-width: 100%; overflow-x: auto; }
+  .topbar-map { width: 100%; max-width: 100%; flex: none; overflow-x: auto; }
+  .topbar-actions { flex-wrap: wrap; }
+  .stage, .stage.board-expanded { display: flex; min-height: 0; flex-direction: column; }
+  .stage-chat, .board-expanded .stage-chat { position: relative; top: auto; bottom: auto; left: auto; order: 1; width: 100%; height: 580px; min-height: 0; margin: 14px 0 0; }
+  .stage-workspace, .board-expanded .stage-workspace { order: 2; width: 100%; }
+  .stage-map, .board-expanded .stage-map { height: 420px; min-height: 420px; }
+  .detail-drawer { margin-top: 14px; }
+  .detail-toolbar > div { display: block; }
+  .detail-toolbar span { display: block; margin-top: 3px; }
+  .board-expanded .order-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .map-preview-note, .map-change-summary { right: 12px; }
+}
+@media (max-width: 700px) {
+  .stage-map, .board-expanded .stage-map { height: 330px; min-height: 330px; }
+  .stage-chat, .board-expanded .stage-chat { height: 610px; }
+  .detail-toolbar { align-items: flex-start; flex-direction: column; }
+  .order-board, .board-expanded .order-board { grid-template-columns: 1fr; }
+  .timeline-end { align-items: stretch; flex-direction: column; }
+  .map-preview-note, .map-change-summary { left: 12px; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-stop-changed.map-seq-marker .map-seq-core, .map-stop-changed.map-vehicle-marker .map-vehicle-marker-core, path.map-stop-changed { animation: none; }
+}

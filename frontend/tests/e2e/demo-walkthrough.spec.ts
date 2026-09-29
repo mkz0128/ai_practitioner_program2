@@ -29,10 +29,6 @@ type AgentBody = { message?: string; evidence?: Evidence[] }
 /** 工具跑完但沒有人話訊息時，後端會退回這句。看到它就代表那一幕開天窗。 */
 const CANNED = /已完成確定性工具計算/
 
-function shot(name: string) {
-  return path.join(screenshotDir, `demo-${name}.png`)
-}
-
 /** 回覆必須是給人看的中文，不可以是罐頭訊息，也不可以是原始 JSON。 */
 function expectHumanReply(body: AgentBody, step: string) {
   const message = (body.message || '').trim()

@@ -31,9 +31,8 @@ test('F6：偏差車輛與區域會隨輸入資料計算', async ({ page }) => {
     await panel.scrollIntoViewIfNeeded()
     await expect(panel).toBeInViewport()
     const paragraphs = await panel.locator('p').allInnerTexts()
-    const vehicleMessage = paragraphs.find((text) => text.includes('實際比預估慢'))
-    // 區域偏差改成人話了：「東區（Z2）每一站平均多停 6 分鐘」。
-    const zoneMessage = paragraphs.find((text) => text.includes('每一站平均多停'))
+    const vehicleMessage = paragraphs.find((text) => text.includes('在模擬進度中比原預估慢'))
+    const zoneMessage = paragraphs.find((text) => text.includes('每站需多預留'))
     expect(vehicleMessage, `偏差車輛沒有畫面訊息：${paragraphs.join('｜')}`).toBeTruthy()
     expect(zoneMessage, `偏差區域沒有畫面訊息：${paragraphs.join('｜')}`).toBeTruthy()
     vehicleMessages.push(vehicleMessage || '')

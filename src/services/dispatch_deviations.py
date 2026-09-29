@@ -144,7 +144,7 @@ def compute_dispatch_deviations(
                 expected_completed_count=expected["completed_count"],
                 actual_completed_count=actual["completed_count"],
                 message=(
-                    f"{vehicle_label(vehicle_id)}今天實際比預估慢 {delay_minutes} 分鐘。"
+                    f"{vehicle_label(vehicle_id)}在模擬進度中比原預估慢 {delay_minutes} 分鐘。"
                 ),
             )
         )
@@ -171,8 +171,8 @@ def compute_dispatch_deviations(
         suggested_service_minutes=suggested_service_minutes,
         reason="每站平均行駛負擔最高",
         message=(
-            f"{zone_label}每一站平均多停 {extra_service_minutes} 分鐘，"
-            "是今天所有區域裡最花時間的。"
+            f"依模擬路段推估，{zone_label}每站需多預留 {extra_service_minutes} 分鐘，"
+            "是這次預留時間最多的區域。"
         ),
     )
     recorded_at = ROUTE_BASE_TIME + timedelta(minutes=timeline_minutes)

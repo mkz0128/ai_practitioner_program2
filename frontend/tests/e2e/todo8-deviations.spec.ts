@@ -75,8 +75,8 @@ test('TODO 8：F6-01～F6-07 時間軸偏差、建議確認與新參數重排', 
   await expect(page.getByLabel('配送偏差與參數建議')).toBeVisible({ timeout: 30_000 })
   // 車號與區碼改成調度員說得出口的名稱：VEH-003 講「第三車」，Z5 帶出區名。
   // 分鐘數不寫死，改成往下比對證據裡的 delay_minutes，畫面與資料必須是同一個數字。
-  await expect(page.getByText(/第[一二三四五六七八九十]車今天實際比預估慢 \d+ 分鐘。/)).toBeVisible()
-  await expect(page.getByText(/（Z5）每一站平均多停 6 分鐘/)).toBeVisible()
+  await expect(page.getByText(/第[一二三四五六七八九十]車在模擬進度中比原預估慢 \d+ 分鐘。/)).toBeVisible()
+  await expect(page.getByText(/（Z5）每站需多預留 6 分鐘/)).toBeVisible()
   await expect(page.getByText('建議將 Z5 的服務時間由 3 分鐘調整為 9 分鐘。').first()).toBeVisible()
   await saveScreenshot(page, screenshotDir, 'F6-01')
 
@@ -88,12 +88,15 @@ test('TODO 8：F6-01～F6-07 時間軸偏差、建議確認與新參數重排', 
   expect(vehicleDeviations[0]).toEqual(expect.objectContaining({ vehicle_id: 'VEH-003' }))
   expect(vehicleDeviations[0].delay_minutes).toBeGreaterThan(0)
   // 畫面講的分鐘數必須就是證據裡的那一個，不能各講各的。
-  await expect(page.getByText(`第三車今天實際比預估慢 ${vehicleDeviations[0].delay_minutes} 分鐘。`)).toBeVisible()
+  await expect(page.getByText(`第三車在模擬進度中比原預估慢 ${vehicleDeviations[0].delay_minutes} 分鐘。`)).toBeVisible()
   expect(zoneDeviations[0]).toEqual(expect.objectContaining({ zone_code: 'Z5', extra_service_minutes_per_stop: 6 }))
-  await expect(page.getByText(/已記錄 2 項/)).toBeVisible()
+  await expect(page.getByText(/模擬偏差 2 項/)).toBeVisible()
+  expect(statusData.source).toBe('TIMELINE_SIMULATION')
+  await expect(page.getByText('依模擬時間軸推估；不是司機回報或實際簽收')).toBeVisible()
   await saveScreenshot(page, screenshotDir, 'F6-02')
   await saveScreenshot(page, screenshotDir, 'F6-03')
   await saveScreenshot(page, screenshotDir, 'F6-04')
+  await saveScreenshot(page, screenshotDir, 'F6-07')
 
   const before = await page.request.get('/api/v1/dispatch-parameters')
   expect((await before.json()).service_minutes_by_zone).toEqual({})
@@ -121,8 +124,6 @@ test('TODO 8：F6-01～F6-07 時間軸偏差、建議確認與新參數重排', 
   await expect(page.getByText(/已用新參數重新排班/)).toBeVisible({ timeout: 30_000 })
   await saveScreenshot(page, screenshotDir, 'F6-06')
 
-  await expect(page.getByText('所有數字來自後端確定性計算')).toBeVisible()
-  await saveScreenshot(page, screenshotDir, 'F6-07')
   expect(guards.consoleErrors).toEqual([])
   expect(guards.dispatchRequests).toEqual([])
   expect(guards.googleRequests).toEqual([])

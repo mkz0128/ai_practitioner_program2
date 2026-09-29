@@ -101,7 +101,6 @@ async function sendTyped(page: Page, message: string, allowPlanFallback = false)
       await input.pressSequentially(line)
     }
     await expect(input).toHaveValue(message)
-    const started = Date.now()
     await input.press('Enter')
     if (allowPlanFallback) {
       await expect(page.locator('.topbar-map .map-route-filter').first()).toBeVisible({ timeout: 240_000 })
@@ -121,20 +120,11 @@ async function sendTyped(page: Page, message: string, allowPlanFallback = false)
     await expect(bubble).toBeVisible({ timeout: 30_000 })
     await expect(input).toBeEnabled({ timeout: 240_000 })
     await expect.poll(async () => (await bubble.innerText()).split('\n').slice(1).join('\n').trim(), { timeout: 30_000 }).not.toBe('')
-    const elapsed = `${((Date.now() - started) / 1000).toFixed(1)} 秒`
     const reply = (await bubble.innerText()).split('\n').slice(1).join('\n').trim()
     return { reply: reply || '（助理泡泡存在，但沒有可見文字。）', tool: extractTool(responses.at(-1)) }
   } finally {
     page.off('response', listener)
   }
-}
-
-async function plan(page: Page): Promise<{ reply: string; tool: string }> {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto(baseUrl)
-  await expect(page.getByText('先放入今天的訂單', { exact: true })).toBeVisible({ timeout: 60_000 })
-  await page.getByLabel('上傳 Excel').last().setInputFiles(workbook)
-  return sendTyped(page, '請幫我排今天的班', true)
 }
 
 async function uiFeedback(page: Page): Promise<string> {
@@ -188,11 +178,6 @@ async function dragAcrossVehicles(page: Page, orderId: string, targetVehicle: st
   await source.dragTo(target.locator('.order-board-stop').first())
   await expect.poll(async () => page.locator('.route-preview').count(), { timeout: 60_000 }).toBeGreaterThan(0)
   return uiFeedback(page)
-}
-
-async function freshQuestion(page: Page, message: string): Promise<{ reply: string; tool: string }> {
-  await plan(page)
-  return sendTyped(page, message)
 }
 
 function quote(text: string): string {
@@ -250,15 +235,15 @@ test.describe('Demo 七幕與亂問題逐字驗收', () => {
 
       await doStep(page, '3-1', '把 ORD-042 從一台車拖到 VEH-004', () => dragAcrossVehicles(page, 'ORD-042', 'VEH-004').then((reply) => ({ reply })))
       await doStep(page, '3-2', '把超過 20 公斤的 ORD-014 拖到 VEH-002', () => dragAcrossVehicles(page, 'ORD-014', 'VEH-002').then((reply) => ({ reply })))
-      await doStep(page, '3-3', '按「上一步」', async () => {
+      await doStep(page, '3-3', '按「回到前一版」', async () => {
         const apply = page.getByRole('button', { name: '套用變更', exact: true }).filter({ visible: true }).last()
         if (await apply.count() > 0) {
           await apply.click()
           await expect(page.getByText('已套用跨車站序', { exact: false }).or(page.getByText('已套用新站序', { exact: false }))).toBeVisible({ timeout: 60_000 })
         } else {
-          return { reply: '沒做成，因為上一個站序預覽不可套用，畫面沒有「套用變更」按鈕；我試過：先檢查可行性提示，再繼續按「上一步」。' }
+          return { reply: '沒做成，因為上一個站序預覽不可套用，畫面沒有「套用變更」按鈕；我試過：先檢查可行性提示，再繼續按「回到前一版」。' }
         }
-        await page.getByRole('button', { name: '上一步', exact: true }).click()
+        await page.getByRole('button', { name: '回到前一版', exact: true }).click()
         return { reply: await screenSummary(page) }
       })
       await doStep(page, '3-4', '點任一張訂單展開，再點一次收合', async () => {

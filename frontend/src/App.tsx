@@ -10,8 +10,18 @@ import { formatNumber, vehicleLabel } from './lib/utils'
 import { formatValidationReport, timeSlotLabel, unassignedReasonLabel } from './lib/fieldLabels'
 import type { ChatResponse, ColumnMappingResponse, CrossVehicleRouteOrderPreview, DispatchDeviationSuggestion, DispatchRuleOption, DispatchRuleRecord, MapData, Plan, ProviderStatus, RouteOrderPreview, UrgentPlanOption } from './types'
 import './styles.css'
+import './demo-feedback.css'
+import './boxellent.css'
 
 type ActivityState = { skill: string; phase: string }
+type DetailView = 'orders' | 'rules' | 'timeline' | 'review'
+
+function Brand({ compact = false }: { compact?: boolean }) {
+  return <div className={`boxellent-brand ${compact ? 'boxellent-brand-compact' : ''}`}>
+    <span className="boxellent-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M7 12.5 20 6l13 6.5v15L20 34 7 27.5v-15Z" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round"/><path d="m7.5 12.5 12.5 7 12.5-7M20 19.5V33M13.5 9.3l13 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+    <span className="boxellent-wordmark"><span>box</span>ellent</span>
+  </div>
+}
 
 function createSessionId(): string {
   return `CONVERSATION-${crypto.randomUUID()}`
@@ -89,6 +99,9 @@ export default function App() {
   const [dispatchRules, setDispatchRules] = useState<DispatchRuleRecord[]>([])
   const [activeRuleCount, setActiveRuleCount] = useState(0)
   const [rulesExpanded, setRulesExpanded] = useState(false)
+  const [boardExpanded, setBoardExpanded] = useState(false)
+  const [detailView, setDetailView] = useState<DetailView>('orders')
+  const [focusedOptionLabel, setFocusedOptionLabel] = useState<string | null>(null)
   const [activeVehicle, setActiveVehicle] = useState<string | null>(null)
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -103,7 +116,46 @@ export default function App() {
   // Orders a just-applied rule moved to another vehicle; the board flags them
   // so 「19 張改派」 is something the dispatcher can see rather than count.
   const [changedOrderIds, setChangedOrderIds] = useState<readonly string[]>([])
+  const [changeRevision, setChangeRevision] = useState(0)
+  const [changeFeedback, setChangeFeedback] = useState<string | null>(null)
+  const reviewRef = useRef<HTMLDivElement | null>(null)
+  const detailInnerRef = useRef<HTMLDivElement | null>(null)
+  const [reviewFocused, setReviewFocused] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  const showAppliedChange = useCallback((orderIds: string[], summary: string, vehicleId: string | null) => {
+    setChangedOrderIds(orderIds)
+    setChangeRevision((value) => value + 1)
+    setChangeFeedback(summary)
+    if (vehicleId) setActiveVehicle(vehicleId)
+    if (orderIds.length > 0) setExpandedOrder(orderIds[0])
+    setDetailView('orders')
+    setBoardExpanded(true)
+  }, [])
+
+  const viewReview = useCallback(() => {
+    setDetailView('review')
+    setBoardExpanded(true)
+    setReviewFocused(true)
+    window.setTimeout(() => reviewRef.current?.focus({ preventScroll: true }), 0)
+    window.setTimeout(() => setReviewFocused(false), 2400)
+  }, [])
+
+  useEffect(() => {
+    if (boardExpanded && detailInnerRef.current) detailInnerRef.current.scrollTop = 0
+  }, [boardExpanded, detailView])
+
+  useEffect(() => {
+    if (!notice) return
+    const timeout = window.setTimeout(() => setNotice(null), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
+
+  useEffect(() => {
+    if (!changeFeedback) return
+    const timeout = window.setTimeout(() => setChangeFeedback(null), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [changeFeedback])
 
   useEffect(() => { getProviderStatus().then((result) => setProviders(result.providers)).catch(() => setProviders([])); getDispatchRules().then((result) => { setDispatchRules(result.rules); setActiveRuleCount(result.active_count) }).catch(() => { setDispatchRules([]); setActiveRuleCount(0) }) }, [])
 
@@ -206,11 +258,13 @@ export default function App() {
     abortRef.current = controller
     setError(null)
     setNotice(null)
+    setFocusedOptionLabel(null)
     try {
       const response = await chat(sessionId, message, { plan_id: plan?.plan_id || null, plan_version: plan?.version || null, dataset_id: plan?.dataset_id || null, order_id: conversationOrderId, stage: plan?.stage || 'PRE_LOAD', timeline_minutes: plan?.stage === 'DISPATCHED' ? timelineMinutes : null }, controller.signal, action)
       const deviationView = response.evidence.find((entry) => entry.tool === 'inspect_dispatch_deviations')?.data.view
       if (deviationView === 'SUGGESTIONS') setShowDeviationSuggestions(true)
       if (deviationView === 'SUMMARY') setShowDeviationSuggestions(false)
+      if (deviationView) { setDetailView('review'); setBoardExpanded(true) }
       const insertedOrderId = previewInsertedOrderId(response)
       if (insertedOrderId) setConversationOrderId(insertedOrderId)
       const priorityPreviewVersion = response.evidence.find(
@@ -243,12 +297,34 @@ export default function App() {
     setBusy(true); setError(null); setNotice(null)
     try {
       const confirmed = await confirmPlan(option.plan_id, option.preview_version, sessionId)
+      setFocusedOptionLabel(null)
+      setChangedOrderIds([])
+      setChangeFeedback(null)
       setPlan(confirmed)
       setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      const inserted = option.inserted_orders.map((item) => item.order_id).filter((orderId) => confirmed.vehicles.some((vehicle) => vehicle.stops.some((stop) => stop.order_id === orderId)))
+      if (inserted.length > 0) {
+        const firstVehicle = confirmed.vehicles.find((vehicle) => vehicle.stops.some((stop) => stop.order_id === inserted[0]))
+        showAppliedChange(inserted, `已加入 ${inserted.join('、')}；地圖與訂單看板已標亮新增站點（v${confirmed.version}）。`, firstVehicle?.vehicle_id || null)
+      } else if (option.change?.order_id) {
+        const orderId = option.change.order_id
+        const vehicle = confirmed.vehicles.find((item) => item.stops.some((stop) => stop.order_id === orderId))
+        if (vehicle) showAppliedChange([orderId], `${orderId} 的剩餘站序已更新；地圖與看板已標亮（v${confirmed.version}）。`, vehicle.vehicle_id)
+      }
       if (option.change?.order_id) setConversationOrderId(option.change.order_id)
       setNotice(`已確認${option.label}，建立新版本 v${confirmed.version}；原版本仍保留。`)
     } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
-  }, [busy, sessionId, timelineMinutes])
+  }, [busy, sessionId, showAppliedChange, timelineMinutes])
+
+  const handleFocusOption = useCallback((option: UrgentPlanOption) => {
+    const vehicleId = option.inserted_orders.find((item) => item.vehicle_id)?.vehicle_id
+      || option.insertion?.vehicle_id || option.current_state?.vehicle_id || null
+    const orderId = option.inserted_orders[0]?.order_id || option.change?.order_id || null
+    setActiveVehicle(vehicleId)
+    if (orderId) setConversationOrderId(orderId)
+    setFocusedOptionLabel(option.label)
+    setBoardExpanded(false)
+  }, [])
 
   const handleConfirmRule = useCallback(async (option: DispatchRuleOption) => {
     if (!plan || busy || !option.plan_id || option.base_version === null) return
@@ -280,7 +356,10 @@ export default function App() {
       const after = vehicleOf(replanned)
       const moved = [...after.entries()].filter(([orderId, vehicleId]) => before.get(orderId) && before.get(orderId) !== vehicleId).map(([orderId]) => orderId)
       setChangedOrderIds(moved)
-      if (moved.length > 0) window.setTimeout(() => { document.querySelector('[aria-label="訂單看板"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 120)
+      setChangeRevision((value) => value + 1)
+      setChangeFeedback(moved.length > 0 ? `規則套用後，${moved.length} 張訂單換車；看板已標亮變更。` : '規則已套用；沒有訂單換車。')
+      setDetailView('rules')
+      setBoardExpanded(true)
       setNotice(`已套用 ${ruleCountText}；已依新規則重新排班。${loadBalanceMessage}`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, refreshDispatchRules])
@@ -301,7 +380,8 @@ export default function App() {
     const vehicleId = option.current_state?.vehicle_id || null
     const orderId = option.change?.order_id || null
     setManualAdjustTarget({ vehicleId, orderId })
-    window.setTimeout(() => { document.querySelector('[aria-label="訂單看板"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, 0)
+    setDetailView('orders')
+    setBoardExpanded(true)
   }, [])
 
   const handleDeactivateRule = useCallback(async (ruleId: string) => {
@@ -319,6 +399,10 @@ export default function App() {
     setBusy(true); setError(null); setNotice(null)
     try {
       const replanned = await createPlan(plan.dataset_id, plan.objective || 'BALANCED')
+      setFocusedOptionLabel(null)
+      setChangedOrderIds([])
+      setChangeFeedback(null)
+      setBoardExpanded(false)
       setPlan(replanned)
       setMap(await getMapData(replanned.plan_id, replanned.version))
       setConversationOrderId(replanned.vehicles.find((vehicle) => vehicle.stops.length > 0)?.stops[0]?.order_id || null)
@@ -331,6 +415,10 @@ export default function App() {
     setBusy(true); setError(null); setNotice(null)
     try {
       const loaded = await startLoading(plan.plan_id, plan.version)
+      setFocusedOptionLabel(null)
+      setChangedOrderIds([])
+      setChangeFeedback(null)
+      setBoardExpanded(false)
       setPlan(loaded)
       setMap(await getMapData(loaded.plan_id, loaded.version))
       setNotice('已開始裝車。既有訂單的車輛指派已鎖定，現在可調整配送順序與合法插單。')
@@ -342,6 +430,11 @@ export default function App() {
     setBusy(true); setError(null); setNotice(null)
     try {
       const dispatched = await simulateDeparture(plan.plan_id, plan.version)
+      setFocusedOptionLabel(null)
+      setChangedOrderIds([])
+      setChangeFeedback(null)
+      setDetailView('timeline')
+      setBoardExpanded(true)
       const startingMinutes = 120
       setTimelineMinutes(startingMinutes)
       setPlan(dispatched)
@@ -381,9 +474,13 @@ export default function App() {
       const confirmed = await confirmRouteOrder(plan.plan_id, plan.version, preview.vehicle_id, preview.order_ids, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
       setPlan(confirmed)
       setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      const previous = plan.vehicles.find((vehicle) => vehicle.vehicle_id === preview.vehicle_id)
+      const current = confirmed.vehicles.find((vehicle) => vehicle.vehicle_id === preview.vehicle_id)
+      const changed = current?.stops.filter((stop) => previous?.stops.find((before) => before.order_id === stop.order_id)?.sequence !== stop.sequence).map((stop) => stop.order_id) || []
+      showAppliedChange(changed, `已更新${vehicleLabel(preview.vehicle_id)}站序；${changed.length} 個站點位置改變（v${confirmed.version}）。`, preview.vehicle_id)
       setNotice(`已套用 ${preview.vehicle_id} 新站序，方案版本更新為 v${confirmed.version}。`)
     } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
-  }, [busy, plan, timelineMinutes])
+  }, [busy, plan, showAppliedChange, timelineMinutes])
 
   const handlePreviewCrossVehicleRouteOrder = useCallback(async (sourceVehicleId: string, targetVehicleId: string, orderId: string, targetSequence: number): Promise<CrossVehicleRouteOrderPreview> => {
     if (!plan) throw new Error('目前沒有可預覽的方案。')
@@ -397,9 +494,12 @@ export default function App() {
       const confirmed = await confirmCrossVehicleRouteOrder(plan.plan_id, plan.version, preview.source_vehicle_id, preview.target_vehicle_id, preview.order_id, preview.target_sequence, plan.stage === 'DISPATCHED' ? timelineMinutes : undefined)
       setPlan(confirmed)
       setMap(await getMapData(confirmed.plan_id, confirmed.version, undefined, confirmed.stage === 'DISPATCHED' ? timelineMinutes : undefined))
+      const target = confirmed.vehicles.find((vehicle) => vehicle.stops.some((stop) => stop.order_id === preview.order_id))
+      const targetStop = target?.stops.find((stop) => stop.order_id === preview.order_id)
+      showAppliedChange([preview.order_id], `${preview.order_id}：${vehicleLabel(preview.source_vehicle_id)} → ${vehicleLabel(target?.vehicle_id || preview.target_vehicle_id)}第 ${targetStop?.sequence || preview.target_sequence} 站；地圖與看板已標亮（v${confirmed.version}）。`, target?.vehicle_id || preview.target_vehicle_id)
       setNotice(`已套用 ${preview.order_id} 的跨車站序，方案版本更新為 v${confirmed.version}。`)
     } catch (requestError) { setError(friendlyError(requestError)); throw requestError } finally { setBusy(false) }
-  }, [busy, plan, timelineMinutes])
+  }, [busy, plan, showAppliedChange, timelineMinutes])
 
   const handleHistoryMove = useCallback(async (direction: 'undo' | 'redo') => {
     if (!plan || busy) return
@@ -411,100 +511,71 @@ export default function App() {
       const target = direction === 'undo' ? versions[index - 1] : versions[index + 1]
       if (!target) { setNotice(direction === 'undo' ? '目前沒有更早的可復原版本。' : '目前沒有更新的可前進版本。'); return }
       const restored = await restorePlan(plan.plan_id, target.version)
+      setChangedOrderIds([])
+      setChangeFeedback(null)
       setPlan(restored)
       setMap(await getMapData(restored.plan_id, restored.version, undefined, restored.stage === 'DISPATCHED' ? timelineMinutes : undefined))
       setNotice(`${direction === 'undo' ? '已回到' : '已前進到'}第 ${target.version} 版預覽。`)
     } catch (requestError) { setError(friendlyError(requestError)) } finally { setBusy(false) }
   }, [busy, plan, timelineMinutes])
 
-  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setChatMessages([]); setPlan(null); setMap(null); setActiveVehicle(null); setExpandedOrder(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
+  const reset = async () => { abortRef.current?.abort(); setSessionId(createSessionId()); setChatMessages([]); setPlan(null); setMap(null); setActiveVehicle(null); setExpandedOrder(null); setBoardExpanded(false); setDetailView('orders'); setFocusedOptionLabel(null); setManualAdjustTarget({ vehicleId: null, orderId: null }); setConversationOrderId(null); setTimelineMinutes(120); setConfirmedParameterSuggestions([]); setShowDeviationSuggestions(false); setChangedOrderIds([]); setChangeFeedback(null); setError(null); setNotice(null); setActivity(null); try { await resetRuntimeState() } catch (requestError) { setError(friendlyError(requestError)) } }
   const google = providers.find((item) => item.name === 'google_routes')
+  const simulatedStops = map?.routes.flatMap((route) => route.stops) ?? []
+  const simulatedDayComplete = plan?.stage === 'DISPATCHED' && simulatedStops.length > 0 && simulatedStops.every((stop) => stop.status === 'COMPLETED')
 
-  {/* 開場畫面原本只有一張對話卡，連產品名都沒有。Demo 一開始就是這一頁，
-      標題要在上面。 */}
-  if (!plan) return <div className="empty-shell"><header className="empty-brand"><span className="brand-mark">DT</span><h1>配送調度控制塔</h1></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} messages={chatMessages} setMessages={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
+  if (!plan) return <div className="empty-shell boxellent-empty"><header className="empty-brand"><Brand /><p>把今天的配送資料放進來，從這裡開始安排。</p></header><div className="empty-chat"><ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan={false} activity={activity} messages={chatMessages} setMessages={setChatMessages} /></div>{error && <div className="feedback feedback-error" role="alert">{error}</div>}</div>
 
   return (
-    <div className={`app-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
+    <div className={`app-shell boxellent-shell stage-${(plan.stage || 'PRE_LOAD').toLowerCase()}`}>
       <header className="topbar">
         <div className="topbar-inner">
-          <div className="brand-lockup">
-            <span className="brand-mark">DT</span>
-            <div>
-              <h1>配送調度控制塔</h1>
-            </div>
-          </div>
-          <div className="topbar-stats">
-            <span><strong>{plan.completeness.total_order_count}</strong> 張訂單</span>
-            <span><strong>{plan.vehicles.length}</strong> 台車</span>
-            <span className="stat-headline"><strong>{plan.completeness.assigned_order_count}/{plan.completeness.total_order_count}</strong> 已安排</span>
-            {activeRuleCount > 0 && <span className="stat-rule"><strong>{activeRuleCount}</strong> 條規則</span>}
-          </div>
-          {/* 站點數、圖例與車輛篩選原本浮在地圖右上角，會壓住路線。移到統計列
-              右邊之後，上排一次交代完「幾張單、幾台車、排了幾站、哪台車」。 */}
-          {map && (
-            <div className="topbar-map" aria-label="地圖圖例">
-              {/* 數字與單位拆開只是為了放大數字；單位帶一個前導空格，
-                  讓這個容器的文字仍然是「50 個站點」。 */}
-              <div className="map-overlay-lead">
-                <span className="map-overlay-count">{map.routes.reduce((sum, route) => sum + route.stops.length, 0)}</span>
-                <span className="map-overlay-unit">{' 個站點'}</span>
-              </div>
-              <span className="map-overlay-badge">{map.stage === 'DISPATCHED' ? '模擬進度' : '示意路線'}</span>
-              <div className="map-overlay-filters">
-                {map.routes.map((route) => (
-                  <button type="button" key={route.vehicle_id} className={`map-route-filter ${activeVehicle === route.vehicle_id ? 'selected' : ''}`} onClick={() => setActiveVehicle(activeVehicle === route.vehicle_id ? null : route.vehicle_id)}>
-                    <i style={{ backgroundColor: route.color }} />
-                    {vehicleLabel(route.vehicle_id)}
-                  </button>
-                ))}
-                {activeVehicle && <button type="button" className="map-route-clear" onClick={() => setActiveVehicle(null)}>顯示全部</button>}
-              </div>
-            </div>
-          )}
+          <Brand compact />
+          <span className="topbar-stage"><i />{stageLabel(plan.stage)}</span>
           <div className="topbar-actions">
-            <label className="toolbar-upload">換一份資料<input className="file-input" type="file" accept=".xlsx" aria-label="上傳 Excel" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleInitialFile(file); event.currentTarget.value = '' }} /></label>
             {plan.stage === 'PRE_LOAD' && <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleStartLoading()}>開始裝車</Button>}
-            {plan.stage === 'PRE_LOAD' && <Button type="button" variant="outline" disabled={busy} onClick={() => void handleReplan()}>重新排班</Button>}
+            {plan.stage === 'LOADED' && <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleSimulateDeparture()}>模擬出發</Button>}
             {plan.stage === 'DISPATCHED' && confirmedParameterSuggestions.length > 0 && <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleReplan()}>用新參數重排</Button>}
-            {plan.stage === 'LOADED' && <><Button type="button" variant="secondary" disabled={busy} onClick={() => void handleSimulateDeparture()}>模擬出發</Button><Button type="button" variant="ghost" disabled={busy} onClick={handleUnloadRequest}>退回上車前（需人工處理）</Button></>}
-            <Button type="button" variant="outline" onClick={() => void reset()}>重新開始</Button>
+            <details className="topbar-more"><summary>更多操作</summary><div className="topbar-more-menu"><label className="toolbar-upload">換一份資料<input className="file-input" type="file" accept=".xlsx" aria-label="上傳 Excel" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleInitialFile(file); event.currentTarget.value = '' }} /></label>{plan.stage === 'PRE_LOAD' && <Button type="button" variant="outline" disabled={busy} onClick={() => void handleReplan()}>重新排班</Button>}{plan.stage === 'LOADED' && <Button type="button" variant="ghost" disabled={busy} onClick={handleUnloadRequest}>退回上車前（需人工處理）</Button>}<Button type="button" variant="outline" onClick={() => void reset()}>重新開始</Button></div></details>
           </div>
         </div>
-        {/* 階段列是整場 Demo 的劇情指示器：顏色隨階段改變，台下一眼看出推進到哪一幕 */}
         <div className="status-strip">
-          <span className="stage-pill"><i />{stageLabel(plan.stage)}</span>
-          <span className="stage-note">{plan.stage === 'PRE_LOAD' ? '貨還在站內，車輛指派與順序都可以改' : plan.stage === 'LOADED' ? '貨已在車上，不能跨車移動，只能改順序' : '車在路上，只能重排還沒送的站'}</span>
-          <span className="status-provider">模擬資料 · OSM 底圖 · Google Routes {google?.enabled ? '未採用' : '停用'}</span>
+          <span className="stage-pill"><i />{stageLabel(plan.stage)}</span><span className="stage-note">{plan.stage === 'PRE_LOAD' ? '貨還在站內，車輛指派與順序都可以改' : plan.stage === 'LOADED' ? '貨已在車上，不能跨車移動，只能改順序' : simulatedDayComplete ? '今日模擬行程已到終點，請查看回顧與未安排訂單' : '車在路上，只能重排還沒送的站'}</span>
+          {simulatedDayComplete && <span className="day-complete-pill" role="status">今日模擬行程結束 · {simulatedStops.length} 站</span>}
         </div>
       </header>
 
-      <div className="stage">
-        <div className="stage-map">
-          <MapView data={map} activeVehicle={activeVehicle} onSelectVehicle={setActiveVehicle} onSelectOrder={(orderId) => { setExpandedOrder(orderId) }} />
+      <main className={`stage boxellent-stage ${boardExpanded ? 'board-expanded' : ''}`}>
+        <div className="stage-workspace">
+          <div className="stage-map">
+            {map && <div className="topbar-map" aria-label="地圖圖例"><div className="map-overlay-filters">{map.routes.map((route) => <button type="button" key={route.vehicle_id} className={`map-route-filter ${activeVehicle === route.vehicle_id ? 'selected' : ''}`} onClick={() => setActiveVehicle(activeVehicle === route.vehicle_id ? null : route.vehicle_id)}><i style={{ backgroundColor: route.color }} />{vehicleLabel(route.vehicle_id)}</button>)}{activeVehicle && <button type="button" className="map-route-clear" onClick={() => setActiveVehicle(null)}>顯示全部</button>}</div></div>}
+            {focusedOptionLabel && <div className="map-preview-note" role="status">正在看{focusedOptionLabel}；地圖仍是目前版本</div>}
+            {changeFeedback && <div className="map-change-summary" role="status"><span>{changeFeedback}</span><button type="button" onClick={() => { setDetailView('orders'); setBoardExpanded(true) }}>查看變更</button></div>}
+            <MapView data={map} activeVehicle={activeVehicle} highlightedOrderIds={changedOrderIds} chatOverlay onSelectVehicle={setActiveVehicle} onSelectOrder={(orderId) => { setExpandedOrder(orderId); setDetailView('orders'); setBoardExpanded(true) }} />
+          </div>
+          <section className={`detail-drawer ${boardExpanded ? 'detail-open' : 'detail-closed'}`} aria-label="方案明細">
+            <div className="detail-toolbar"><strong>{boardExpanded ? '明細' : '需要看資料時，再展開明細'}</strong><button type="button" className="detail-expand" aria-expanded={boardExpanded} onClick={() => setBoardExpanded((value) => !value)}>{boardExpanded ? '收起明細' : '查看明細'}</button></div>
+            <div className="detail-content" aria-hidden={!boardExpanded}>
+              <nav className="detail-tabs" aria-label="明細類別"><button type="button" aria-pressed={detailView === 'orders'} onClick={() => setDetailView('orders')}>訂單與車輛</button>{dispatchRules.length > 0 && <button type="button" aria-pressed={detailView === 'rules'} onClick={() => setDetailView('rules')}>司機規則{activeRuleCount > 0 ? ` ${activeRuleCount}` : ''}</button>}{plan.stage === 'DISPATCHED' && <><button type="button" aria-pressed={detailView === 'timeline'} onClick={() => setDetailView('timeline')}>配送進度</button><button type="button" aria-pressed={detailView === 'review'} onClick={() => setDetailView('review')}>今日回顧</button></>}</nav>
+              <div ref={detailInnerRef} className="detail-inner">
+                <div className="topbar-stats" hidden={detailView !== 'orders'}><span><strong>{plan.completeness.total_order_count}</strong> 張訂單</span><span><strong>{plan.vehicles.length}</strong> 台車</span><span className="stat-headline"><strong>{plan.completeness.assigned_order_count}/{plan.completeness.total_order_count}</strong> 已安排</span>{plan.unassigned_orders.length > 0 && <span className="stat-exception"><strong>{plan.unassigned_orders.length}</strong> 張待處理</span>}{activeRuleCount > 0 && <span className="stat-rule"><strong>{activeRuleCount}</strong> 條規則</span>}</div>
+                <div className="detail-view" hidden={detailView !== 'orders'}><OrderTable plan={plan} activeOrderId={expandedOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} changedOrderIds={changedOrderIds} changeRevision={changeRevision} onSelectOrder={(orderId) => { if (!orderId) { setExpandedOrder(null); return } setExpandedOrder((current) => current === orderId ? null : orderId) }} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} /></div>
+                <div className="detail-view" hidden={detailView !== 'rules'}><DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} /></div>
+                {plan.stage === 'DISPATCHED' && map && <div className="detail-view detail-view-timeline" hidden={detailView !== 'timeline'}><TimelineBoard data={map} timelineMinutes={timelineMinutes} unassignedCount={plan.unassigned_orders.length} updating={busy} onChange={(value) => void handleTimelineChange(value)} onViewReview={viewReview} /></div>}
+                {plan.stage === 'DISPATCHED' && <div ref={reviewRef} tabIndex={-1} className={`detail-view ${reviewFocused ? 'review-focus' : ''}`} hidden={detailView !== 'review'} aria-label="今日回顧位置"><DeviationBoard data={map?.deviations} busy={busy} showSuggestions={showDeviationSuggestions} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />{!map?.deviations?.has_deviations && <p className="review-empty">目前沒有可顯示的模擬偏差。</p>}</div>}
+                <p className="safety-note">方案與時間皆為模擬預估；每次變更須先預覽，再由調度員確認。OSM 底圖；Google Routes {google?.enabled ? '未採用' : '停用'}。</p>
+              </div>
+            </div>
+          </section>
         </div>
-
         <div className="stage-chat">
-          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} messages={chatMessages} setMessages={setChatMessages} />
+          <ChatPanel key={sessionId} onChat={onChat} onInspectFile={inspectFile} onImportFile={loadFile} onRepairFile={repairFile} onConfirmOption={handleConfirmOption} onFocusOption={handleFocusOption} onConfirmRule={handleConfirmRule} onConfirmDeviation={handleConfirmDeviation} onManualAdjust={handleManualAdjust} busy={busy} onStop={() => abortRef.current?.abort()} plan activity={activity} messages={chatMessages} setMessages={setChatMessages} />
         </div>
-
         <div className="stage-toasts">
           {error && <div className="feedback feedback-error" role="alert">{error}</div>}
           {notice && <div className="feedback feedback-success" role="status">{notice}</div>}
         </div>
-      </div>
-
-      <section className="detail-drawer" aria-label="方案明細">
-        <div className="detail-inner">
-          {plan.stage === 'DISPATCHED' && map && <TimelineBoard data={map} timelineMinutes={timelineMinutes} onChange={(value) => void handleTimelineChange(value)} />}
-           <DeviationBoard data={map?.deviations} busy={busy} showSuggestions={showDeviationSuggestions} confirmedSuggestionIds={confirmedParameterSuggestions} onConfirm={(suggestion) => void handleConfirmDeviation(suggestion)} />
-          {/* 車輛概況整張收掉：載重、站數、里程、時間、責任區都進了訂單看板的
-              欄頭，留著就是同一批車在畫面上講第三遍。 */}
-          <DispatchRuleBoard rules={dispatchRules} activeCount={activeRuleCount} expanded={rulesExpanded} busy={busy} onToggle={() => setRulesExpanded((value) => !value)} onDeactivate={(ruleId) => void handleDeactivateRule(ruleId)} rulesExpanded={rulesExpanded} />
-           <OrderTable plan={plan} activeOrderId={expandedOrder} manualVehicleId={manualAdjustTarget.vehicleId} manualOrderId={manualAdjustTarget.orderId} changedOrderIds={changedOrderIds} onSelectOrder={(orderId) => { if (!orderId) { setExpandedOrder(null); return } setExpandedOrder((current) => current === orderId ? null : orderId) }} onHistoryMove={handleHistoryMove} onPreviewRouteOrder={handlePreviewRouteOrder} onConfirmRouteOrder={handleConfirmRouteOrder} onPreviewCrossVehicleRouteOrder={handlePreviewCrossVehicleRouteOrder} onConfirmCrossVehicleRouteOrder={handleConfirmCrossVehicleRouteOrder} />
-          <p className="safety-note">所有數字來自後端確定性計算；方案先預覽，經人工確認後才會建立新版本。</p>
-        </div>
-      </section>
+      </main>
     </div>
   )
 }

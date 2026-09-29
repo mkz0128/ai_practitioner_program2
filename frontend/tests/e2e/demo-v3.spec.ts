@@ -110,12 +110,18 @@ test.describe('Demo v3 逐字走查', () => {
 
     const board = page.getByRole('list', { name: '四台車訂單看板' })
     await expect(board).toBeVisible()
+    await board.scrollIntoViewIfNeeded()
     const sourceRow = board.locator('[data-order-id="ORD-042"]')
     const targetColumn = page.getByRole('region', { name: 'VEH-004 訂單欄' })
     await sourceRow.dragTo(targetColumn.locator('.order-board-stop').nth(4))
     await expect.poll(async () => await page.locator('.route-preview').count(), { timeout: 60_000 }).toBeGreaterThan(0)
     await expect(page.getByText('可以換', { exact: false })).toBeVisible({ timeout: 60_000 })
     await screenshot(page, 'v-10-drag-preview')
+    await page.getByLabel('跨車站序預覽結果').getByRole('button', { name: '套用變更' }).click()
+    await expect(targetColumn.locator('[data-order-id="ORD-042"]')).toHaveClass(/order-board-stop-changed/, { timeout: 60_000 })
+    await expect(page.locator('.map-change-summary')).toContainText('ORD-042')
+    await expect(page.locator('.map-stop-changed')).toHaveCount(1)
+    await screenshot(page, 'UX3-07-cross-vehicle-highlight')
 
     const badRow = board.locator('[data-order-id="ORD-021"]')
     const ruleColumn = page.getByRole('region', { name: 'VEH-002 訂單欄' })
@@ -123,8 +129,8 @@ test.describe('Demo v3 逐字走查', () => {
     await expect(page.getByText('不能換', { exact: false })).toBeVisible({ timeout: 60_000 })
     await screenshot(page, 'v-11-drag-rejected')
 
-    await page.getByRole('button', { name: '上一步', exact: true }).click()
-    await expect(page.getByRole('button', { name: '上一步', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '回到前一版', exact: true }).click()
+    await expect(page.getByRole('button', { name: '回到前一版', exact: true })).toBeVisible()
     await screenshot(page, 'v-12-undo')
 
     const urgentStart = await sendVisible(page, '客戶剛打來，三張急單今天要送', 'v-13-urgent-missing')
@@ -152,7 +158,16 @@ test.describe('Demo v3 逐字走查', () => {
     }
 
     await urgentCards.first().click()
-    await page.getByRole('button', { name: '確認套用', exact: true }).last().click()
+    const confirmUrgent = page.getByRole('button', { name: '確認套用', exact: true }).last()
+    await expect(confirmUrgent).toBeInViewport({ ratio: 1 })
+    await screenshot(page, 'UX2-11-option-selected')
+    await confirmUrgent.click()
+    for (const orderId of ['ORD-101', 'ORD-102', 'ORD-103']) {
+      await expect(board.locator(`[data-order-id="${orderId}"]`)).toHaveClass(/order-board-stop-changed/, { timeout: 180_000 })
+    }
+    await expect(page.locator('.map-change-summary')).toContainText('ORD-101')
+    await expect(page.locator('.map-stop-changed')).toHaveCount(3)
+    await screenshot(page, 'UX3-11-urgent-highlight')
     await expect(page.getByRole('button', { name: '開始裝車', exact: true })).toBeVisible({ timeout: 180_000 })
     await page.getByRole('button', { name: '開始裝車', exact: true }).click()
     await expect(page.getByText('上車後', { exact: true }).first()).toBeVisible({ timeout: 60_000 })

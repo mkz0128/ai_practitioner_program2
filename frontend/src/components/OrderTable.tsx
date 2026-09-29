@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CrossVehicleRouteOrderPreview, Plan, RouteOrderPreview, Stop } from '../types'
 import { formatDistance, formatDuration, formatEta, formatNumber, formatWeight, timeSlotLabel, vehicleLabel, cn } from '../lib/utils'
 import { unassignedReasonLabel } from '../lib/fieldLabels'
@@ -42,7 +42,30 @@ function delta(value: number, unit: string): string {
 }
 
 function StopDetails({ stop }: { stop: Stop }) {
-  return <div className="board-order-details" role="region" aria-label={`${stop.order_id} 配送明細`}><span>時段：{timeSlotLabel(stop.time_slot)}</span><span>重量：{formatWeight(stop.order_weight_kg)}</span><span>預估到達：{formatEta(stop.eta)}</span>{stop.reason?.summary && <span>推薦理由：{stop.reason.summary}</span>}</div>
+  return <div className="board-order-details" role="region" aria-label={`${stop.order_id} 配送明細`}><span>{timeSlotLabel(stop.time_slot)} · {formatWeight(stop.order_weight_kg)} · 預估 {formatEta(stop.eta)}</span>{stop.reason?.summary && <details><summary>安排原因</summary><p>{stop.reason.summary}</p></details>}</div>
+}
+
+function TouchMoveControls({ plan, sourceVehicleId, orderId, onPreview }: {
+  plan: Plan
+  sourceVehicleId: string
+  orderId: string
+  onPreview: (targetVehicleId: string, beforeOrderId: string, targetSequence: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [targetVehicleId, setTargetVehicleId] = useState(sourceVehicleId)
+  const [beforeOrderId, setBeforeOrderId] = useState('')
+  const targetVehicle = plan.vehicles.find((vehicle) => vehicle.vehicle_id === targetVehicleId)
+  const movableStops = targetVehicle?.stops.filter((stop) => stop.order_id !== orderId && stop.progress_status !== 'COMPLETED') || []
+  const sourceVehicle = plan.vehicles.find((vehicle) => vehicle.vehicle_id === sourceVehicleId)
+  const noChange = targetVehicleId === sourceVehicleId && !beforeOrderId && sourceVehicle?.stops.at(-1)?.order_id === orderId
+  return <div className="board-move-controls">
+    <button type="button" className="board-move-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? '收起調整' : '用表單調整'}</button>
+    {open && <div className="board-move-form">
+      <label>改到哪台車<select aria-label={`${orderId} 目標車輛`} value={targetVehicleId} onChange={(event) => { setTargetVehicleId(event.target.value); setBeforeOrderId('') }}>{plan.vehicles.map((vehicle) => <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>{vehicleLabel(vehicle.vehicle_id)}</option>)}</select></label>
+      <label>放在誰前面<select aria-label={`${orderId} 放在何處`} value={beforeOrderId} onChange={(event) => setBeforeOrderId(event.target.value)}><option value="">該車最後</option>{movableStops.map((stop) => <option key={stop.order_id} value={stop.order_id}>{stop.order_id} 前面</option>)}</select></label>
+      <Button type="button" variant="outline" disabled={noChange} onClick={() => { if (!targetVehicle) return; const target = targetVehicle.stops.find((stop) => stop.order_id === beforeOrderId); onPreview(targetVehicleId, beforeOrderId, target?.sequence ?? targetVehicle.stops.length + 1) }}>試算調整</Button>
+    </div>}
+  </div>
 }
 
 function SameVehiclePreview({ preview, onConfirm, busy }: { preview: RouteOrderPreview; onConfirm?: () => Promise<void>; busy: boolean }) {
@@ -61,16 +84,22 @@ function orderIdsForDrop(route: Plan['vehicles'][number], dragged: DraggedOrder,
   return orderIds
 }
 
-export function OrderTable({ plan, activeOrderId, manualVehicleId, manualOrderId, changedOrderIds, onSelectOrder, onHistoryMove, onPreviewRouteOrder, onConfirmRouteOrder, onPreviewCrossVehicleRouteOrder, onConfirmCrossVehicleRouteOrder }: { plan: Plan; activeOrderId: string | null; manualVehicleId?: string | null; manualOrderId?: string | null; changedOrderIds?: readonly string[]; onSelectOrder: (id: string) => void; onHistoryMove?: (direction: 'undo' | 'redo') => Promise<void>; onPreviewRouteOrder?: (vehicleId: string, orderIds: string[]) => Promise<RouteOrderPreview>; onConfirmRouteOrder?: (preview: RouteOrderPreview) => Promise<void>; onPreviewCrossVehicleRouteOrder?: (sourceVehicleId: string, targetVehicleId: string, orderId: string, targetSequence: number) => Promise<CrossVehicleRouteOrderPreview>; onConfirmCrossVehicleRouteOrder?: (preview: CrossVehicleRouteOrderPreview) => Promise<void> }) {
+export function OrderTable({ plan, activeOrderId, manualVehicleId, manualOrderId, changedOrderIds, changeRevision = 0, onSelectOrder, onHistoryMove, onPreviewRouteOrder, onConfirmRouteOrder, onPreviewCrossVehicleRouteOrder, onConfirmCrossVehicleRouteOrder }: { plan: Plan; activeOrderId: string | null; manualVehicleId?: string | null; manualOrderId?: string | null; changedOrderIds?: readonly string[]; changeRevision?: number; onSelectOrder: (id: string) => void; onHistoryMove?: (direction: 'undo' | 'redo') => Promise<void>; onPreviewRouteOrder?: (vehicleId: string, orderIds: string[]) => Promise<RouteOrderPreview>; onConfirmRouteOrder?: (preview: RouteOrderPreview) => Promise<void>; onPreviewCrossVehicleRouteOrder?: (sourceVehicleId: string, targetVehicleId: string, orderId: string, targetSequence: number) => Promise<CrossVehicleRouteOrderPreview>; onConfirmCrossVehicleRouteOrder?: (preview: CrossVehicleRouteOrderPreview) => Promise<void> }) {
   const changed = new Set(changedOrderIds || [])
   const [dragged, setDragged] = useState<DraggedOrder | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [dragMessage, setDragMessage] = useState<string | null>(null)
+  const dragOriginRef = useRef<DraggedOrder | null>(null)
   const timer = useRef<number | null>(null)
   const previewRequestId = useRef(0)
   useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
   useEffect(() => { setPreview(null); setDragged(null); setDragMessage(null) }, [plan.version])
+  useEffect(() => {
+    if (!dragged && preview) {
+      document.querySelector('[aria-label="訂單看板"] .route-preview-wrap')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [dragged, preview])
 
   function scheduleSameVehiclePreview(vehicleId: string, targetOrderId: string, draggedOrder = dragged) {
     if (!draggedOrder || !onPreviewRouteOrder) return
@@ -95,15 +124,41 @@ export function OrderTable({ plan, activeOrderId, manualVehicleId, manualOrderId
     const droppedVehicleId = droppedOrderId
       ? plan.vehicles.find((vehicle) => vehicle.stops.some((stop) => stop.order_id === droppedOrderId))?.vehicle_id
       : undefined
-    const activeDragged = droppedOrderId && droppedVehicleId
+    const activeDragged = dragOriginRef.current || (droppedOrderId && droppedVehicleId
       ? { vehicleId: droppedVehicleId, orderId: droppedOrderId }
-      : dragged
+      : dragged)
     if (!activeDragged) return
+    dragOriginRef.current = null
+    setPreview(null)
+    setDragMessage(null)
     if (activeDragged.vehicleId === targetVehicleId && targetOrderId) scheduleSameVehiclePreview(targetVehicleId, targetOrderId, activeDragged)
     else if (activeDragged.vehicleId !== targetVehicleId) scheduleCrossVehiclePreview(targetVehicleId, targetSequence, activeDragged)
     setDragged(null)
     setDragMessage('已送出站序試算；請查看下方的可行性與代價。')
   }
 
-  return <Card aria-label="訂單看板"><CardHeader><SectionTitle title="訂單看板" detail="拖曳訂單調整車輛與站序；放開後先試算，確認才套用。" /><div className="order-board-legend"><span><i className="obs-slot obs-slot-morning" />早上</span><span><i className="obs-slot obs-slot-afternoon" />下午</span><span><i className="obs-slot obs-slot-evening" />晚上</span><Badge tone={plan.completeness.is_complete ? 'success' : 'warning'}>{plan.completeness.assigned_order_count}/{plan.completeness.total_order_count} 已安排</Badge></div></CardHeader><CardContent>{onHistoryMove && <div className="order-board-history"><Button type="button" variant="outline" onClick={() => void onHistoryMove('undo')}>上一步</Button><Button type="button" variant="outline" onClick={() => void onHistoryMove('redo')}>下一步</Button></div>}{manualVehicleId && (() => { const vehicle = plan.vehicles.find((item) => item.vehicle_id === manualVehicleId); if (!vehicle) return null; const completedCount = vehicle.stops.filter((stop) => stop.progress_status === 'COMPLETED').length; const targetStop = manualOrderId ? vehicle.stops.find((stop) => stop.order_id === manualOrderId) : null; return <div className="order-board-manual" role="status">正在手動調整 {manualVehicleId} 的剩餘 {vehicle.stops.length - completedCount} 站。{manualOrderId && targetStop ? `${manualOrderId} 要在 ${formatEta(targetStop.eta)} 前送達。` : ''}</div> })()}<div className="order-board" role="list" aria-label="四台車訂單看板">{plan.vehicles.map((vehicle) => <section key={vehicle.vehicle_id} className={cn('order-board-column', manualVehicleId === vehicle.vehicle_id && 'order-board-column-manual', dragged && dragged.vehicleId !== vehicle.vehicle_id && 'order-board-column-target')} aria-label={`${vehicle.vehicle_id} 訂單欄`} onDragOver={(event) => { event.preventDefault(); if (event.target !== event.currentTarget) return; if (dragged && dragged.vehicleId !== vehicle.vehicle_id) scheduleCrossVehiclePreview(vehicle.vehicle_id, vehicle.stops.length + 1) }} onDrop={(event) => { event.preventDefault(); handleDrop(event, vehicle.vehicle_id, vehicle.stops.length + 1) }}><ColumnHead vehicle={vehicle} /><div className="order-board-stops">{vehicle.stops.map((stop) => { const locked = plan.stage === 'DISPATCHED' && stop.progress_status === 'COMPLETED'; const expanded = activeOrderId === stop.order_id; return <div key={stop.order_id} data-order-id={stop.order_id} className={cn('order-board-stop', locked && 'order-board-stop-locked', changed.has(stop.order_id) && 'order-board-stop-changed', dragged?.orderId === stop.order_id && 'dragging-row')} draggable={!locked} onDragStart={(event) => { if (locked) { event.preventDefault(); setDragMessage(`${stop.order_id} 已送達，不能拖曳。`); return } setDragged({ vehicleId: vehicle.vehicle_id, orderId: stop.order_id }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', stop.order_id) }} onDragOver={(event) => { event.preventDefault(); if (dragged && dragged.vehicleId === vehicle.vehicle_id) scheduleSameVehiclePreview(vehicle.vehicle_id, stop.order_id); else if (dragged) scheduleCrossVehiclePreview(vehicle.vehicle_id, stop.sequence) }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); handleDrop(event, vehicle.vehicle_id, stop.sequence, stop.order_id) }} onDragEnd={() => setDragged(null)}><button type="button" className="order-board-order" onClick={() => onSelectOrder(expanded ? '' : stop.order_id)} aria-expanded={expanded}><i className={`obs-slot obs-slot-${String(stop.time_slot).toLowerCase()}`} aria-hidden="true" /><span className="order-board-sequence">{stop.sequence}</span><span className="obs-id">{stop.order_id}</span>{locked ? <Badge tone="neutral">已送達</Badge> : <><span className="obs-kg">{formatWeight(stop.order_weight_kg)}</span><span className="obs-eta">{formatEta(stop.eta)}</span></>}</button>{expanded && <StopDetails stop={stop} />}</div> })}</div></section>)}</div>{plan.unassigned_orders.length > 0 && <div className="order-board-unassigned" role="status"><strong>未安排</strong>{plan.unassigned_orders.map((orderId) => <span key={orderId}>{orderId}：{unassignedReasonLabel(plan.unassigned_reasons[orderId])}。</span>)}</div>}{(dragMessage || previewBusy || preview) && <div className="route-preview-wrap">{dragMessage && <p className="mb-2 text-xs font-semibold text-slate-600" role="status">{dragMessage}</p>}{previewBusy && <p className="text-xs text-slate-500" role="status">正在計算新的站序…</p>}{preview && (isCrossPreview(preview) ? <CrossVehiclePreview preview={preview} busy={previewBusy} onConfirm={onConfirmCrossVehicleRouteOrder ? async () => { try { await onConfirmCrossVehicleRouteOrder(preview); setPreview(null); setDragMessage('已套用跨車站序；方案版本已更新。') } catch (error) { setDragMessage(error instanceof Error ? error.message : '套用站序失敗，原方案沒有變更。') } } : undefined} /> : <SameVehiclePreview preview={preview} busy={previewBusy} onConfirm={onConfirmRouteOrder ? async () => { try { await onConfirmRouteOrder(preview); setPreview(null); setDragMessage('已套用新站序；方案版本已更新。') } catch (error) { setDragMessage(error instanceof Error ? error.message : '套用站序失敗，原方案沒有變更。') } } : undefined} />)}</div>}</CardContent></Card>
+  function handleDragEnd(event: React.DragEvent<HTMLDivElement>) {
+    // A native drop can be lost when the browser scrolls the long board while
+    // dragging. Resolve the actual release target before clearing the origin.
+    const origin = dragOriginRef.current
+    if (origin) {
+      const element = document.elementFromPoint(event.clientX, event.clientY)
+      const column = element?.closest<HTMLElement>('[data-vehicle-id]')
+      const row = element?.closest<HTMLElement>('[data-order-id]')
+      const targetVehicleId = column?.dataset.vehicleId
+      if (targetVehicleId && (targetVehicleId !== origin.vehicleId || row?.dataset.orderId !== origin.orderId)) {
+        const targetOrderId = row?.dataset.orderId
+        const targetSequence = plan.vehicles.find((vehicle) => vehicle.vehicle_id === targetVehicleId)?.stops.find((stop) => stop.order_id === targetOrderId)?.sequence
+          || (plan.vehicles.find((vehicle) => vehicle.vehicle_id === targetVehicleId)?.stops.length || 0) + 1
+        setPreview(null)
+        if (targetVehicleId === origin.vehicleId && targetOrderId) scheduleSameVehiclePreview(targetVehicleId, targetOrderId, origin)
+        else if (targetVehicleId !== origin.vehicleId) scheduleCrossVehiclePreview(targetVehicleId, targetSequence, origin)
+        setDragMessage('已送出站序試算；請查看下方的可行性與代價。')
+      }
+    }
+    dragOriginRef.current = null
+    setDragged(null)
+  }
+
+  return <Card aria-label="訂單看板"><CardHeader><SectionTitle title="訂單看板" detail="拖曳訂單調整車輛與站序；點選訂單可看明細。放開後先試算，確認才套用。" /><div className="order-board-legend"><span><i className="obs-slot obs-slot-morning" />早上</span><span><i className="obs-slot obs-slot-afternoon" />下午</span><span><i className="obs-slot obs-slot-evening" />晚上</span><Badge tone={plan.completeness.is_complete ? 'success' : 'warning'}>{plan.completeness.assigned_order_count}/{plan.completeness.total_order_count} 已安排</Badge></div></CardHeader><CardContent>{onHistoryMove && <div className="order-board-history"><span>目前方案 v{plan.version}</span><Button type="button" variant="outline" onClick={() => void onHistoryMove('undo')}>回到前一版</Button><Button type="button" variant="outline" onClick={() => void onHistoryMove('redo')}>切到後一版</Button></div>}{manualVehicleId && (() => { const vehicle = plan.vehicles.find((item) => item.vehicle_id === manualVehicleId); if (!vehicle) return null; const completedCount = vehicle.stops.filter((stop) => stop.progress_status === 'COMPLETED').length; const targetStop = manualOrderId ? vehicle.stops.find((stop) => stop.order_id === manualOrderId) : null; return <div className="order-board-manual" role="status">正在手動調整 {manualVehicleId} 的剩餘 {vehicle.stops.length - completedCount} 站。{manualOrderId && targetStop ? `${manualOrderId} 要在 ${formatEta(targetStop.eta)} 前送達。` : ''}</div> })()}{plan.unassigned_orders.length > 0 && <div className="order-board-unassigned" role="status"><strong>未安排</strong>{plan.unassigned_orders.map((orderId) => <span key={orderId}>{orderId}：{unassignedReasonLabel(plan.unassigned_reasons[orderId])}。</span>)}</div>}<div className="order-board" role="list" aria-label="四台車訂單看板">{plan.vehicles.map((vehicle) => <section key={vehicle.vehicle_id} className={cn('order-board-column', manualVehicleId === vehicle.vehicle_id && 'order-board-column-manual', dragged && dragged.vehicleId !== vehicle.vehicle_id && 'order-board-column-target')} aria-label={`${vehicle.vehicle_id} 訂單欄`} data-vehicle-id={vehicle.vehicle_id} onDragOver={(event) => { event.preventDefault() }} onDrop={(event) => { event.preventDefault(); handleDrop(event, vehicle.vehicle_id, vehicle.stops.length + 1) }}><div className="order-board-drophead" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); handleDrop(event, vehicle.vehicle_id, vehicle.stops.length + 1) }}><ColumnHead vehicle={vehicle} /></div><div className="order-board-stops">{vehicle.stops.map((stop) => { const locked = plan.stage === 'DISPATCHED' && stop.progress_status === 'COMPLETED'; const expanded = activeOrderId === stop.order_id; return <div key={changed.has(stop.order_id) ? `${stop.order_id}-${changeRevision}` : stop.order_id} data-order-id={stop.order_id} className={cn('order-board-stop', locked && 'order-board-stop-locked', changed.has(stop.order_id) && 'order-board-stop-changed', dragged?.orderId === stop.order_id && 'dragging-row')} draggable={!locked} onPointerDown={() => { dragOriginRef.current = { vehicleId: vehicle.vehicle_id, orderId: stop.order_id } }} onDragStart={(event) => { if (locked) { event.preventDefault(); setDragMessage(`${stop.order_id} 已送達，不能拖曳。`); return } const origin = dragOriginRef.current || { vehicleId: vehicle.vehicle_id, orderId: stop.order_id }; dragOriginRef.current = origin; setDragged(origin); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', origin.orderId) }} onDragOver={(event) => { event.preventDefault() }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); handleDrop(event, vehicle.vehicle_id, stop.sequence, stop.order_id) }} onDragEnd={handleDragEnd}><button type="button" className="order-board-order" onClick={() => onSelectOrder(expanded ? '' : stop.order_id)} aria-expanded={expanded}><i className={`obs-slot obs-slot-${String(stop.time_slot).toLowerCase()}`} aria-hidden="true" /><span className="order-board-sequence">{stop.sequence}</span><span className="obs-id">{stop.order_id}</span>{locked ? <Badge tone="neutral">已送達</Badge> : <><span className="obs-kg">{formatWeight(stop.order_weight_kg)}</span><span className="obs-eta">{formatEta(stop.eta)}</span></>}</button>{expanded && <><StopDetails stop={stop} />{!locked && <TouchMoveControls key={stop.order_id} plan={plan} sourceVehicleId={vehicle.vehicle_id} orderId={stop.order_id} onPreview={(targetVehicleId, beforeOrderId, targetSequence) => { setPreview(null); setDragMessage("已送出站序試算；請查看下方的可行性與代價。"); const source = { vehicleId: vehicle.vehicle_id, orderId: stop.order_id }; if (targetVehicleId === vehicle.vehicle_id) scheduleSameVehiclePreview(targetVehicleId, beforeOrderId || "__END__", source); else scheduleCrossVehiclePreview(targetVehicleId, targetSequence, source) }} />}</>}</div> })}</div></section>)}</div>{(dragMessage || previewBusy || preview) && <div className="route-preview-wrap">{dragMessage && <p className="mb-2 text-xs font-semibold text-slate-600" role="status">{dragMessage}</p>}{previewBusy && <p className="text-xs text-slate-500" role="status">正在計算新的站序…</p>}{preview && (isCrossPreview(preview) ? <CrossVehiclePreview preview={preview} busy={previewBusy} onConfirm={onConfirmCrossVehicleRouteOrder ? async () => { try { await onConfirmCrossVehicleRouteOrder(preview); setPreview(null); setDragMessage('已套用跨車站序；方案版本已更新。') } catch (error) { setDragMessage(error instanceof Error ? error.message : '套用站序失敗，原方案沒有變更。') } } : undefined} /> : <SameVehiclePreview preview={preview} busy={previewBusy} onConfirm={onConfirmRouteOrder ? async () => { try { await onConfirmRouteOrder(preview); setPreview(null); setDragMessage('已套用新站序；方案版本已更新。') } catch (error) { setDragMessage(error instanceof Error ? error.message : '套用站序失敗，原方案沒有變更。') } } : undefined} />)}</div>}</CardContent></Card>
 }

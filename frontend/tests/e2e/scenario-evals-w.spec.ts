@@ -575,13 +575,12 @@ test('情境 Evals W-01～W-52：tight Demo 單一連續走查', async ({ page }
     const vehicles = deviationData.vehicle_deviations as Array<{ vehicle_id: string; delay_minutes: number }>
     expect(vehicles.length).toBeGreaterThan(0)
     // 偏差說明講的是人話車名（第三車），不是資料庫鍵值。
-    await expect(page.getByText('今天實際比預估慢', { exact: false }).last()).toBeVisible()
+    await expect(page.getByText('在模擬進度中比原預估慢', { exact: false }).last()).toBeVisible()
   })
   await step('W-45', async () => {
     const zones = deviationData.zone_deviations as Array<{ zone_code: string; extra_service_minutes_per_stop: number }>
     expect(zones.length).toBeGreaterThan(0)
-    // 區域偏差改成人話了：「南區（Z5）每一站平均多停 N 分鐘」。
-    await expect(page.getByText('每一站平均多停', { exact: false }).last()).toBeVisible()
+    await expect(page.getByText('每站需多預留', { exact: false }).last()).toBeVisible()
   })
   await step('W-46', async () => {
     const suggestions = deviationData.suggestions as Array<{ from_service_minutes: number; to_service_minutes: number }>

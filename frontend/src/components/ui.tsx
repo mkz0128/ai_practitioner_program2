@@ -4,12 +4,12 @@ import { cn } from '../lib/utils'
 export function Button({ className, variant = 'primary', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }) {
   const variants = {
     primary: 'bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-300',
-    secondary: 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300',
+    secondary: 'bg-[#c85016] text-white hover:bg-[#a63d0b] disabled:bg-[#e8aa8c]',
     outline: 'border border-slate-300 bg-white text-slate-700 hover:border-slate-500 hover:bg-slate-50 disabled:text-slate-300',
     ghost: 'text-slate-600 hover:bg-slate-100 disabled:text-slate-300',
     danger: 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:text-red-300',
   }
-  return <button className={cn('inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2', variants[variant], className)} {...props} />
+  return <button className={cn('inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c85016] focus-visible:ring-offset-2', variants[variant], className)} {...props} />
 }
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -32,7 +32,6 @@ export function Badge({ children, tone = 'neutral', className }: { children: Rea
     danger: 'bg-red-50 text-red-700',
     info: 'bg-blue-50 text-blue-700',
   }
-  // shrink-0 + whitespace-nowrap：徽章在窄欄位裡不得被折成「可／選」
   return <span className={cn('inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold', tones[tone], className)}>{children}</span>
 }
 

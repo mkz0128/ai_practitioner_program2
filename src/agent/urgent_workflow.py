@@ -675,6 +675,11 @@ def create_urgent_understanding_agent(
             "including while urgent_stage is REVIEW_READY; this includes asking for the "
             "plan's shape or overall arrangement. Return the empty NONE result so "
             "the main dispatch Agent handles the plan question. "
+            "When an urgent preview card is already visible, a request such as "
+            "'use A, but send this order first' asks to adjust that candidate. It does "
+            "not ask to bypass checking or human confirmation. Return "
+            "is_urgent_insertion=false, action=NONE, orders=[], and "
+            "referenced_order_ids=[] so the main dispatch Agent can preview the change."
         ),
         output_type=UrgentUnderstanding,
         input_guardrails=[cast(Any, reject_prompt_injection)],
