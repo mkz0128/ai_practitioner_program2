@@ -4358,7 +4358,7 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             plan_version = None
         record = store.get_plan(context_plan_id, plan_version)
         if record is None:
-            return _error(request, 404, "PLAN_NOT_FOUND", "找不到說明所需的規劃版本。")
+            return _error(request, 404, "PLAN_NOT_FOUND", "我不能回答這個問題。")
         dataset_record = store.get_dataset(record.dataset_id)
         if dataset_record is None:
             return _error(request, 404, "DATASET_NOT_FOUND", "找不到說明所需的資料集。")
