@@ -393,6 +393,8 @@ class DispatchRuleInput(BaseModel):
             "只有使用者在本則訊息說出具體數值時才填。「比較短」「不要太重」"
             "「早一點」「少一點」這類形容詞沒有數值，必須留空由工具反問，"
             "不得自行換算成任何數字。"
+            "使用者明確說出的中文時刻也是具體值，例如「下午三點前收工」"
+            "填 15:00；轉成 HH:MM 只是格式正規化，不是猜測限制。"
         ),
     )
     value_source: Literal["EXPLICIT", "MISSING"] = Field(
@@ -400,6 +402,7 @@ class DispatchRuleInput(BaseModel):
         description=(
             "使用者明確說出數值時填 EXPLICIT；只要數值是你推論、換算或預設的，"
             "一律填 MISSING。"
+            "明確中文時刻轉成 HH:MM 仍是 EXPLICIT，例如下午三點就是 15:00。"
         ),
     )
     duration: Literal["PERMANENT", "THIS_WEEK", "TODAY"] = "PERMANENT"
@@ -4262,6 +4265,12 @@ def _prompt_safety_agent(model: Model) -> Agent[None]:
             "whole-day unavailability. Leave missing weight and finishing-time values to the "
             "main Agent's established workflow. This precedence does not turn a bare "
             "personal wish such as '我想下班' into a restriction request; that remains CLARIFY."
+            " Highest-priority review continuation: when application_state.last_tool is "
+            "inspect_dispatch_deviations, a question about tomorrow's adjustments, including "
+            "'好，那明天要怎麼改', is ALWAYS ALLOW. It continues the delivery review even "
+            "without naming a vehicle, zone or parameter. Do not ask for a vehicle in this "
+            "gate; the existing review workflow derives its recommendation from the plan. "
+            "This continuation does not override secret detection or allow unrelated requests."
         ),
         output_type=PromptSafetyAssessment,
         model_settings=ModelSettings(
@@ -4795,7 +4804,14 @@ def create_dispatch_agent(
             "turn a comparison into an invented limit. Set value_source to EXPLICIT only "
             "when the user supplied a concrete "
             "numeric or enum value; otherwise leave it MISSING even if a plausible value "
-            "could be guessed. Driver-language examples such as not carrying heavy goods, "
+            "could be guessed. A clock time stated in Chinese words is an explicit "
+            "user-provided value: normalize it to HH:MM, never mark it MISSING just because "
+            "no Arabic digits were used. '第三車今天下午三點前收工' is a complete finishing-time "
+            "restriction: subject_id=VEH-003, subject_reference_kind=VEHICLE_ID, "
+            "rule_type=LATEST_RETURN_TIME, value='15:00', value_source=EXPLICIT, duration=TODAY. "
+            "It requests only finishing time; do not add a package-weight restriction or "
+            "ask for unrelated limits. A scope clarification is not a pending driver-rule draft. "
+            "Driver-language examples such as not carrying heavy goods, "
             "a back injury, or limiting one vehicle's single-package weight are all this "
             "restriction flow. Fragmentary or mixed-language wording that still describes "
             "a driver or vehicle restriction follows the same flow; use preview_dispatch_rule "
