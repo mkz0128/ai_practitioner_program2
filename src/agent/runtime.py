@@ -1382,16 +1382,16 @@ def preview_dispatch_rule(
     # Both branches have to read as a whole sentence now, because the message
     # says 試算結果 followed by this text rather than pasting a bare fragment.
     unassigned_count = len(trial.plan.unassigned_orders)
-    if len(trial.affected_order_ids) > 3:
-        affected_text = f"{len(trial.affected_order_ids)} 張要改派給別的車"
-        if unassigned_count:
-            affected_text += f"，{unassigned_count} 張排不進去"
-    elif trial.affected_order_ids:
-        affected_text = "、".join(trial.affected_order_ids) + " 要改派給別的車"
-        if unassigned_count:
-            affected_text += f"，另外 {unassigned_count} 張排不進去"
+    affected_count = len(trial.affected_order_ids)
+    reassigned_count = len(trial.diff["reassigned_orders"])
+    if affected_count:
+        affected_text = (
+            f"{affected_count} 張受到影響，其中 {reassigned_count} 張需要換車"
+        )
     else:
-        affected_text = "沒有訂單需要改派"
+        affected_text = "沒有訂單受到影響，沒有訂單需要換車"
+    if unassigned_count:
+        affected_text += f"，{unassigned_count} 張排不進去"
     # Report the constrained vehicle's own last stop. Reporting the whole
     # fleet's latest stop read as if the knock-off rule had failed even when
     # that vehicle finished on time — the late stop belonged to another truck.
@@ -4271,6 +4271,11 @@ def _prompt_safety_agent(model: Model) -> Agent[None]:
             "without naming a vehicle, zone or parameter. Do not ask for a vehicle in this "
             "gate; the existing review workflow derives its recommendation from the plan. "
             "This continuation does not override secret detection or allow unrelated requests."
+            " Aggregate delivery questions are ALWAYS ALLOW without a vehicle or order ID. "
+            "In particular, when application_state.stage is DISPATCHED, '今天成效如何', "
+            "'今天跑得如何' and other broad delivery-outcome questions are supported fleet "
+            "reviews. Never ask which vehicle in this gate for such a review. The missing "
+            "identifier is intentional because the user is asking about the whole fleet."
         ),
         output_type=PromptSafetyAssessment,
         model_settings=ModelSettings(
