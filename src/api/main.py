@@ -4307,6 +4307,32 @@ def _sync_direct_urgent_preview_session(
     _save_agent_session(session_id, session)
 
 
+def _input_guardrail_response(
+    request: Request, exc: InputGuardrailTripwireTriggered
+) -> JSONResponse:
+    """Explain a blocked input without running or changing a dispatch plan."""
+    assessment = exc.guardrail_result.output.output_info
+    if isinstance(assessment, dict) and not assessment.get("is_prompt_injection", True):
+        if assessment.get("scope_decision") == "CLARIFY":
+            clarification = assessment.get("clarification_message")
+            message = (
+                clarification.strip()
+                if isinstance(clarification, str) and clarification.strip()
+                else "請完整說明要調整的車輛或訂單，以及希望怎麼調整。"
+            )
+            return _error(request, 400, "INPUT_CLARIFICATION_REQUIRED", message)
+        if assessment.get("scope_decision") == "UNSUPPORTED":
+            return _error(
+                request,
+                400,
+                "REQUEST_OUT_OF_SCOPE",
+                "我目前只能協助配送調度、資料檢查與方案查詢，無法處理這個問題。",
+            )
+    return _error(
+        request, 400, "PROMPT_INJECTION_BLOCKED", "我不能提供金鑰、機密資訊或內部系統提示。"
+    )
+
+
 @app.post("/api/v1/agent/chat")
 async def agent_chat(payload: ChatRequest, request: Request) -> Any:
     if not settings.openai_api_key:
@@ -4679,13 +4705,8 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
                     payload.message,
                     urgent_state,
                 )
-        except InputGuardrailTripwireTriggered:
-            return _error(
-                request,
-                400,
-                "PROMPT_INJECTION_BLOCKED",
-                "訊息包含不可執行的規則繞過要求。",
-            )
+        except InputGuardrailTripwireTriggered as exc:
+            return _input_guardrail_response(request, exc)
         except Exception as exc:
             provider_runtime_state["openai"] = "failed"
             status_code, error_code, message, retryable = _classify_agent_error(exc)
@@ -4876,13 +4897,8 @@ async def agent_chat(payload: ChatRequest, request: Request) -> Any:
             raise last_agent_error
         final_output, context, result = agent_result
         final_output = _scope_chat_message(context.evidence, final_output)
-    except InputGuardrailTripwireTriggered:
-        return _error(
-            request,
-            400,
-            "PROMPT_INJECTION_BLOCKED",
-            "訊息包含不可執行的規則繞過要求。",
-        )
+    except InputGuardrailTripwireTriggered as exc:
+        return _input_guardrail_response(request, exc)
     except Exception as exc:
         # Do not serialize provider requests, headers, keys, or SDK internals.
         provider_runtime_state["openai"] = "failed"
