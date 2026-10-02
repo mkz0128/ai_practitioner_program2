@@ -4253,6 +4253,15 @@ def _prompt_safety_agent(model: Model) -> Agent[None]:
             "for a message that does not express a definite supported operation, such as a "
             "personal wish to leave work. Clarification asks for the VEHICLE reference, never "
             "a driver's name because driver-to-vehicle mapping is not supported."
+            " Describing a driver's or vehicle's operational limitations is an explicit "
+            "supported restriction request, even as a statement and with missing numeric "
+            "limits. For example, '二號車的阿明今天身體不舒服，不能拿太重，而且要早點下班去看醫生' "
+            "is ALLOW: both the vehicle and the intended restrictions are already stated. "
+            "A driver's name alongside an explicit vehicle number does not make the vehicle "
+            "ambiguous. Do not ask for the vehicle again or reinterpret the request as "
+            "whole-day unavailability. Leave missing weight and finishing-time values to the "
+            "main Agent's established workflow. This precedence does not turn a bare "
+            "personal wish such as '我想下班' into a restriction request; that remains CLARIFY."
         ),
         output_type=PromptSafetyAssessment,
         model_settings=ModelSettings(
